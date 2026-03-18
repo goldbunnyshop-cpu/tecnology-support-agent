@@ -50,6 +50,7 @@ python-dotenv>=1.0.0
 sqlalchemy>=2.0.0
 pyyaml>=6.0.1
 aiosqlite>=0.19.0
+python-multipart>=0.0.6
 ```
 
 ---
@@ -157,7 +158,7 @@ Antes de empezar, dejame verificar que tu entorno esta listo...
 
 5. **Crear .env desde template** si no existe:
    ```bash
-   # Crear .env con el template base
+   cp .env.example .env
    ```
 
 6. **Mostrar resultado:**
@@ -1224,7 +1225,45 @@ Solo ejecutar si el usuario confirma que quiere hacer deploy.
    docker compose build
    ```
 
-3. **Instrucciones para Railway (mostrar paso a paso):**
+3. **IMPORTANTE: Antes de subir a GitHub, reemplazar el .gitignore.**
+
+   El `.gitignore` del template de AgentKit excluye los archivos generados (agent/, config/, etc.)
+   para mantener limpio el repo de GitHub. Pero el usuario necesita subir ESOS archivos a Railway.
+
+   Claude Code DEBE generar un nuevo `.gitignore` de producción:
+
+   ```gitignore
+   # Secretos — NUNCA subir
+   .env
+
+   # Base de datos local
+   *.db
+   *.sqlite
+   *.sqlite3
+
+   # Python
+   __pycache__/
+   *.py[cod]
+   .venv/
+   venv/
+
+   # Knowledge (archivos privados del negocio)
+   knowledge/*
+   !knowledge/.gitkeep
+
+   # Session state
+   config/session.yaml
+
+   # OS
+   .DS_Store
+   Thumbs.db
+
+   # IDE
+   .vscode/
+   .idea/
+   ```
+
+4. **Instrucciones para Railway (mostrar paso a paso):**
 
    ```
    === Deploy a Railway ===
@@ -1277,7 +1316,7 @@ Solo ejecutar si el usuario confirma que quiere hacer deploy.
    ¡Listo! Tu agente ya está en producción.
    ```
 
-4. **Resumen final:**
+5. **Resumen final:**
    ```
    ===========================================================
       AgentKit — Resumen
