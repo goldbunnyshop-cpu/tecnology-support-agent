@@ -697,16 +697,15 @@ async def webhook_handler(request: Request):
 
             logger.info(f"Mensaje de {msg.telefono}: {msg.texto}")
 
-            # Guardar mensaje del usuario en memoria
-            await guardar_mensaje(msg.telefono, "user", msg.texto)
-
-            # Obtener historial de conversación
+            # Obtener historial ANTES de guardar el mensaje actual
+            # (brain.py agrega el mensaje actual, evitando duplicados)
             historial = await obtener_historial(msg.telefono)
 
             # Generar respuesta con Claude
             respuesta = await generar_respuesta(msg.texto, historial)
 
-            # Guardar respuesta del agente en memoria
+            # Guardar mensaje del usuario Y respuesta del agente en memoria
+            await guardar_mensaje(msg.telefono, "user", msg.texto)
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
 
             # Enviar respuesta por WhatsApp via el proveedor
@@ -1088,10 +1087,7 @@ async def main():
             print("[Historial borrado]\n")
             continue
 
-        # Guardar mensaje del usuario
-        await guardar_mensaje(TELEFONO_TEST, "user", mensaje)
-
-        # Obtener historial
+        # Obtener historial ANTES de guardar (brain.py agrega el mensaje actual)
         historial = await obtener_historial(TELEFONO_TEST)
 
         # Generar respuesta
@@ -1100,7 +1096,8 @@ async def main():
         print(respuesta)
         print()
 
-        # Guardar respuesta
+        # Guardar mensaje del usuario y respuesta del agente
+        await guardar_mensaje(TELEFONO_TEST, "user", mensaje)
         await guardar_mensaje(TELEFONO_TEST, "assistant", respuesta)
 
 
