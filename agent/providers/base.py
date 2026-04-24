@@ -18,8 +18,10 @@ class MensajeEntrante:
     remitente: str = ""         # Sender real (útil en grupos donde telefono es el group_id)
     nombre_grupo: str = ""      # Nombre del grupo si es_grupo
     chat_id_raw: str = ""       # chat_id original con sufijo (@s.whatsapp.net / @g.us)
-    media_url: str = ""         # URL directa de descarga (imágenes)
-    media_thumbnail_b64: str = ""  # Thumbnail JPEG en base64 (videos de Whapi)
+    media_url: str = ""              # URL directa de descarga (imágenes/videos)
+    media_thumbnail_b64: str = ""    # Thumbnail JPEG en base64 (videos de Whapi)
+    media_id: str = ""               # ID de media de Whapi (fallback si URL vacía)
+    media_mime_type: str = ""        # MIME type declarado por el proveedor
 
 
 class ProveedorWhatsApp(ABC):

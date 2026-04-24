@@ -39,18 +39,43 @@ Responde SOLO el JSON, sin markdown, sin explicaciones adicionales."""
 
 
 async def descargar_media(url: str, token: str) -> tuple[bytes, str] | None:
-    """Descarga media de Whapi usando el token de autorización."""
+    """Descarga media de Whapi por URL directa."""
+    if not url:
+        return None
     try:
         headers = {"Authorization": f"Bearer {token}"}
         async with httpx.AsyncClient(timeout=20) as client_http:
             r = await client_http.get(url, headers=headers, follow_redirects=True)
             if r.status_code != 200:
-                logger.warning(f"Error descargando media {url}: {r.status_code}")
+                logger.warning(f"[VISION] Error descargando URL {url[:60]}: HTTP {r.status_code}")
                 return None
             content_type = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+            logger.info(f"[VISION] Imagen descargada — {len(r.content)} bytes, {content_type}")
             return r.content, content_type
     except Exception as e:
-        logger.error(f"Excepción descargando media: {e}")
+        logger.error(f"[VISION] Excepción descargando URL: {e}")
+        return None
+
+
+async def descargar_media_por_id(media_id: str, token: str, mime_type: str = "image/jpeg") -> tuple[bytes, str] | None:
+    """Fallback: descarga media de Whapi usando el media_id del payload."""
+    if not media_id:
+        return None
+    # Whapi expone media en /files/{media_id}
+    url = f"https://gate.whapi.cloud/files/{media_id}"
+    logger.info(f"[VISION] Intentando descarga por media_id: {url}")
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        async with httpx.AsyncClient(timeout=20) as client_http:
+            r = await client_http.get(url, headers=headers, follow_redirects=True)
+            if r.status_code != 200:
+                logger.warning(f"[VISION] Error descargando por ID {media_id}: HTTP {r.status_code}")
+                return None
+            content_type = r.headers.get("content-type", mime_type).split(";")[0].strip()
+            logger.info(f"[VISION] Imagen por ID descargada — {len(r.content)} bytes, {content_type}")
+            return r.content, content_type
+    except Exception as e:
+        logger.error(f"[VISION] Excepción descargando por ID: {e}")
         return None
 
 

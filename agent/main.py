@@ -43,6 +43,7 @@ from agent.notifications import (
 )
 from agent.vision import (
     descargar_media,
+    descargar_media_por_id,
     analizar_imagen_bytes,
     analizar_thumbnail_b64,
     construir_respuesta_cliente,
@@ -117,19 +118,33 @@ async def _actualizar_perfil_cliente(telefono: str, texto: str, asesor: str):
 
 
 async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str:
-    """Descarga la imagen, la analiza con Vision y retorna la respuesta al cliente."""
+    """Descarga la imagen (URL o media_id), la analiza con Vision y responde al cliente."""
     whapi_token = os.getenv("WHAPI_TOKEN", "")
-    analisis = {}
+    resultado = None
 
+    logger.info(
+        f"[IMG] telefono={msg.telefono} media_url='{(msg.media_url or '')[:60]}' "
+        f"media_id='{getattr(msg, 'media_id', '')}' mime='{getattr(msg, 'media_mime_type', '')}'"
+    )
+
+    # Intento 1: URL directa del payload
     if msg.media_url and whapi_token:
         resultado = await descargar_media(msg.media_url, whapi_token)
-        if resultado:
-            imagen_bytes, mime_type = resultado
-            analisis = await analizar_imagen_bytes(imagen_bytes, mime_type)
+
+    # Intento 2: fallback por media_id si URL falla o está vacía
+    if resultado is None:
+        media_id = getattr(msg, "media_id", "")
+        mime = getattr(msg, "media_mime_type", "image/jpeg") or "image/jpeg"
+        if media_id and whapi_token:
+            resultado = await descargar_media_por_id(media_id, whapi_token, mime)
         else:
-            logger.warning(f"No se pudo descargar imagen de {msg.telefono}")
-    else:
-        logger.info(f"Sin media_url para imagen de {msg.telefono} — usando fallback")
+            logger.warning(f"[IMG] Sin media_url ni media_id para {msg.telefono}")
+
+    if resultado is None:
+        return RESPUESTA_IMAGEN_FALLBACK
+
+    imagen_bytes, mime_type = resultado
+    analisis = await analizar_imagen_bytes(imagen_bytes, mime_type)
 
     if not analisis:
         return RESPUESTA_IMAGEN_FALLBACK
@@ -208,6 +223,7 @@ async def _importar_y_reportar():
 
 @app.get("/webhook")
 @app.get("/webhook/messages")
+@app.get("/webhook/messages/messages")
 async def webhook_verificacion(request: Request):
     resultado = await proveedor.validar_webhook(request)
     if resultado is not None:
@@ -217,6 +233,7 @@ async def webhook_verificacion(request: Request):
 
 @app.post("/webhook")
 @app.post("/webhook/messages")
+@app.post("/webhook/messages/messages")
 async def webhook_handler(request: Request):
     try:
         body = await request.body()

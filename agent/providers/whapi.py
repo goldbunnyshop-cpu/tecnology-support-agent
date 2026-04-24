@@ -101,13 +101,26 @@ class ProveedorWhapi(ProveedorWhatsApp):
             # Extraer URL de media para imágenes y thumbnail para videos
             media_url = ""
             media_thumbnail_b64 = ""
+            media_id = ""
+            media_mime_type = ""
+
             if tipo == "image":
                 img_data = msg.get("image") or msg.get("media") or {}
-                media_url = img_data.get("url") or img_data.get("link") or ""
+                logger.info(f"[WHAPI IMAGE] payload keys: {list(img_data.keys())} | raw: {str(img_data)[:200]}")
+                media_url = (
+                    img_data.get("url") or img_data.get("link") or
+                    img_data.get("download_url") or img_data.get("file_url") or ""
+                )
+                media_id = img_data.get("id") or img_data.get("media_id") or ""
+                media_mime_type = img_data.get("mimetype") or img_data.get("mime_type") or "image/jpeg"
+                logger.info(f"[WHAPI IMAGE] media_url='{media_url[:80]}' media_id='{media_id}'")
+
             elif tipo == "video":
                 vid_data = msg.get("video") or msg.get("media") or {}
                 media_thumbnail_b64 = vid_data.get("jpegThumbnail") or vid_data.get("jpeg_thumbnail") or ""
                 media_url = vid_data.get("url") or vid_data.get("link") or ""
+                media_id = vid_data.get("id") or vid_data.get("media_id") or ""
+                media_mime_type = vid_data.get("mimetype") or "video/mp4"
 
             mensajes.append(MensajeEntranteWhapi(
                 telefono     = telefono or _limpiar(chat_id),
@@ -123,6 +136,8 @@ class ProveedorWhapi(ProveedorWhatsApp):
                 fuente_detalle = detalle,
                 media_url    = media_url,
                 media_thumbnail_b64 = media_thumbnail_b64,
+                media_id     = media_id,
+                media_mime_type = media_mime_type,
             ))
 
         return mensajes
