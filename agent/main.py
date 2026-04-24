@@ -85,6 +85,7 @@ async def _importar_y_reportar():
 
 
 @app.get("/webhook")
+@app.get("/webhook/messages")
 async def webhook_verificacion(request: Request):
     """Verificación GET del webhook."""
     resultado = await proveedor.validar_webhook(request)
@@ -94,6 +95,7 @@ async def webhook_verificacion(request: Request):
 
 
 @app.post("/webhook")
+@app.post("/webhook/messages")
 async def webhook_handler(request: Request):
     """
     Recibe mensajes de WhatsApp via Whapi.cloud.
