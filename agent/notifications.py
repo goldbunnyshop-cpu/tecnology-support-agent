@@ -403,3 +403,39 @@ async def _enviar_alerta_christian(
         logger.info(f"Alerta enviada a Christian: {tipo} — {nombre}")
     except Exception as e:
         logger.error(f"Error enviando alerta a Christian: {e}")
+
+
+async def notificar_christian_vision(
+    proveedor,
+    telefono: str,
+    historial: list[dict],
+    analisis: dict,
+    tipo_media: str,
+) -> None:
+    """Notifica a Christian después de un análisis visual automático."""
+    nombre = extraer_nombre_cliente(historial) or telefono
+    dispositivo = analisis.get("dispositivo", "No identificado")
+    dano = analisis.get("dano_visible", "No determinado")
+    precio = analisis.get("rango_precio", "Por cotizar")
+    puede = analisis.get("puede_diagnosticar", False)
+
+    if not puede:
+        resumen = f"No se pudo analizar el {tipo_media} (motivo: {analisis.get('motivo', 'desconocido')})"
+    else:
+        resumen = (
+            f"Dispositivo: {dispositivo}\n"
+            f"Daño detectado: {dano}\n"
+            f"Precio estimado dado: {precio}"
+        )
+
+    icono = "\U0001f4f8" if tipo_media == "image" else "\U0001f3a5"
+    mensaje = (
+        f"{icono} ANÁLISIS VISUAL AUTOMÁTICO\n"
+        f"Cliente: {nombre}\n"
+        f"{resumen}"
+    )
+    try:
+        await proveedor.enviar_mensaje(CHRISTIAN_NUMERO, mensaje)
+        logger.info(f"Alerta visión enviada a Christian — {telefono}")
+    except Exception as e:
+        logger.error(f"Error enviando alerta visión a Christian: {e}")

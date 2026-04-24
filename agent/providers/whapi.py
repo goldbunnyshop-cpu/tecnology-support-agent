@@ -98,6 +98,17 @@ class ProveedorWhapi(ProveedorWhatsApp):
             texto = msg.get("text", {}).get("body", "") if tipo == "text" else ""
             fuente, detalle = self._detectar_fuente(msg)
 
+            # Extraer URL de media para imágenes y thumbnail para videos
+            media_url = ""
+            media_thumbnail_b64 = ""
+            if tipo == "image":
+                img_data = msg.get("image") or msg.get("media") or {}
+                media_url = img_data.get("url") or img_data.get("link") or ""
+            elif tipo == "video":
+                vid_data = msg.get("video") or msg.get("media") or {}
+                media_thumbnail_b64 = vid_data.get("jpegThumbnail") or vid_data.get("jpeg_thumbnail") or ""
+                media_url = vid_data.get("url") or vid_data.get("link") or ""
+
             mensajes.append(MensajeEntranteWhapi(
                 telefono     = telefono or _limpiar(chat_id),
                 texto        = texto,
@@ -110,6 +121,8 @@ class ProveedorWhapi(ProveedorWhatsApp):
                 chat_id_raw  = chat_id_raw,
                 fuente       = fuente,
                 fuente_detalle = detalle,
+                media_url    = media_url,
+                media_thumbnail_b64 = media_thumbnail_b64,
             ))
 
         return mensajes
