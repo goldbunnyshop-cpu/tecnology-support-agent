@@ -14,7 +14,6 @@ client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
 def cargar_config_prompts() -> dict:
-    """Lee toda la configuración desde config/prompts.yaml."""
     try:
         with open("config/prompts.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
@@ -23,55 +22,56 @@ def cargar_config_prompts() -> dict:
         return {}
 
 
-def cargar_system_prompt() -> str:
-    """Lee el system prompt desde config/prompts.yaml."""
+def construir_system_prompt(asesor: str = "Sofia") -> str:
+    """Construye el system prompt inyectando el nombre y personalidad del asesor."""
     config = cargar_config_prompts()
-    return config.get("system_prompt", "Eres un asistente útil. Responde en español.")
+    template = config.get("system_prompt_template", "Eres un asistente útil. Responde en español.")
+    asesores = config.get("asesores", {})
+    info = asesores.get(asesor, {})
+    personalidad = info.get("personalidad", "Eres profesional y amable.")
+    return (
+        template
+        .replace("ASESOR_NOMBRE", asesor)
+        .replace("ASESOR_PERSONALIDAD", personalidad)
+    )
 
 
 def obtener_mensaje_error() -> str:
     config = cargar_config_prompts()
-    return config.get("error_message", "Lo siento, estoy experimentando problemas técnicos. Por favor intente de nuevo.")
+    return config.get("error_message", "Lo siento, estoy teniendo problemas técnicos. Por favor intente de nuevo.")
 
 
 def obtener_mensaje_fallback() -> str:
     config = cargar_config_prompts()
-    return config.get("fallback_message", "Disculpe, no comprendí su mensaje. ¿Podría reformularlo?")
+    return config.get("fallback_message", "Disculpe, no entendí su mensaje. ¿Podría reformularlo?")
 
 
-async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
+async def generar_respuesta(mensaje: str, historial: list[dict], asesor: str = "Sofia") -> str:
     """
-    Genera una respuesta usando Claude API.
+    Genera una respuesta usando Claude API con el asesor asignado.
 
     Args:
         mensaje: El mensaje nuevo del usuario
-        historial: Lista de mensajes anteriores [{"role": "user/assistant", "content": "..."}]
+        historial: Lista de mensajes anteriores
+        asesor: Nombre del asesor asignado (determina personalidad)
     """
     if not mensaje or len(mensaje.strip()) < 2:
         return obtener_mensaje_fallback()
 
-    system_prompt = cargar_system_prompt()
+    system_prompt = construir_system_prompt(asesor)
 
-    mensajes = []
-    for msg in historial:
-        mensajes.append({
-            "role": msg["role"],
-            "content": msg["content"]
-        })
-    mensajes.append({
-        "role": "user",
-        "content": mensaje
-    })
+    mensajes = [{"role": m["role"], "content": m["content"]} for m in historial]
+    mensajes.append({"role": "user", "content": mensaje})
 
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
             system=system_prompt,
-            messages=mensajes
+            messages=mensajes,
         )
         respuesta = response.content[0].text
-        logger.info(f"Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
+        logger.info(f"[{asesor}] Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
         return respuesta
 
     except Exception as e:

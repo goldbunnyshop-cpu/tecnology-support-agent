@@ -12,10 +12,9 @@ load_dotenv()
 logger = logging.getLogger("agentkit")
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-# Intervalo de revisión: cada hora
-INTERVALO_SEGUNDOS = 3600
+INTERVALO_SEGUIMIENTO = 3600   # revisar seguimientos cada hora
+INTERVALO_RETOMA = 600         # revisar retomas cada 10 minutos
 
-# Mensajes de respaldo si Claude falla
 MENSAJES_FALLBACK = [
     "Hola, ¿pudo resolver lo de su equipo? Aquí seguimos para ayudarle cuando guste.",
     "Buenas, queríamos saber si sigue con la duda sobre su dispositivo. En Tecnology Support estamos listos.",
@@ -24,14 +23,9 @@ MENSAJES_FALLBACK = [
 
 
 async def generar_mensaje_seguimiento(historial: list[dict], numero_seguimiento: int) -> str:
-    """
-    Genera un mensaje de seguimiento personalizado con Claude,
-    basado en el historial real de la conversación.
-    """
     if not historial:
         return MENSAJES_FALLBACK[min(numero_seguimiento, 2)]
 
-    # Tomar los últimos 8 mensajes para tener contexto suficiente
     contexto = "\n".join(
         f"{'Cliente' if m['role'] == 'user' else 'Agente'}: {m['content']}"
         for m in historial[-8:]
@@ -68,10 +62,6 @@ Solo escribe el mensaje, sin explicaciones."""
 
 
 async def ejecutar_seguimientos():
-    """
-    Revisa todos los leads sin actividad y envía mensajes de seguimiento.
-    Se ejecuta cada hora desde el scheduler.
-    """
     from agent.leads import obtener_leads_para_seguimiento, registrar_seguimiento_enviado
     from agent.memory import obtener_historial, guardar_mensaje
     from agent.providers import obtener_proveedor
@@ -88,31 +78,79 @@ async def ejecutar_seguimientos():
         try:
             historial = await obtener_historial(lead.telefono)
             mensaje = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados)
-
             enviado = await proveedor.enviar_mensaje(lead.telefono, mensaje)
-
             if enviado:
-                # Guardar el seguimiento en el historial de la conversación
                 await guardar_mensaje(lead.telefono, "assistant", mensaje)
                 await registrar_seguimiento_enviado(lead.telefono)
-                logger.info(
-                    f"Seguimiento {lead.seguimientos_enviados + 1}/3 → {lead.telefono}"
-                )
+                logger.info(f"Seguimiento {lead.seguimientos_enviados + 1}/3 → {lead.telefono}")
             else:
                 logger.warning(f"No se pudo enviar seguimiento a {lead.telefono}")
-
         except Exception as e:
             logger.error(f"Error procesando seguimiento para {lead.telefono}: {e}")
 
 
+async def ejecutar_retomas():
+    """
+    Revisa retomas nocturnas pendientes y las envía si el cliente no respondió.
+    Se ejecuta cada 10 minutos.
+    """
+    from agent.leads import obtener_retomas_pendientes, cancelar_retoma
+    from agent.memory import obtener_historial, guardar_mensaje
+    from agent.providers import obtener_proveedor
+
+    proveedor = obtener_proveedor()
+    leads = await obtener_retomas_pendientes()
+
+    if not leads:
+        return
+
+    logger.info(f"Retomas pendientes: {len(leads)}")
+
+    for lead in leads:
+        try:
+            # Si el cliente ya respondió después de que se programó la retoma, cancelar
+            retoma_desde = lead.retoma_desde
+            ultimo = lead.ultimo_mensaje
+            if retoma_desde and ultimo and ultimo > retoma_desde:
+                await cancelar_retoma(lead.telefono)
+                logger.info(f"Retoma cancelada (cliente ya respondió): {lead.telefono}")
+                continue
+
+            asesor = lead.asesor_asignado or "Sofia"
+
+            # Intentar obtener el nombre del cliente del historial
+            historial = await obtener_historial(lead.telefono, limite=10)
+            nombre_cliente = ""
+            for msg in historial:
+                if msg["role"] == "assistant" and "!" in msg["content"]:
+                    # Buscar si el asesor usó un nombre en sus respuestas
+                    break
+
+            saludo = f"¡Hola! \U0001f60a" if not nombre_cliente else f"¡Hola, {nombre_cliente}! \U0001f60a"
+
+            mensaje = (
+                f"{saludo} Soy {asesor} de Tecnology Support. "
+                f"Vi que nos escribiste anoche, ya estamos en línea y listos para ayudarte. "
+                f"¿En qué podemos apoyarte hoy?"
+            )
+
+            enviado = await proveedor.enviar_mensaje(lead.telefono, mensaje)
+            if enviado:
+                await guardar_mensaje(lead.telefono, "assistant", mensaje)
+                logger.info(f"Retoma enviada → {lead.telefono}")
+
+            await cancelar_retoma(lead.telefono)
+
+        except Exception as e:
+            logger.error(f"Error procesando retoma para {lead.telefono}: {e}")
+
+
 def segundos_hasta_proximo_domingo_13h() -> float:
-    """Calcula los segundos que faltan para el próximo domingo a las 13:00 hora México."""
     from zoneinfo import ZoneInfo
     from datetime import timedelta
     ZONA = ZoneInfo("America/Mexico_City")
     ahora = datetime.now(ZONA)
     dias_hasta_domingo = (6 - ahora.weekday()) % 7
-    # Si hoy es domingo pero ya pasó la 1pm, ir al siguiente domingo
     if dias_hasta_domingo == 0 and (ahora.hour > 13 or (ahora.hour == 13 and ahora.minute > 0)):
         dias_hasta_domingo = 7
     proximo = ahora.replace(hour=13, minute=0, second=0, microsecond=0)
@@ -124,33 +162,36 @@ def segundos_hasta_proximo_domingo_13h() -> float:
 
 async def iniciar_scheduler():
     """
-    Loop de fondo que:
-    - Ejecuta seguimientos a clientes cada hora
-    - Genera el reporte Excel cada domingo a las 13:00 hora México
-    Se arranca desde el lifespan de FastAPI.
+    Scheduler principal que corre en segundo plano:
+    - Seguimientos a leads: cada hora
+    - Retomas nocturnas: cada 10 minutos
+    - Reporte Excel: cada domingo a las 13:00 CDMX
     """
-    logger.info(f"Scheduler de seguimientos activo — revisión cada {INTERVALO_SEGUNDOS // 60} minutos")
+    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, reporte/domingo 13h")
 
-    # Lanzar el scheduler del reporte semanal en paralelo
     asyncio.create_task(iniciar_scheduler_reporte_semanal())
+    asyncio.create_task(_loop_retomas())
 
     while True:
-        await asyncio.sleep(INTERVALO_SEGUNDOS)
+        await asyncio.sleep(INTERVALO_SEGUIMIENTO)
         try:
             await ejecutar_seguimientos()
         except Exception as e:
             logger.error(f"Error en scheduler de seguimientos: {e}")
 
 
+async def _loop_retomas():
+    while True:
+        await asyncio.sleep(INTERVALO_RETOMA)
+        try:
+            await ejecutar_retomas()
+        except Exception as e:
+            logger.error(f"Error en scheduler de retomas: {e}")
+
+
 async def iniciar_scheduler_reporte_semanal():
-    """
-    Loop independiente que genera el reporte Excel cada domingo a las 13:00 (hora México).
-    El primer ciclo duerme hasta el próximo domingo a las 13h,
-    luego se repite cada 7 días exactos.
-    """
     from agent.reports import generar_reporte_excel
 
-    # Esperar hasta el próximo domingo a las 13:00
     await asyncio.sleep(segundos_hasta_proximo_domingo_13h())
 
     while True:
@@ -161,5 +202,4 @@ async def iniciar_scheduler_reporte_semanal():
         except Exception as e:
             logger.error(f"Error generando reporte semanal: {e}")
 
-        # Esperar exactamente 7 días hasta el próximo domingo
         await asyncio.sleep(7 * 24 * 3600)
