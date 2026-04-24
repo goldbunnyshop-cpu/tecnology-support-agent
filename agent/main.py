@@ -29,7 +29,14 @@ from agent.import_chats import importar_todos_los_chats
 from agent.notifications import (
     procesar_comando_grupo,
     detectar_y_notificar_christian,
+    notificar_christian_vision,
     GRUPO_INTERNO,
+)
+from agent.vision import (
+    descargar_media,
+    analizar_imagen_bytes,
+    analizar_thumbnail_b64,
+    construir_respuesta_cliente,
 )
 
 load_dotenv()
@@ -43,11 +50,11 @@ ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
 
-RESPUESTA_IMAGEN = (
+RESPUESTA_IMAGEN_FALLBACK = (
     "Recibí tu imagen \U0001f4f8 En cuanto un especialista la revise te contactamos. "
     "Mientras tanto, ¿puedes describirme qué le pasa a tu equipo?"
 )
-RESPUESTA_VIDEO = (
+RESPUESTA_VIDEO_FALLBACK = (
     "Recibí tu video \U0001f3a5 Lo revisaremos con atención. "
     "¿Puedes contarme brevemente qué falla presenta tu equipo mientras lo analizamos?"
 )
@@ -90,6 +97,50 @@ async def manejar_mensaje_nocturno(telefono: str, contenido: str, asesor: str) -
     retoma_utc = calcular_hora_retoma_utc()
     await programar_retoma(telefono, retoma_utc, datetime.utcnow())
     logger.info(f"Retoma programada para {telefono} a las {retoma_utc} UTC")
+
+
+async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str:
+    """Descarga la imagen, la analiza con Vision y retorna la respuesta al cliente."""
+    whapi_token = os.getenv("WHAPI_TOKEN", "")
+    analisis = {}
+
+    if msg.media_url and whapi_token:
+        resultado = await descargar_media(msg.media_url, whapi_token)
+        if resultado:
+            imagen_bytes, mime_type = resultado
+            analisis = await analizar_imagen_bytes(imagen_bytes, mime_type)
+        else:
+            logger.warning(f"No se pudo descargar imagen de {msg.telefono}")
+    else:
+        logger.info(f"Sin media_url para imagen de {msg.telefono} — usando fallback")
+
+    if not analisis:
+        return RESPUESTA_IMAGEN_FALLBACK
+
+    respuesta = construir_respuesta_cliente(analisis, "image", asesor)
+    asyncio.create_task(
+        notificar_christian_vision(proveedor, msg.telefono, historial, analisis, "image")
+    )
+    return respuesta
+
+
+async def _analizar_y_responder_video(msg, historial: list, asesor: str) -> str:
+    """Analiza el thumbnail del video con Vision y retorna la respuesta al cliente."""
+    analisis = {}
+
+    if msg.media_thumbnail_b64:
+        analisis = await analizar_thumbnail_b64(msg.media_thumbnail_b64)
+    else:
+        logger.info(f"Sin thumbnail para video de {msg.telefono} — usando fallback")
+
+    if not analisis:
+        return RESPUESTA_VIDEO_FALLBACK
+
+    respuesta = construir_respuesta_cliente(analisis, "video", asesor)
+    asyncio.create_task(
+        notificar_christian_vision(proveedor, msg.telefono, historial, analisis, "video")
+    )
+    return respuesta
 
 
 @asynccontextmanager
@@ -204,15 +255,25 @@ async def webhook_handler(request: Request):
             # ── Imagen ──
             if msg.tipo == "image":
                 await guardar_mensaje(msg.telefono, "user", "[imagen recibida]")
-                await guardar_mensaje(msg.telefono, "assistant", RESPUESTA_IMAGEN)
-                await proveedor.enviar_mensaje(msg.telefono, RESPUESTA_IMAGEN)
+                await proveedor.enviar_typing(msg.telefono)
+                historial_vision = await obtener_historial(msg.telefono)
+                respuesta_img = await _analizar_y_responder_imagen(
+                    msg, historial_vision, asesor
+                )
+                await guardar_mensaje(msg.telefono, "assistant", respuesta_img)
+                await proveedor.enviar_mensaje(msg.telefono, respuesta_img)
                 continue
 
             # ── Video ──
             if msg.tipo == "video":
                 await guardar_mensaje(msg.telefono, "user", "[video recibido]")
-                await guardar_mensaje(msg.telefono, "assistant", RESPUESTA_VIDEO)
-                await proveedor.enviar_mensaje(msg.telefono, RESPUESTA_VIDEO)
+                await proveedor.enviar_typing(msg.telefono)
+                historial_vision = await obtener_historial(msg.telefono)
+                respuesta_vid = await _analizar_y_responder_video(
+                    msg, historial_vision, asesor
+                )
+                await guardar_mensaje(msg.telefono, "assistant", respuesta_vid)
+                await proveedor.enviar_mensaje(msg.telefono, respuesta_vid)
                 continue
 
             if not msg.texto:
