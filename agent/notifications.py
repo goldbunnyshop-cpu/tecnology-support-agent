@@ -49,6 +49,8 @@ def _normalizar_numero(numero: str) -> str:
     n = re.sub(r"\D", "", numero or "")
     if len(n) == 13 and n.startswith("521"):
         return n[3:]
+    if len(n) == 13 and n.startswith("152"):
+        return n[3:]
     if len(n) == 12 and n.startswith("52"):
         return n[2:]
     return n
