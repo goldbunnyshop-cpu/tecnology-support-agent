@@ -46,19 +46,18 @@ def obtener_mensaje_fallback() -> str:
     return config.get("fallback_message", "Disculpe, no entendí su mensaje. ¿Podría reformularlo?")
 
 
-async def generar_respuesta(mensaje: str, historial: list[dict], asesor: str = "Sofia") -> str:
-    """
-    Genera una respuesta usando Claude API con el asesor asignado.
-
-    Args:
-        mensaje: El mensaje nuevo del usuario
-        historial: Lista de mensajes anteriores
-        asesor: Nombre del asesor asignado (determina personalidad)
-    """
+async def generar_respuesta(
+    mensaje: str,
+    historial: list[dict],
+    asesor: str = "Sofia",
+    contexto_cliente: str = "",
+) -> str:
     if not mensaje or len(mensaje.strip()) < 2:
         return obtener_mensaje_fallback()
 
     system_prompt = construir_system_prompt(asesor)
+    if contexto_cliente:
+        system_prompt = f"{system_prompt}\n\n{contexto_cliente}"
 
     mensajes = [{"role": m["role"], "content": m["content"]} for m in historial]
     mensajes.append({"role": "user", "content": mensaje})
