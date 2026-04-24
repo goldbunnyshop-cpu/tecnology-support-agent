@@ -41,7 +41,17 @@ from agent.notifications import (
     procesar_comando_grupo,
     detectar_y_notificar_christian,
     notificar_christian_vision,
+    notificar_cita_agendada,
     GRUPO_INTERNO,
+)
+from agent.google_calendar import (
+    detectar_intencion_agendar,
+    parsear_fecha_en_texto,
+    obtener_slots_disponibles,
+    formatear_slots_para_claude,
+    parsear_tag_agendar,
+    agendar_cita,
+    quitar_tags,
 )
 from agent.vision import (
     descargar_media,
@@ -344,11 +354,60 @@ async def webhook_handler(request: Request):
                     await guardar_nombre_cliente(msg.telefono, nombre_detectado)
                     logger.info(f"Nombre detectado y guardado: {nombre_detectado} ({msg.telefono})")
 
+            # ── Inyectar teléfono para tag [[AGENDAR:...]] ──
+            partes_ctx = [contexto_cliente] if contexto_cliente else []
+            partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
+
+            # ── Disponibilidad real si menciona fecha con intención de visita ──
+            if detectar_intencion_agendar(msg.texto):
+                fecha_cita = parsear_fecha_en_texto(msg.texto)
+                if fecha_cita:
+                    slots = await obtener_slots_disponibles(fecha_cita)
+                    partes_ctx.append(formatear_slots_para_claude(slots, fecha_cita))
+                    logger.info(f"[CALENDAR] Disponibilidad inyectada para {fecha_cita}: {slots[:5]}...")
+
+            contexto_cliente = "\n\n".join(partes_ctx)
+
             historial = await obtener_historial(msg.telefono)
             await proveedor.enviar_typing(msg.telefono)
             respuesta = await generar_respuesta(
                 msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
             )
+
+            # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
+            tag = parsear_tag_agendar(respuesta)
+            if tag:
+                try:
+                    fh = datetime.strptime(
+                        f"{tag['fecha_str']} {tag['hora_str']}", "%Y-%m-%d %H:%M"
+                    ).replace(tzinfo=ZONA_CDMX)
+                    resultado = await agendar_cita(
+                        nombre=tag["nombre"],
+                        telefono=msg.telefono,
+                        dispositivo=tag["dispositivo"],
+                        problema=tag["problema"],
+                        fecha_hora=fh,
+                    )
+                    if resultado["ok"]:
+                        respuesta = resultado["confirmacion"]
+                        asyncio.create_task(
+                            notificar_cita_agendada(
+                                proveedor=proveedor,
+                                nombre=resultado["nombre"],
+                                telefono=msg.telefono,
+                                dispositivo=resultado["dispositivo"],
+                                problema=tag["problema"],
+                                fecha_texto=resultado["fecha_texto"],
+                                hora_texto=resultado["hora_texto"],
+                            )
+                        )
+                        logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} — {resultado['fecha_texto']} {resultado['hora_texto']}")
+                    else:
+                        respuesta = quitar_tags(respuesta)
+                        logger.warning(f"[CALENDAR] Fallo al agendar: {resultado.get('error')}")
+                except Exception as e:
+                    logger.error(f"[CALENDAR] Error procesando tag AGENDAR: {e}")
+                    respuesta = quitar_tags(respuesta)
 
             await guardar_mensaje(msg.telefono, "user", msg.texto)
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
