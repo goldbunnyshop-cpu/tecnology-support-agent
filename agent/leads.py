@@ -25,6 +25,7 @@ class Lead(Base):
     asesor_asignado: Mapped[str] = mapped_column(String(50), default="")
     retoma_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     retoma_desde: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    presupuesto_enviado_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -35,8 +36,9 @@ async def _migrar_columnas():
             ("fuente",           "VARCHAR(50) DEFAULT 'desconocido'"),
             ("fuente_detalle",   "VARCHAR(200) DEFAULT ''"),
             ("asesor_asignado",  "VARCHAR(50) DEFAULT ''"),
-            ("retoma_en",        "DATETIME"),
-            ("retoma_desde",     "DATETIME"),
+            ("retoma_en",              "DATETIME"),
+            ("retoma_desde",           "DATETIME"),
+            ("presupuesto_enviado_en", "DATETIME"),
         ]:
             try:
                 await conn.execute(text(f"ALTER TABLE leads ADD COLUMN {columna} {definicion}"))
@@ -193,6 +195,31 @@ async def obtener_todos_los_leads() -> list[Lead]:
     from sqlalchemy import desc
     async with async_session() as session:
         result = await session.execute(select(Lead).order_by(desc(Lead.ultimo_mensaje)))
+        return list(result.scalars().all())
+
+
+async def marcar_presupuesto_enviado(telefono: str):
+    """Registra el momento en que se envió un presupuesto al cliente."""
+    async with async_session() as session:
+        await session.execute(
+            update(Lead).where(Lead.telefono == telefono).values(
+                presupuesto_enviado_en=datetime.utcnow()
+            )
+        )
+        await session.commit()
+
+
+async def obtener_leads_sin_respuesta_presupuesto(horas: int = 24) -> list[Lead]:
+    """Leads que recibieron presupuesto y no han respondido en N horas."""
+    limite = datetime.utcnow() - timedelta(hours=horas)
+    async with async_session() as session:
+        result = await session.execute(
+            select(Lead).where(
+                Lead.presupuesto_enviado_en.isnot(None),
+                Lead.presupuesto_enviado_en <= limite,
+                Lead.ultimo_mensaje <= limite,  # no han respondido
+            )
+        )
         return list(result.scalars().all())
 
 

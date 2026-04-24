@@ -21,10 +21,16 @@ from agent.leads import (
     obtener_resumen_leads,
     programar_retoma,
     cancelar_retoma,
+    marcar_presupuesto_enviado,
 )
 from agent.followup import iniciar_scheduler
 from agent.reports import generar_reporte_excel
 from agent.import_chats import importar_todos_los_chats
+from agent.notifications import (
+    procesar_comando_grupo,
+    detectar_y_notificar_christian,
+    GRUPO_INTERNO,
+)
 
 load_dotenv()
 
@@ -37,7 +43,6 @@ ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
 
-# Respuestas fijas para media
 RESPUESTA_IMAGEN = (
     "Recibí tu imagen \U0001f4f8 En cuanto un especialista la revise te contactamos. "
     "Mientras tanto, ¿puedes describirme qué le pasa a tu equipo?"
@@ -51,11 +56,7 @@ RESPUESTA_VIDEO = (
 def cargar_blacklist() -> set[str]:
     try:
         with open("config/blacklist.txt", "r", encoding="utf-8") as f:
-            return {
-                line.strip()
-                for line in f
-                if line.strip() and not line.startswith("#")
-            }
+            return {l.strip() for l in f if l.strip() and not l.startswith("#")}
     except FileNotFoundError:
         return set()
 
@@ -64,15 +65,10 @@ BLACKLIST: set[str] = cargar_blacklist()
 
 
 def es_horario_nocturno() -> bool:
-    """Retorna True si la hora actual en CDMX está entre 00:00 y 06:00."""
     return 0 <= datetime.now(ZONA_CDMX).hour < 6
 
 
 def calcular_hora_retoma_utc() -> datetime:
-    """
-    Calcula en UTC la hora en que debe enviarse la retoma:
-    ahora + 8h en CDMX, pero nunca antes de las 9:00 AM CDMX.
-    """
     ahora_cdmx = datetime.now(ZONA_CDMX)
     retoma_cdmx = ahora_cdmx + timedelta(hours=8)
     if retoma_cdmx.hour < 9:
@@ -80,8 +76,7 @@ def calcular_hora_retoma_utc() -> datetime:
     return retoma_cdmx.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-async def manejar_mensaje_nocturno(telefono: str, texto_o_tipo: str, asesor: str) -> None:
-    """Envía la respuesta de fuera de horario y programa la retoma."""
+async def manejar_mensaje_nocturno(telefono: str, contenido: str, asesor: str) -> None:
     respuesta = (
         f"Hola, soy {asesor} de Tecnology Support \U0001f60a "
         f"Recibí tu mensaje y con mucho gusto te ayudaré. "
@@ -89,13 +84,11 @@ async def manejar_mensaje_nocturno(telefono: str, texto_o_tipo: str, asesor: str
         f"En cuanto iniciemos operaciones serás atendido con prioridad. "
         f"¡Que descanses!"
     )
-    await guardar_mensaje(telefono, "user", texto_o_tipo)
+    await guardar_mensaje(telefono, "user", contenido)
     await guardar_mensaje(telefono, "assistant", respuesta)
     await proveedor.enviar_mensaje(telefono, respuesta)
-
-    ahora_utc = datetime.utcnow()
     retoma_utc = calcular_hora_retoma_utc()
-    await programar_retoma(telefono, retoma_utc, ahora_utc)
+    await programar_retoma(telefono, retoma_utc, datetime.utcnow())
     logger.info(f"Retoma programada para {telefono} a las {retoma_utc} UTC")
 
 
@@ -103,8 +96,7 @@ async def manejar_mensaje_nocturno(telefono: str, texto_o_tipo: str, asesor: str
 async def lifespan(app: FastAPI):
     from agent.leads import Lead  # noqa: F401
     await inicializar_db()
-    logger.info("Base de datos inicializada")
-    logger.info(f"Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
+    logger.info(f"Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
     scheduler_task = asyncio.create_task(iniciar_scheduler())
     yield
     scheduler_task.cancel()
@@ -112,14 +104,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Tecnology Support — WhatsApp AI Agent",
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan,
 )
 
 
 @app.get("/")
 async def health_check():
-    return {"status": "ok", "service": "Tecnology Support AgentKit"}
+    return {"status": "ok", "service": "Tecnology Support AgentKit v2.1"}
 
 
 @app.get("/leads")
@@ -166,25 +158,32 @@ async def webhook_handler(request: Request):
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
-            # Ignorar mensajes propios
             if msg.es_propio:
                 continue
 
-            # Ignorar grupos
+            # ── Grupo interno: procesar comandos de Ulises ──
             if msg.es_grupo:
-                logger.debug(f"Mensaje de grupo ignorado: {msg.telefono}")
+                if GRUPO_INTERNO.lower() in getattr(msg, "nombre_grupo", "").lower():
+                    await procesar_comando_grupo(
+                        msg,
+                        proveedor,
+                        guardar_mensaje,
+                        obtener_historial,
+                        marcar_presupuesto_enviado,
+                    )
+                # Todos los demás grupos se ignoran
                 continue
 
-            # Ignorar números en blacklist
+            # ── Blacklist ──
             if msg.telefono in BLACKLIST:
-                logger.info(f"Número en blacklist ignorado: {msg.telefono}")
+                logger.info(f"Blacklist: {msg.telefono}")
                 continue
 
-            # Obtener asesor ANTES de actualizar ultimo_mensaje (para detectar 72h correctamente)
+            # ── Obtener asesor ANTES de actualizar ultimo_mensaje ──
             asesor = await obtener_o_asignar_asesor(msg.telefono)
 
-            # Registrar/actualizar lead
-            fuente = getattr(msg, "fuente", "desconocido")
+            # ── Registrar lead ──
+            fuente        = getattr(msg, "fuente", "desconocido")
             fuente_detalle = getattr(msg, "fuente_detalle", "")
             await crear_o_actualizar_lead(
                 msg.telefono,
@@ -193,36 +192,33 @@ async def webhook_handler(request: Request):
                 asesor_asignado=asesor,
             )
 
-            # Si el cliente responde, cancelar cualquier retoma pendiente
+            # ── Cancelar retoma si el cliente ya respondió ──
             await cancelar_retoma(msg.telefono)
 
-            # Modo nocturno: 00:00 – 06:00 CDMX
+            # ── Modo nocturno ──
             if es_horario_nocturno():
                 contenido = msg.texto or f"[{msg.tipo}]"
                 await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
                 continue
 
-            # Manejar imágenes
+            # ── Imagen ──
             if msg.tipo == "image":
                 await guardar_mensaje(msg.telefono, "user", "[imagen recibida]")
                 await guardar_mensaje(msg.telefono, "assistant", RESPUESTA_IMAGEN)
                 await proveedor.enviar_mensaje(msg.telefono, RESPUESTA_IMAGEN)
-                logger.info(f"Imagen recibida de {msg.telefono}")
                 continue
 
-            # Manejar videos
+            # ── Video ──
             if msg.tipo == "video":
                 await guardar_mensaje(msg.telefono, "user", "[video recibido]")
                 await guardar_mensaje(msg.telefono, "assistant", RESPUESTA_VIDEO)
                 await proveedor.enviar_mensaje(msg.telefono, RESPUESTA_VIDEO)
-                logger.info(f"Video recibido de {msg.telefono}")
                 continue
 
-            # Solo procesar texto
             if not msg.texto:
                 continue
 
-            logger.info(f"[{asesor}] Mensaje de {msg.telefono}: {msg.texto}")
+            logger.info(f"[{asesor}] {msg.telefono}: {msg.texto[:60]}")
 
             historial = await obtener_historial(msg.telefono)
             await proveedor.enviar_typing(msg.telefono)
@@ -232,7 +228,18 @@ async def webhook_handler(request: Request):
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
             await proveedor.enviar_mensaje(msg.telefono, respuesta)
 
-            logger.info(f"[{asesor}] Respuesta a {msg.telefono}: {respuesta[:80]}...")
+            # ── Alertas a Christian (en background, sin bloquear) ──
+            asyncio.create_task(
+                detectar_y_notificar_christian(
+                    msg.texto,
+                    historial,
+                    msg.telefono,
+                    respuesta,
+                    proveedor,
+                )
+            )
+
+            logger.info(f"[{asesor}] → {msg.telefono}: {respuesta[:80]}...")
 
         return {"status": "ok"}
 
