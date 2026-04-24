@@ -57,7 +57,7 @@ async def generar_respuesta(
 
     system_prompt = construir_system_prompt(asesor)
     if contexto_cliente:
-        system_prompt = f"{system_prompt}\n\n{contexto_cliente}"
+        system_prompt = f"{contexto_cliente}\n\n{system_prompt}"
 
     mensajes = [{"role": m["role"], "content": m["content"]} for m in historial]
     mensajes.append({"role": "user", "content": mensaje})
