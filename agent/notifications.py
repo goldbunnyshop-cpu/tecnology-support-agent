@@ -37,10 +37,12 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar")
+
 def parsear_comando(texto: str) -> tuple[str, str] | None:
     """Detecta si el texto es un comando válido. Retorna (comando, payload) o None."""
     texto = texto.strip()
-    for cmd in ("listo", "demora", "presupuesto"):
+    for cmd in COMANDOS_VALIDOS:
         patron = re.compile(rf"^{cmd}\s*:", re.IGNORECASE)
         if patron.match(texto):
             payload = texto[texto.index(":")+1:].strip()
@@ -98,6 +100,26 @@ def parsear_presupuesto(payload: str) -> tuple[str, str, str] | None:
     precio_raw = partes[-1].lstrip("$").replace(",", "")
     equipo = " ".join(partes[:-1])
     return phone, equipo, precio_raw
+
+
+def parsear_diagnostico(payload: str) -> tuple[str, str, str] | None:
+    """diagnostico: PHONE EQUIPO DESCRIPCIÓN → (phone, equipo, descripcion)"""
+    phone, resto = _extraer_phone_y_resto(payload)
+    if not phone or not resto:
+        return None
+    # El equipo es el primer token del resto, la descripción es todo lo demás
+    partes = resto.split(None, 1)
+    equipo = partes[0]
+    descripcion = partes[1].strip() if len(partes) > 1 else ""
+    if not descripcion:
+        return None
+    return phone, equipo, descripcion
+
+
+def parsear_phone_simple(payload: str) -> str | None:
+    """password/llamar: PHONE → phone (solo el número)"""
+    phone = re.sub(r"\D", "", payload.strip().split()[0]) if payload.strip() else ""
+    return phone if phone else None
 
 
 # ──────────────────────────────────────────────
@@ -212,10 +234,10 @@ async def procesar_comando_grupo(
         nombre = extraer_nombre_cliente(historial) or "cliente"
         msg_cliente = (
             f"Hola {nombre} \U0001f60a "
-            f"Te compartimos el presupuesto para tu {equipo}:\n\n"
-            f"\U0001f4b0 *${precio} MXN*\n\n"
-            f"Este precio incluye refacción y mano de obra. "
-            f"¿Deseas que procedamos con la reparación?"
+            f"Nuestro técnico ya revisó tu {equipo} y el costo del servicio es de "
+            f"*${precio} MXN*, precio final con IVA incluido. "
+            f"Aceptamos todas las tarjetas sin comisión. "
+            f"¿Autorizas que procedamos con la reparación?"
         )
         ok = await _notificar_cliente(phone, msg_cliente)
         if ok:
@@ -223,6 +245,60 @@ async def procesar_comando_grupo(
         await _responder_grupo(
             f"{'✅' if ok else '❌'} Presupuesto enviado a {phone} (${precio} por {equipo})"
         )
+
+    # ── diagnostico ──
+    elif cmd == "diagnostico":
+        parsed = parsear_diagnostico(payload)
+        if not parsed:
+            await _responder_grupo("⚠️ Formato: diagnostico: NÚMERO EQUIPO DESCRIPCIÓN")
+            return True
+        phone, equipo, descripcion = parsed
+        historial = await obtener_historial_fn(phone)
+        nombre = extraer_nombre_cliente(historial) or "cliente"
+        msg_cliente = (
+            f"Hola {nombre} \U0001f60a "
+            f"Nuestro técnico revisó tu {equipo} y encontró lo siguiente: "
+            f"{descripcion}. "
+            f"En breve te compartimos el presupuesto de reparación. "
+            f"¿Tienes alguna duda?"
+        )
+        ok = await _notificar_cliente(phone, msg_cliente)
+        await _responder_grupo(f"{'✅' if ok else '❌'} Diagnóstico enviado a {phone}")
+
+    # ── password ──
+    elif cmd == "password":
+        phone = parsear_phone_simple(payload)
+        if not phone:
+            await _responder_grupo("⚠️ Formato: password: NÚMERO")
+            return True
+        historial = await obtener_historial_fn(phone)
+        nombre = extraer_nombre_cliente(historial) or "cliente"
+        msg_cliente = (
+            f"Hola {nombre} \U0001f60a "
+            f"Para continuar con la revisión de tu equipo, nuestro técnico necesita "
+            f"acceder al dispositivo. ¿Podrías compartir tu contraseña o patrón de desbloqueo? "
+            f"Tu información es completamente confidencial y será eliminada "
+            f"una vez concluido el servicio."
+        )
+        ok = await _notificar_cliente(phone, msg_cliente)
+        await _responder_grupo(f"{'✅' if ok else '❌'} Solicitud de contraseña enviada a {phone}")
+
+    # ── llamar ──
+    elif cmd == "llamar":
+        phone = parsear_phone_simple(payload)
+        if not phone:
+            await _responder_grupo("⚠️ Formato: llamar: NÚMERO")
+            return True
+        historial = await obtener_historial_fn(phone)
+        nombre = extraer_nombre_cliente(historial) or "cliente"
+        msg_cliente = (
+            f"Hola {nombre} \U0001f60a "
+            f"Para atender mejor tu caso, te pedimos que nos contactes al teléfono de sucursal: "
+            f"*55 9730 7793* (solo llamadas). "
+            f"Nuestro equipo técnico te atenderá directamente."
+        )
+        ok = await _notificar_cliente(phone, msg_cliente)
+        await _responder_grupo(f"{'✅' if ok else '❌'} Solicitud de llamada enviada a {phone}")
 
     return True
 
