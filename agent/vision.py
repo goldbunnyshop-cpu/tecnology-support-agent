@@ -2,6 +2,7 @@
 # Generado por AgentKit
 
 import base64
+import json
 import logging
 import os
 import httpx
@@ -21,7 +22,7 @@ Analiza la imagen y responde SOLO con un objeto JSON sin texto adicional:
   "dano_visible": "descripción concisa del daño o problema visual detectado, o 'No se aprecia daño visible' si todo parece bien",
   "severidad": "leve | moderada | grave | no_determinable",
   "servicio_sugerido": "nombre del servicio más probable (ej: cambio de pantalla, limpieza interna, cambio de batería, reparación de puerto de carga, etc.) o 'Diagnóstico físico requerido'",
-  "rango_precio": "rango aproximado en MXN (ej: $500-$800) o 'Por cotizar' si no puedes estimarlo",
+  "refaccion_ml": "término de búsqueda para la refacción principal en MercadoLibre México (ej: 'pantalla iPhone 12 original', 'batería Samsung S21', 'ventilador PS4 CUH-1200'). Cadena vacía si el servicio es mano de obra sin refacción (ej: limpieza, diagnóstico)",
   "nota_tecnica": "observación técnica breve para el equipo interno, máximo 1 oración",
   "puede_diagnosticar": true
 }
@@ -52,7 +53,6 @@ async def descargar_media(url: str, token: str) -> tuple[bytes, str] | None:
 
 
 def _mime_a_tipo_anthropic(mime_type: str) -> str:
-    """Mapea MIME type al valor que acepta Anthropic."""
     tabla = {
         "image/jpeg": "image/jpeg",
         "image/jpg":  "image/jpeg",
@@ -63,14 +63,48 @@ def _mime_a_tipo_anthropic(mime_type: str) -> str:
     return tabla.get(mime_type.lower(), "image/jpeg")
 
 
+async def _buscar_precio_minimo_ml(termino: str) -> float | None:
+    """Consulta la API pública de MercadoLibre México y retorna el precio mínimo encontrado."""
+    if not termino:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(
+                "https://api.mercadolibre.com/sites/MLM/search",
+                params={"q": termino, "limit": 20},
+            )
+            if r.status_code != 200:
+                logger.warning(f"ML API {r.status_code} para '{termino}'")
+                return None
+            items = r.json().get("results", [])
+            # Filtrar precios razonables (evitar accesorios de $10 o dispositivos completos de $50k)
+            precios = [
+                item["price"]
+                for item in items
+                if 80 <= item.get("price", 0) <= 15_000
+            ]
+            if not precios:
+                return None
+            precio_min = min(precios)
+            logger.info(f"ML precio mínimo '{termino}': ${precio_min:.0f}")
+            return precio_min
+    except Exception as e:
+        logger.warning(f"Error consultando ML: {e}")
+        return None
+
+
+def _formatear_precio(valor: float) -> str:
+    """Redondea al múltiplo de 50 más cercano y formatea con comas."""
+    redondeado = round(valor / 50) * 50
+    return f"${redondeado:,.0f}"
+
+
 async def _llamar_vision(imagen_b64: str, media_type: str) -> dict:
     """Llama a Claude Vision con la imagen en base64 y retorna el dict parseado."""
-    import json
-
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=400,
+            max_tokens=450,
             messages=[
                 {
                     "role": "user",
@@ -92,7 +126,6 @@ async def _llamar_vision(imagen_b64: str, media_type: str) -> dict:
             ],
         )
         raw = response.content[0].text.strip()
-        # Limpiar markdown si Claude lo agrega por error
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -103,16 +136,39 @@ async def _llamar_vision(imagen_b64: str, media_type: str) -> dict:
         return {"puede_diagnosticar": False, "motivo": "Error interno de análisis"}
 
 
+async def _enriquecer_con_precio_ml(analisis: dict) -> dict:
+    """Busca la refacción en ML y calcula el precio de servicio (mínimo ML × 3)."""
+    if not analisis.get("puede_diagnosticar", False):
+        return analisis
+
+    termino = analisis.get("refaccion_ml", "").strip()
+    if not termino:
+        analisis["precio_estimado"] = "Por cotizar"
+        return analisis
+
+    precio_min = await _buscar_precio_minimo_ml(termino)
+    if precio_min:
+        precio_servicio = precio_min * 3
+        analisis["precio_estimado"] = _formatear_precio(precio_servicio)
+        logger.info(f"Precio estimado calculado: {analisis['precio_estimado']} (refacción ${precio_min:.0f} × 3)")
+    else:
+        analisis["precio_estimado"] = "Por cotizar"
+
+    return analisis
+
+
 async def analizar_imagen_bytes(imagen_bytes: bytes, mime_type: str) -> dict:
-    """Analiza bytes de imagen con Claude Vision."""
+    """Analiza bytes de imagen con Claude Vision y enriquece con precio de ML."""
     imagen_b64 = base64.standard_b64encode(imagen_bytes).decode("utf-8")
     media_type = _mime_a_tipo_anthropic(mime_type)
-    return await _llamar_vision(imagen_b64, media_type)
+    analisis = await _llamar_vision(imagen_b64, media_type)
+    return await _enriquecer_con_precio_ml(analisis)
 
 
 async def analizar_thumbnail_b64(thumbnail_b64: str) -> dict:
     """Analiza el thumbnail JPEG de un video (ya en base64 desde Whapi)."""
-    return await _llamar_vision(thumbnail_b64, "image/jpeg")
+    analisis = await _llamar_vision(thumbnail_b64, "image/jpeg")
+    return await _enriquecer_con_precio_ml(analisis)
 
 
 def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "Sofia") -> str:
@@ -133,7 +189,7 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
     dispositivo = analisis.get("dispositivo", "tu equipo")
     dano = analisis.get("dano_visible", "")
     servicio = analisis.get("servicio_sugerido", "Diagnóstico físico requerido")
-    precio = analisis.get("rango_precio", "Por cotizar")
+    precio = analisis.get("precio_estimado", "Por cotizar")
     severidad = analisis.get("severidad", "no_determinable")
 
     if tipo_media == "video" and severidad == "no_determinable":
@@ -151,11 +207,19 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
         descripcion_dano = f"Revisé tu {dispositivo} y no aprecio daño físico visible."
 
     if servicio == "Diagnóstico físico requerido":
-        cierre = (
-            "Para confirmarlo necesitamos revisarlo en el taller. "
-            "El diagnóstico es sin costo. ¿Te gustaría traerlo?"
+        return (
+            f"{intro} {descripcion_dano} "
+            f"Para confirmarlo necesitamos revisarlo en el taller. "
+            f"El diagnóstico es sin costo. ¿Te gustaría traerlo?"
         )
-        return f"{intro} {descripcion_dano} {cierre}"
+
+    if precio == "Por cotizar":
+        return (
+            f"{intro} {descripcion_dano} "
+            f"Basándonos en lo que vemos, el servicio que necesitas es *{servicio}*. "
+            f"El costo exacto te lo confirmamos cuando lo revisemos físicamente. "
+            f"¿Te gustaría traerlo a nuestro módulo?"
+        )
 
     return (
         f"{intro} {descripcion_dano} "
