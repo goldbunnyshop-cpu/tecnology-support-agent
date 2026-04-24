@@ -15,14 +15,16 @@ logger = logging.getLogger("agentkit")
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 PROMPT_VISION = """Eres el técnico experto de Tecnology Support, un taller de reparación de dispositivos electrónicos.
-Analiza la imagen y responde SOLO con un objeto JSON sin texto adicional:
+Analiza la imagen y responde SOLO con un objeto JSON sin texto adicional.
+
+IMPORTANTE: No uses precios de catálogo ni listas de servicios fijos. Solo describe lo que ves en la imagen.
 
 {
   "dispositivo": "nombre del dispositivo (ej: iPhone 12, PS4, Samsung Galaxy S21, laptop HP, etc.) o 'No identificado' si no puedes determinarlo",
   "dano_visible": "descripción concisa del daño o problema visual detectado, o 'No se aprecia daño visible' si todo parece bien",
   "severidad": "leve | moderada | grave | no_determinable",
-  "servicio_sugerido": "nombre del servicio más probable (ej: cambio de pantalla, limpieza interna, cambio de batería, reparación de puerto de carga, etc.) o 'Diagnóstico físico requerido'",
-  "refaccion_ml": "término de búsqueda para la refacción principal en MercadoLibre México (ej: 'pantalla iPhone 12 original', 'batería Samsung S21', 'ventilador PS4 CUH-1200'). Cadena vacía si el servicio es mano de obra sin refacción (ej: limpieza, diagnóstico)",
+  "reparacion_necesaria": "descripción técnica de lo que hay que hacer físicamente (ej: sustituir el panel LCD, reemplazar la batería, limpiar los pines del puerto USB-C). Usa lenguaje técnico neutro, sin nombres de paquetes de servicio. 'Diagnóstico físico requerido' si no puedes determinarlo",
+  "refaccion_ml": "término de búsqueda para la refacción principal en MercadoLibre México (ej: 'pantalla iPhone 12 original', 'batería Samsung S21', 'ventilador PS4 CUH-1200'). Cadena vacía si no requiere refacción (limpieza, diagnóstico, etc.)",
   "nota_tecnica": "observación técnica breve para el equipo interno, máximo 1 oración",
   "puede_diagnosticar": true
 }
@@ -188,7 +190,7 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
 
     dispositivo = analisis.get("dispositivo", "tu equipo")
     dano = analisis.get("dano_visible", "")
-    servicio = analisis.get("servicio_sugerido", "Diagnóstico físico requerido")
+    reparacion = analisis.get("reparacion_necesaria", "Diagnóstico físico requerido")
     precio = analisis.get("precio_estimado", "Por cotizar")
     severidad = analisis.get("severidad", "no_determinable")
 
@@ -206,7 +208,7 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
     else:
         descripcion_dano = f"Revisé tu {dispositivo} y no aprecio daño físico visible."
 
-    if servicio == "Diagnóstico físico requerido":
+    if reparacion == "Diagnóstico físico requerido":
         return (
             f"{intro} {descripcion_dano} "
             f"Para confirmarlo necesitamos revisarlo en el taller. "
@@ -216,15 +218,13 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
     if precio == "Por cotizar":
         return (
             f"{intro} {descripcion_dano} "
-            f"Basándonos en lo que vemos, el servicio que necesitas es *{servicio}*. "
-            f"El costo exacto te lo confirmamos cuando lo revisemos físicamente. "
+            f"El costo exacto te lo confirmamos cuando lo revisemos físicamente en el taller. "
             f"¿Te gustaría traerlo a nuestro módulo?"
         )
 
     return (
         f"{intro} {descripcion_dano} "
-        f"Basándonos en lo que vemos, el servicio que necesitas es *{servicio}* "
-        f"con un costo aproximado de *{precio} MXN*. "
+        f"Con base en lo que vemos, el costo aproximado es de *{precio} MXN*. "
         f"Este es un diagnóstico preliminar — el precio exacto se confirma cuando lo revisamos físicamente. "
         f"¿Te gustaría traerlo a nuestro módulo?"
     )
