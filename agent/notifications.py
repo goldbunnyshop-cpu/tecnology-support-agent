@@ -41,10 +41,11 @@ COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password",
 
 
 def _normalizar_numero(numero: str) -> str:
-    """Normaliza números mexicanos eliminando el prefijo de país que agrega Whapi en grupos.
-    Formatos posibles:
-      52 + 10 dígitos  = 12 dígitos  (ej: 525633500566  → 5633500566)
+    """Elimina el prefijo de país que agrega Whapi en mensajes de grupo.
+    Convierte cualquier formato mexicano a 10 dígitos locales para comparar.
+      52  + 10 dígitos = 12 dígitos  (ej: 525633500566  → 5633500566)
       521 + 10 dígitos = 13 dígitos  (ej: 5215541576331 → 5541576331)
+      152 + 10 dígitos = 13 dígitos  (ej: 1525541576331 → 5541576331)
     """
     n = re.sub(r"\D", "", numero or "")
     if len(n) == 13 and n.startswith("521"):
@@ -54,6 +55,46 @@ def _normalizar_numero(numero: str) -> str:
     if len(n) == 12 and n.startswith("52"):
         return n[2:]
     return n
+
+
+def _formatear_numero_destino(phone: str) -> tuple[str, str | None]:
+    """
+    Formatea el número de destino al formato que espera Whapi para envío.
+    México siempre debe enviarse como 521XXXXXXXXXX (13 dígitos).
+    Retorna (numero_formateado, advertencia_o_None).
+
+    Reglas:
+      10 dígitos                    → México local   → 521XXXXXXXXXX
+      12 dígitos empezando con 52   → México sin 1   → 521XXXXXXXXXX
+      13 dígitos empezando con 521  → México completo → sin cambio
+      11 dígitos empezando con 1    → USA/Canadá      → sin cambio
+      >= 11 dígitos (otros)         → tiene código de país → sin cambio
+      < 10 dígitos o ambiguo        → advertencia en el grupo
+    """
+    n = re.sub(r"\D", "", phone or "")
+
+    if len(n) == 10:
+        return f"521{n}", None
+
+    if len(n) == 12 and n.startswith("52"):
+        return f"521{n[2:]}", None
+
+    if len(n) == 13 and n.startswith("521"):
+        return n, None
+
+    if len(n) == 11 and n.startswith("1"):
+        return n, None
+
+    if len(n) >= 11:
+        return n, None
+
+    advertencia = (
+        "⚠️ Número internacional detectado. Por favor incluye el código de país.\n"
+        "Ejemplo:\n"
+        "57XXXXXXXXXX para Colombia\n"
+        "1XXXXXXXXXX para USA/California"
+    )
+    return "", advertencia
 
 
 def parsear_comando(texto: str) -> tuple[str, str] | None:
@@ -221,10 +262,15 @@ async def procesar_comando_grupo(
     async def _responder_grupo(texto: str):
         await proveedor.enviar_mensaje(chat_id_raw, texto)
 
-    async def _notificar_cliente(phone: str, mensaje: str):
-        enviado = await proveedor.enviar_mensaje(phone, mensaje)
+    async def _notificar_cliente(phone_raw: str, mensaje: str) -> bool:
+        phone_fmt, advertencia = _formatear_numero_destino(phone_raw)
+        if advertencia:
+            await _responder_grupo(advertencia)
+            return False
+        logger.info(f"[CMD] Destino: '{phone_raw}' → '{phone_fmt}'")
+        enviado = await proveedor.enviar_mensaje(phone_fmt, mensaje)
         if enviado:
-            await guardar_mensaje_fn(phone, "assistant", mensaje)
+            await guardar_mensaje_fn(phone_fmt, "assistant", mensaje)
         return enviado
 
     # ── listo ──
