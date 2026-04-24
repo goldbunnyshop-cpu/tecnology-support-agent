@@ -160,11 +160,50 @@ def segundos_hasta_proximo_domingo_13h() -> float:
     return segundos
 
 
+async def ejecutar_alertas_presupuesto():
+    """
+    Detecta clientes que no respondieron 24h después de recibir su presupuesto.
+    Notifica a Christian para seguimiento manual.
+    """
+    from agent.leads import obtener_leads_sin_respuesta_presupuesto
+    from agent.providers import obtener_proveedor
+    from agent.notifications import _enviar_alerta_christian, extraer_nombre_cliente
+    from agent.memory import obtener_historial
+
+    proveedor = obtener_proveedor()
+    leads = await obtener_leads_sin_respuesta_presupuesto(horas=24)
+
+    for lead in leads:
+        try:
+            historial = await obtener_historial(lead.telefono, limite=10)
+            nombre = extraer_nombre_cliente(historial) or lead.telefono
+            await _enviar_alerta_christian(
+                proveedor,
+                tipo="SIN RESPUESTA 24H DESPUÉS DE PRESUPUESTO",
+                nombre=nombre,
+                equipo="Ver historial",
+                resumen=f"El cliente recibió presupuesto el {lead.presupuesto_enviado_en.strftime('%d/%m %H:%M')} y no ha respondido.",
+            )
+            # Limpiar presupuesto_enviado_en para no re-alertar
+            from sqlalchemy import update as sq_update
+            from agent.memory import async_session
+            from agent.leads import Lead
+            async with async_session() as session:
+                await session.execute(
+                    sq_update(Lead).where(Lead.telefono == lead.telefono).values(presupuesto_enviado_en=None)
+                )
+                await session.commit()
+            logger.info(f"Alerta 24h presupuesto → {lead.telefono}")
+        except Exception as e:
+            logger.error(f"Error alerta presupuesto {lead.telefono}: {e}")
+
+
 async def iniciar_scheduler():
     """
     Scheduler principal que corre en segundo plano:
     - Seguimientos a leads: cada hora
     - Retomas nocturnas: cada 10 minutos
+    - Alertas presupuesto 24h: cada hora
     - Reporte Excel: cada domingo a las 13:00 CDMX
     """
     logger.info("Scheduler activo: seguimientos/hora, retomas/10min, reporte/domingo 13h")
@@ -178,6 +217,10 @@ async def iniciar_scheduler():
             await ejecutar_seguimientos()
         except Exception as e:
             logger.error(f"Error en scheduler de seguimientos: {e}")
+        try:
+            await ejecutar_alertas_presupuesto()
+        except Exception as e:
+            logger.error(f"Error en alertas presupuesto: {e}")
 
 
 async def _loop_retomas():
