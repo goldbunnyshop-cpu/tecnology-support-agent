@@ -177,7 +177,7 @@ async def procesar_comando_grupo(
 
     logger.info(
         f"[GRUPO CMD] nombre_grupo='{nombre_grupo}' | remitente='{remitente}' "
-        f"| ULISES='{ULISES_NUMERO}' | GRUPO='{GRUPO_INTERNO}' | texto='{texto_cmd[:60]}'"
+        f"| GRUPO='{GRUPO_INTERNO}' | texto='{texto_cmd[:60]}'"
     )
 
     # Verificar grupo correcto
@@ -187,13 +187,16 @@ async def procesar_comando_grupo(
         )
         return False
 
-    # Verificar remitente (normalizar para manejar prefijo 52 de México)
-    remitente_norm = _normalizar_numero(remitente)
-    ulises_norm    = _normalizar_numero(ULISES_NUMERO)
-    if remitente_norm != ulises_norm:
+    # Verificar remitente: aceptar Ulises y Christian
+    remitente_norm  = _normalizar_numero(remitente)
+    autorizados     = {
+        _normalizar_numero(ULISES_NUMERO),
+        _normalizar_numero(CHRISTIAN_NUMERO),
+    }
+    if remitente_norm not in autorizados:
         logger.warning(
             f"[GRUPO CMD] Rechazado — remitente '{remitente}' (norm: '{remitente_norm}') "
-            f"!= Ulises '{ULISES_NUMERO}' (norm: '{ulises_norm}')"
+            f"no está en autorizados {autorizados}"
         )
         return False
 
