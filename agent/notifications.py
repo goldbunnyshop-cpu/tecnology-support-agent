@@ -39,8 +39,19 @@ KEYWORDS_CITA = [
 
 COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar")
 
+
+def _normalizar_numero(numero: str) -> str:
+    """Elimina el prefijo 52 de México si el número tiene 12 dígitos (Whapi lo incluye en grupos)."""
+    n = re.sub(r"\D", "", numero or "")
+    if len(n) == 12 and n.startswith("52"):
+        return n[2:]
+    return n
+
+
 def parsear_comando(texto: str) -> tuple[str, str] | None:
     """Detecta si el texto es un comando válido. Retorna (comando, payload) o None."""
+    if not texto:
+        return None
     texto = texto.strip()
     for cmd in COMANDOS_VALIDOS:
         patron = re.compile(rf"^{cmd}\s*:", re.IGNORECASE)
@@ -162,15 +173,35 @@ async def procesar_comando_grupo(
     remitente = getattr(msg, "remitente", "")
     nombre_grupo = getattr(msg, "nombre_grupo", "")
     chat_id_raw = getattr(msg, "chat_id_raw", msg.telefono)
+    texto_cmd = msg.texto or ""
 
-    # Solo procesar si viene del grupo correcto y de Ulises
+    logger.info(
+        f"[GRUPO CMD] nombre_grupo='{nombre_grupo}' | remitente='{remitente}' "
+        f"| ULISES='{ULISES_NUMERO}' | GRUPO='{GRUPO_INTERNO}' | texto='{texto_cmd[:60]}'"
+    )
+
+    # Verificar grupo correcto
     if GRUPO_INTERNO.lower() not in nombre_grupo.lower():
-        return False
-    if remitente != ULISES_NUMERO:
+        logger.warning(
+            f"[GRUPO CMD] Rechazado — grupo '{nombre_grupo}' no contiene '{GRUPO_INTERNO}'"
+        )
         return False
 
-    resultado = parsear_comando(msg.texto)
+    # Verificar remitente (normalizar para manejar prefijo 52 de México)
+    remitente_norm = _normalizar_numero(remitente)
+    ulises_norm    = _normalizar_numero(ULISES_NUMERO)
+    if remitente_norm != ulises_norm:
+        logger.warning(
+            f"[GRUPO CMD] Rechazado — remitente '{remitente}' (norm: '{remitente_norm}') "
+            f"!= Ulises '{ULISES_NUMERO}' (norm: '{ulises_norm}')"
+        )
+        return False
+
+    logger.info(f"[GRUPO CMD] Remitente verificado como Ulises. Texto: '{texto_cmd[:80]}'")
+
+    resultado = parsear_comando(texto_cmd)
     if not resultado:
+        logger.info(f"[GRUPO CMD] Texto no es un comando válido: '{texto_cmd[:60]}'")
         return False
 
     cmd, payload = resultado

@@ -214,13 +214,25 @@ async def webhook_handler(request: Request):
 
             # ── Grupo interno: procesar comandos de Ulises ──
             if msg.es_grupo:
-                if GRUPO_INTERNO.lower() in getattr(msg, "nombre_grupo", "").lower():
+                nombre_g = getattr(msg, "nombre_grupo", "")
+                remitente_g = getattr(msg, "remitente", "")
+                logger.info(
+                    f"[WEBHOOK] Mensaje de grupo — nombre='{nombre_g}' "
+                    f"remitente='{remitente_g}' texto='{(msg.texto or '')[:60]}' "
+                    f"es_propio={msg.es_propio}"
+                )
+                if GRUPO_INTERNO.lower() in nombre_g.lower():
+                    logger.info(f"[WEBHOOK] Grupo interno detectado, ejecutando procesar_comando_grupo")
                     await procesar_comando_grupo(
                         msg,
                         proveedor,
                         guardar_mensaje,
                         obtener_historial,
                         marcar_presupuesto_enviado,
+                    )
+                else:
+                    logger.info(
+                        f"[WEBHOOK] Grupo ignorado — '{nombre_g}' no coincide con '{GRUPO_INTERNO}'"
                     )
                 # Todos los demás grupos se ignoran
                 continue
