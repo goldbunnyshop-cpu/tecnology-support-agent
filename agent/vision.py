@@ -39,41 +39,70 @@ Responde SOLO el JSON, sin markdown, sin explicaciones adicionales."""
 
 
 async def descargar_media(url: str, token: str) -> tuple[bytes, str] | None:
-    """Descarga media de Whapi por URL directa."""
-    if not url:
+    """Descarga media de Whapi por URL directa, preservando el token en cada redirect."""
+    if not url or not token:
         return None
+    headers = {"Authorization": f"Bearer {token}"}
     try:
-        headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=20) as client_http:
-            r = await client_http.get(url, headers=headers, follow_redirects=True)
-            if r.status_code != 200:
-                logger.warning(f"[VISION] Error descargando URL {url[:60]}: HTTP {r.status_code}")
+        async with httpx.AsyncClient(timeout=20) as c:
+            for intento in range(4):
+                r = await c.get(url, headers=headers, follow_redirects=False)
+                if r.status_code == 200:
+                    content_type = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+                    logger.info(f"[VISION] URL descargada — {len(r.content)} bytes, {content_type}")
+                    return r.content, content_type
+                if r.status_code in (301, 302, 303, 307, 308):
+                    url = r.headers.get("location", "")
+                    if not url:
+                        return None
+                    continue
+                logger.warning(f"[VISION] HTTP {r.status_code} descargando URL")
                 return None
-            content_type = r.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-            logger.info(f"[VISION] Imagen descargada — {len(r.content)} bytes, {content_type}")
-            return r.content, content_type
+            return None
     except Exception as e:
         logger.error(f"[VISION] Excepción descargando URL: {e}")
         return None
 
 
 async def descargar_media_por_id(media_id: str, token: str, mime_type: str = "image/jpeg") -> tuple[bytes, str] | None:
-    """Fallback: descarga media de Whapi usando el media_id del payload."""
-    if not media_id:
+    """
+    Descarga media de Whapi usando el media_id.
+    Maneja redirects manualmente para que el header Authorization
+    no se pierda en el salto (httpx lo elimina en cross-origin redirects).
+    """
+    if not media_id or not token:
         return None
-    # Whapi expone media en /files/{media_id}
+
     url = f"https://gate.whapi.cloud/files/{media_id}"
-    logger.info(f"[VISION] Intentando descarga por media_id: {url}")
+    headers = {"Authorization": f"Bearer {token}"}
+    logger.info(f"[VISION] Descarga por media_id — URL: {url}")
+
     try:
-        headers = {"Authorization": f"Bearer {token}"}
-        async with httpx.AsyncClient(timeout=20) as client_http:
-            r = await client_http.get(url, headers=headers, follow_redirects=True)
-            if r.status_code != 200:
-                logger.warning(f"[VISION] Error descargando por ID {media_id}: HTTP {r.status_code}")
+        async with httpx.AsyncClient(timeout=20) as c:
+            # NO follow_redirects: los manejamos manualmente para preservar el token
+            for intento in range(4):  # máximo 3 redirects
+                r = await c.get(url, headers=headers, follow_redirects=False)
+                logger.info(f"[VISION] Intento {intento + 1} → HTTP {r.status_code} ({url[:60]})")
+
+                if r.status_code == 200:
+                    content_type = r.headers.get("content-type", mime_type).split(";")[0].strip()
+                    logger.info(f"[VISION] Descarga OK — {len(r.content)} bytes, {content_type}")
+                    return r.content, content_type
+
+                if r.status_code in (301, 302, 303, 307, 308):
+                    url = r.headers.get("location", "")
+                    if not url:
+                        logger.warning("[VISION] Redirect sin Location header")
+                        return None
+                    logger.info(f"[VISION] Redirect → {url[:80]}")
+                    continue  # repite el loop con la nueva URL y el mismo header
+
+                logger.warning(f"[VISION] HTTP {r.status_code} descargando por ID '{media_id}'")
                 return None
-            content_type = r.headers.get("content-type", mime_type).split(";")[0].strip()
-            logger.info(f"[VISION] Imagen por ID descargada — {len(r.content)} bytes, {content_type}")
-            return r.content, content_type
+
+            logger.warning("[VISION] Demasiados redirects, abortando")
+            return None
+
     except Exception as e:
         logger.error(f"[VISION] Excepción descargando por ID: {e}")
         return None
