@@ -21,9 +21,21 @@ CALENDAR_ID = os.getenv(
 )
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 DURACION_MIN = 30
-HORA_INICIO = 10   # 10:00 AM
-HORA_FIN = 20      # 8:00 PM (último slot: 19:30)
-DIAS_HABILES = {0, 1, 2, 3, 4, 5}  # lunes(0) a sábado(5)
+DIAS_HABILES = {0, 1, 2, 3, 4, 5, 6}  # lunes a domingo
+
+MSG_FUERA_HORARIO = (
+    "Nuestro horario de atención es de lunes a viernes de 10:30 AM a 7:00 PM "
+    "y sábados y domingos de 11:30 AM a 6:30 PM. "
+    "¿En qué horario te queda mejor visitarnos? 😊"
+)
+
+
+def _horario_dia(weekday: int) -> tuple[time, time]:
+    """Retorna (hora_inicio, hora_fin) según el día de la semana."""
+    if weekday <= 4:  # lunes(0)–viernes(4)
+        return time(10, 30), time(19, 0)   # 10:30 AM – 7:00 PM (último slot 18:30)
+    else:              # sábado(5) y domingo(6)
+        return time(11, 30), time(18, 30)  # 11:30 AM – 6:30 PM (último slot 18:00)
 
 DIAS_ES = {
     0: "lunes", 1: "martes", 2: "miércoles", 3: "jueves",
@@ -41,9 +53,10 @@ MESES_NUM = {v: k for k, v in MESES_ES.items()}
 _DIA_A_NUM = {
     "lunes": 0, "martes": 1, "miercoles": 2, "miércoles": 2,
     "jueves": 3, "viernes": 4, "sabado": 5, "sábado": 5,
+    "domingo": 6,
 }
 
-_RE_DIA = re.compile(r"\b(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado)\b", re.I)
+_RE_DIA = re.compile(r"\b(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b", re.I)
 _RE_DIA_NUM = re.compile(r"\bel\s+(\d{1,2})(?:\s+de\s+(\w+))?\b", re.I)
 _RE_HORA_PREP = re.compile(
     r"\ba\s+las?\s+(\d{1,2})(?::(\d{2}))?\s*(?:(am|pm|a\.m\.|p\.m\.))?\b", re.I
@@ -66,6 +79,7 @@ def detectar_intencion_agendar(texto: str) -> bool:
         _RE_DIA.search(t)
         or _RE_DIA_NUM.search(t)
         or re.search(r"\bma[ñn]ana\b|\bhoy\b|\bpasado\s+ma[ñn]ana\b", t)
+        or re.search(r"\bfin\s+de\s+semana\b|\besta\s+semana\b", t)
     )
     if not tiene_fecha:
         return False
@@ -105,6 +119,34 @@ def parsear_fecha_en_texto(texto: str) -> date | None:
             pass
 
     return None
+
+
+def parsear_fechas_en_texto(texto: str) -> list[date]:
+    """Extrae una o varias fechas de un mensaje en español.
+
+    Expresiones simples (hoy, mañana, el lunes, el sábado…) → [fecha].
+    Rangos (fin de semana, esta semana) → [fecha1, fecha2, …].
+    """
+    hoy = datetime.now(ZONA).date()
+    t = texto.lower()
+
+    # "fin de semana" → próximo sábado + domingo
+    if re.search(r"\bfin\s+de\s+semana\b", t):
+        dias_hasta_sab = (5 - hoy.weekday()) % 7 or 7
+        sabado = hoy + timedelta(days=dias_hasta_sab)
+        return [sabado, sabado + timedelta(days=1)]
+
+    # "esta semana" → hasta 3 días restantes de la semana en curso
+    if re.search(r"\besta\s+semana\b", t):
+        dias_hasta_domingo = 6 - hoy.weekday()
+        if dias_hasta_domingo == 0:
+            dias_hasta_domingo = 7  # hoy es domingo → mostrar semana siguiente
+        fechas = [hoy + timedelta(days=i) for i in range(1, min(dias_hasta_domingo + 1, 4))]
+        return fechas or [hoy + timedelta(days=1)]
+
+    # Expresión de fecha única
+    fecha = parsear_fecha_en_texto(texto)
+    return [fecha] if fecha else []
 
 
 def parsear_hora_en_texto(texto: str) -> time | None:
@@ -160,21 +202,30 @@ def _build_service():
 
 
 def _todos_slots(fecha: date) -> list[datetime]:
+    inicio, fin = _horario_dia(fecha.weekday())
     slots: list[datetime] = []
-    dt = datetime(fecha.year, fecha.month, fecha.day, HORA_INICIO, 0, tzinfo=ZONA)
-    fin = datetime(fecha.year, fecha.month, fecha.day, HORA_FIN, 0, tzinfo=ZONA)
-    while dt < fin:
+    dt = datetime(fecha.year, fecha.month, fecha.day, inicio.hour, inicio.minute, tzinfo=ZONA)
+    fin_dt = datetime(fecha.year, fecha.month, fecha.day, fin.hour, fin.minute, tzinfo=ZONA)
+    while dt < fin_dt:
         slots.append(dt)
         dt += timedelta(minutes=DURACION_MIN)
-    return slots  # 10:00, 10:30 … 19:30
+    return slots
 
 
 def _slots_sync(fecha: date) -> list[str]:
+    dia_nombre = DIAS_ES.get(fecha.weekday(), str(fecha.weekday()))
+    logger.info(f"[CALENDAR] Fecha solicitada: {fecha} ({dia_nombre}) — weekday={fecha.weekday()}")
+
     if fecha.weekday() not in DIAS_HABILES:
+        logger.info(f"[CALENDAR] Día no hábil, sin slots")
         return []
-    slots = _todos_slots(fecha)
-    inicio = slots[0]
-    fin = slots[-1] + timedelta(minutes=DURACION_MIN)
+
+    todos = _todos_slots(fecha)
+    todos_str = [s.strftime("%H:%M") for s in todos]
+    logger.info(f"[CALENDAR] Slots generados ({len(todos)}): {', '.join(todos_str)}")
+
+    inicio = todos[0]
+    fin = todos[-1] + timedelta(minutes=DURACION_MIN)
 
     try:
         service = _build_service()
@@ -186,11 +237,13 @@ def _slots_sync(fecha: date) -> list[str]:
             orderBy="startTime",
         ).execute().get("items", [])
     except RuntimeError as e:
-        logger.error(f"[CALENDAR] {e}")
-        return []
+        # Credenciales no configuradas → mostrar todos los slots sin filtrar
+        logger.warning(f"[CALENDAR] Sin credenciales ({e}) — mostrando todos los slots")
+        return todos_str
     except Exception as e:
-        logger.error(f"[CALENDAR] Error listando eventos: {e}")
-        return []
+        # Error de API → mostrar todos los slots para no bloquear al cliente
+        logger.error(f"[CALENDAR] Error consultando API ({e}) — mostrando todos los slots")
+        return todos_str
 
     ocupados: list[tuple[datetime, datetime]] = []
     for ev in items:
@@ -205,14 +258,19 @@ def _slots_sync(fecha: date) -> list[str]:
             except Exception:
                 pass
 
-    return [
+    libres = [
         slot.strftime("%H:%M")
-        for slot in slots
+        for slot in todos
         if all(
             (slot + timedelta(minutes=DURACION_MIN)) <= oi or slot >= of
             for oi, of in ocupados
         )
     ]
+    logger.info(
+        f"[CALENDAR] Eventos ocupados: {len(ocupados)} | "
+        f"Slots libres: {len(libres)} | {', '.join(libres)}"
+    )
+    return libres
 
 
 def _agendar_sync(
@@ -298,7 +356,8 @@ def formatear_slots_para_claude(slots: list[str], fecha: date) -> str:
     if not slots:
         return (
             f"══ DISPONIBILIDAD REAL — {fecha_str.upper()} ══\n"
-            f"⚠️ Sin horarios disponibles ese día. Sugiere los 2-3 días hábiles siguientes.\n"
+            f"⚠️ Todos los horarios de ese día están ocupados. "
+            f"Sugiere los próximos 2-3 días con disponibilidad (trabajamos los 7 días de la semana).\n"
             f"════════════════════════════════════════════════════"
         )
 
@@ -316,6 +375,46 @@ def formatear_slots_para_claude(slots: list[str], fecha: date) -> str:
     return (
         f"══ DISPONIBILIDAD REAL — {fecha_str.upper()} ══\n"
         + "\n".join(bloques)
+        + "\nOfrece SOLO estos horarios. Cuando el cliente confirme uno, "
+        + "incluye el tag [[AGENDAR:...]] al final de tu respuesta.\n"
+        + "════════════════════════════════════════════════════"
+    )
+
+
+def formatear_slots_multiples_para_claude(dias: list[tuple[date, list[str]]]) -> str:
+    """Disponibilidad real para uno o varios días. Inyectar en contexto de Claude."""
+    if not dias:
+        return (
+            "══ DISPONIBILIDAD REAL ══\n"
+            "⚠️ Sin horarios disponibles. Sugiere otros días (trabajamos los 7 días de la semana).\n"
+            "════════════════════════════════════════════════════"
+        )
+
+    partes = []
+    for fecha, slots in dias:
+        dia_nombre = DIAS_ES.get(fecha.weekday(), "")
+        mes_nombre = MESES_ES.get(fecha.month, "")
+        fecha_str = f"{dia_nombre} {fecha.day} de {mes_nombre}"
+
+        if not slots:
+            partes.append(f"📅 {fecha_str.capitalize()}: Todos los horarios están ocupados ese día")
+            continue
+
+        mañ = [s for s in slots if int(s.split(":")[0]) < 13]
+        tar = [s for s in slots if 13 <= int(s.split(":")[0]) < 17]
+        noc = [s for s in slots if int(s.split(":")[0]) >= 17]
+        bloques = []
+        if mañ:
+            bloques.append(f"Mañana: {', '.join(mañ)}")
+        if tar:
+            bloques.append(f"Tarde: {', '.join(tar)}")
+        if noc:
+            bloques.append(f"Noche: {', '.join(noc)}")
+        partes.append(f"📅 {fecha_str.capitalize()}\n   " + " | ".join(bloques))
+
+    return (
+        "══ DISPONIBILIDAD REAL ══\n"
+        + "\n".join(partes)
         + "\nOfrece SOLO estos horarios. Cuando el cliente confirme uno, "
         + "incluye el tag [[AGENDAR:...]] al final de tu respuesta.\n"
         + "════════════════════════════════════════════════════"

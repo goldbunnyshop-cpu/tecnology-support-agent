@@ -22,8 +22,8 @@ CALIDADES_REFACCION = ["Genérica", "Tipo original"]
 UBICACION = "https://maps.app.goo.gl/XdCSu743LpyY6aAt7"
 
 HORARIO = {
-    "lunes_viernes": {"apertura": "10:00", "cierre": "21:00"},
-    "sabado_domingo": {"apertura": "11:00", "cierre": "20:00"},
+    "lunes_viernes": {"apertura": "10:30", "cierre": "19:00"},
+    "sabado_domingo": {"apertura": "11:30", "cierre": "18:30"},
 }
 
 
@@ -43,21 +43,21 @@ def obtener_horario() -> dict:
     dia_semana = ahora.weekday()  # 0=lunes, 6=domingo
     hora_actual = ahora.hour + ahora.minute / 60
 
-    if dia_semana < 5:  # Lunes a Viernes
-        apertura = 10.0
-        cierre = 21.0
-        horario_texto = "Lunes a Viernes de 10:00am a 9:00pm"
+    if dia_semana <= 4:  # Lunes a Viernes
+        apertura = 10.5   # 10:30
+        cierre = 19.0     # 7:00 PM
+        horario_texto = "Lunes a Viernes de 10:30am a 7:00pm"
     else:  # Sábado y Domingo
-        apertura = 11.0
-        cierre = 20.0
-        horario_texto = "Sábados y Domingos de 11:00am a 8:00pm"
+        apertura = 11.5   # 11:30
+        cierre = 18.5     # 6:30 PM
+        horario_texto = "Sábados y Domingos de 11:30am a 6:30pm"
 
     esta_abierto = apertura <= hora_actual < cierre
 
     return {
         "horario_texto": horario_texto,
         "esta_abierto": esta_abierto,
-        "horario_completo": "Lunes a Viernes de 10:00am a 9:00pm / Sábados y Domingos de 11:00am a 8:00pm",
+        "horario_completo": "Lunes a Viernes 10:30am–7:00pm · Sábados y Domingos 11:30am–6:30pm · Abiertos los 7 días",
     }
 
 
