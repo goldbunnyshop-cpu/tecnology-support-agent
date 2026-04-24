@@ -41,8 +41,14 @@ COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password",
 
 
 def _normalizar_numero(numero: str) -> str:
-    """Elimina el prefijo 52 de México si el número tiene 12 dígitos (Whapi lo incluye en grupos)."""
+    """Normaliza números mexicanos eliminando el prefijo de país que agrega Whapi en grupos.
+    Formatos posibles:
+      52 + 10 dígitos  = 12 dígitos  (ej: 525633500566  → 5633500566)
+      521 + 10 dígitos = 13 dígitos  (ej: 5215541576331 → 5541576331)
+    """
     n = re.sub(r"\D", "", numero or "")
+    if len(n) == 13 and n.startswith("521"):
+        return n[3:]
     if len(n) == 12 and n.startswith("52"):
         return n[2:]
     return n
