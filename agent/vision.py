@@ -262,8 +262,8 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
     if tipo_media == "video" and severidad == "no_determinable":
         return (
             f"Vi tu video \U0001f3a5 Pude revisar el estado visual de tu {dispositivo}. "
-            f"Para un diagnóstico preciso de la falla funcional, necesitamos revisarlo físicamente en el taller. "
-            f"¿Te gustaría traerlo a nuestro módulo? Hacemos el diagnóstico sin costo."
+            f"Para un diagnóstico preciso de la falla funcional, necesitamos revisarlo en nuestro módulo. "
+            f"¿Te gustaría traerlo? Hacemos el diagnóstico sin costo."
         )
 
     intro = "Vi la foto de tu equipo \U0001f4f8" if tipo_media == "image" else "Revisé tu video \U0001f3a5"
@@ -276,15 +276,15 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
     if reparacion == "Diagnóstico físico requerido":
         return (
             f"{intro} {descripcion_dano} "
-            f"Para confirmarlo necesitamos revisarlo en el taller. "
+            f"Para confirmarlo necesitamos revisarlo en nuestro módulo. "
             f"El diagnóstico es sin costo. ¿Te gustaría traerlo?"
         )
 
     if precio == "Por cotizar":
         return (
             f"{intro} {descripcion_dano} "
-            f"El costo exacto te lo confirmamos cuando lo revisemos físicamente en el taller. "
-            f"¿Te gustaría traerlo a nuestro módulo?"
+            f"El costo exacto te lo confirmamos cuando lo revisemos en nuestro módulo. "
+            f"¿Te gustaría traerlo?"
         )
 
     return (
