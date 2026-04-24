@@ -20,8 +20,10 @@ from agent.memory import (
 )
 from agent.profile import (
     extraer_nombre_de_mensaje,
+    extraer_nombre_de_historial_asistente,
     detectar_dispositivo_en_texto,
     construir_contexto_cliente,
+    log_estado_memoria,
 )
 from agent.providers import obtener_proveedor
 from agent.leads import (
@@ -329,11 +331,15 @@ async def webhook_handler(request: Request):
 
             # ── Cargar perfil del cliente ──
             perfil = await obtener_perfil(msg.telefono)
+            log_estado_memoria(msg.telefono, perfil)
             contexto_cliente = construir_contexto_cliente(perfil)
 
             # ── Detectar nombre si aún no está guardado ──
             if not (perfil and perfil.nombre):
                 nombre_detectado = extraer_nombre_de_mensaje(msg.texto)
+                if not nombre_detectado:
+                    historial_previo = await obtener_historial(msg.telefono)
+                    nombre_detectado = extraer_nombre_de_historial_asistente(historial_previo)
                 if nombre_detectado:
                     await guardar_nombre_cliente(msg.telefono, nombre_detectado)
                     logger.info(f"Nombre detectado y guardado: {nombre_detectado} ({msg.telefono})")
