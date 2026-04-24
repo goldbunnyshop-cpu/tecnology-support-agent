@@ -118,18 +118,14 @@ async def ejecutar_retomas():
 
             asesor = lead.asesor_asignado or "Sofia"
 
-            # Intentar obtener el nombre del cliente del historial
             historial = await obtener_historial(lead.telefono, limite=10)
-            nombre_cliente = ""
-            for msg in historial:
-                if msg["role"] == "assistant" and "!" in msg["content"]:
-                    # Buscar si el asesor usó un nombre en sus respuestas
-                    break
+            from agent.notifications import extraer_nombre_cliente
+            nombre_cliente = extraer_nombre_cliente(historial)
 
-            saludo = f"¡Hola! \U0001f60a" if not nombre_cliente else f"¡Hola, {nombre_cliente}! \U0001f60a"
+            saludo = f"¡Hola, {nombre_cliente}!" if nombre_cliente else "¡Hola!"
 
             mensaje = (
-                f"{saludo} Soy {asesor} de Tecnology Support. "
+                f"{saludo} \U0001f60a Soy {asesor} de Tecnology Support. "
                 f"Vi que nos escribiste anoche, ya estamos en línea y listos para ayudarte. "
                 f"¿En qué podemos apoyarte hoy?"
             )
