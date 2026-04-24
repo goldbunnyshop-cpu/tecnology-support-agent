@@ -101,6 +101,11 @@ async def webhook_handler(request: Request):
     Registra al cliente como lead para el sistema de seguimiento.
     """
     try:
+        # Whapi envía un POST vacío para validar el webhook — responder 200 de inmediato
+        body = await request.body()
+        if not body or body.strip() in (b"", b"null", b"{}"):
+            return {"status": "ok"}
+
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
