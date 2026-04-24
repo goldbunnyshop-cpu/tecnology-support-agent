@@ -46,9 +46,9 @@ from agent.notifications import (
 )
 from agent.google_calendar import (
     detectar_intencion_agendar,
-    parsear_fecha_en_texto,
+    parsear_fechas_en_texto,
     obtener_slots_disponibles,
-    formatear_slots_para_claude,
+    formatear_slots_multiples_para_claude,
     parsear_tag_agendar,
     agendar_cita,
     quitar_tags,
@@ -360,11 +360,14 @@ async def webhook_handler(request: Request):
 
             # ── Disponibilidad real si menciona fecha con intención de visita ──
             if detectar_intencion_agendar(msg.texto):
-                fecha_cita = parsear_fecha_en_texto(msg.texto)
-                if fecha_cita:
-                    slots = await obtener_slots_disponibles(fecha_cita)
-                    partes_ctx.append(formatear_slots_para_claude(slots, fecha_cita))
-                    logger.info(f"[CALENDAR] Disponibilidad inyectada para {fecha_cita}: {slots[:5]}...")
+                fechas_cita = parsear_fechas_en_texto(msg.texto)
+                if fechas_cita:
+                    dias_slots = []
+                    for fc in fechas_cita:
+                        slots = await obtener_slots_disponibles(fc)
+                        dias_slots.append((fc, slots))
+                    partes_ctx.append(formatear_slots_multiples_para_claude(dias_slots))
+                    logger.info(f"[CALENDAR] Disponibilidad inyectada para {[str(f) for f in fechas_cita]}")
 
             contexto_cliente = "\n\n".join(partes_ctx)
 
