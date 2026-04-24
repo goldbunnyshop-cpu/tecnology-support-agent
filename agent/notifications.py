@@ -497,6 +497,33 @@ async def _enviar_alerta_christian(
         logger.error(f"Error enviando alerta a Christian: {e}")
 
 
+async def notificar_cita_agendada(
+    proveedor,
+    nombre: str,
+    telefono: str,
+    dispositivo: str,
+    problema: str,
+    fecha_texto: str,
+    hora_texto: str,
+) -> None:
+    """Notifica a Christian y Ulises cuando se agenda una nueva cita."""
+    mensaje = (
+        f"📅 *NUEVA CITA AGENDADA*\n"
+        f"👤 Cliente: {nombre}\n"
+        f"📱 Dispositivo: {dispositivo}\n"
+        f"🔧 Problema: {problema}\n"
+        f"📆 Fecha: {fecha_texto.capitalize()}\n"
+        f"🕐 Hora: {hora_texto}\n"
+        f"📞 Teléfono: {telefono}"
+    )
+    for numero in [CHRISTIAN_NUMERO, ULISES_NUMERO]:
+        try:
+            await proveedor.enviar_mensaje(numero, mensaje)
+            logger.info(f"[CALENDAR] Notificación cita → {numero}")
+        except Exception as e:
+            logger.error(f"[CALENDAR] Error notificando a {numero}: {e}")
+
+
 async def notificar_christian_vision(
     proveedor,
     telefono: str,
