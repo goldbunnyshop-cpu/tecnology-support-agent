@@ -13,7 +13,16 @@ from fastapi.responses import PlainTextResponse
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
-from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
+from agent.memory import (
+    inicializar_db, guardar_mensaje, obtener_historial,
+    obtener_perfil, guardar_nombre_cliente,
+    actualizar_visita_cliente, agregar_dispositivo_cliente,
+)
+from agent.profile import (
+    extraer_nombre_de_mensaje,
+    detectar_dispositivo_en_texto,
+    construir_contexto_cliente,
+)
 from agent.providers import obtener_proveedor
 from agent.leads import (
     crear_o_actualizar_lead,
@@ -97,6 +106,14 @@ async def manejar_mensaje_nocturno(telefono: str, contenido: str, asesor: str) -
     retoma_utc = calcular_hora_retoma_utc()
     await programar_retoma(telefono, retoma_utc, datetime.utcnow())
     logger.info(f"Retoma programada para {telefono} a las {retoma_utc} UTC")
+
+
+async def _actualizar_perfil_cliente(telefono: str, texto: str, asesor: str):
+    """Actualiza visita y detecta dispositivo en background tras cada mensaje."""
+    await actualizar_visita_cliente(telefono, asesor)
+    dispositivo = detectar_dispositivo_en_texto(texto)
+    if dispositivo:
+        await agregar_dispositivo_cliente(telefono, dispositivo)
 
 
 async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str:
@@ -293,13 +310,29 @@ async def webhook_handler(request: Request):
 
             logger.info(f"[{asesor}] {msg.telefono}: {msg.texto[:60]}")
 
+            # ── Cargar perfil del cliente ──
+            perfil = await obtener_perfil(msg.telefono)
+            contexto_cliente = construir_contexto_cliente(perfil)
+
+            # ── Detectar nombre si aún no está guardado ──
+            if not (perfil and perfil.nombre):
+                nombre_detectado = extraer_nombre_de_mensaje(msg.texto)
+                if nombre_detectado:
+                    await guardar_nombre_cliente(msg.telefono, nombre_detectado)
+                    logger.info(f"Nombre detectado y guardado: {nombre_detectado} ({msg.telefono})")
+
             historial = await obtener_historial(msg.telefono)
             await proveedor.enviar_typing(msg.telefono)
-            respuesta = await generar_respuesta(msg.texto, historial, asesor=asesor)
+            respuesta = await generar_respuesta(
+                msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
+            )
 
             await guardar_mensaje(msg.telefono, "user", msg.texto)
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
             await proveedor.enviar_mensaje(msg.telefono, respuesta)
+
+            # ── Actualizar perfil en background ──
+            asyncio.create_task(_actualizar_perfil_cliente(msg.telefono, msg.texto, asesor))
 
             # ── Alertas a Christian (en background, sin bloquear) ──
             asyncio.create_task(

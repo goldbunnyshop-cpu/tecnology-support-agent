@@ -233,6 +233,10 @@ async def procesar_comando_grupo(
             f"¡Gracias por tu preferencia!"
         )
         ok = await _notificar_cliente(phone, msg_cliente)
+        if ok:
+            from agent.memory import agregar_servicio_cliente, agregar_dispositivo_cliente
+            await agregar_dispositivo_cliente(phone, equipo)
+            await agregar_servicio_cliente(phone, f"Reparación completada: {equipo}")
         await _responder_grupo(f"{'✅' if ok else '❌'} Notificación enviada a {phone}")
 
     # ── demora ──
