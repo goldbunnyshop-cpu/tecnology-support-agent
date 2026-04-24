@@ -70,6 +70,20 @@ class ProveedorWhapi(ProveedorWhatsApp):
             ))
         return mensajes
 
+    async def enviar_typing(self, telefono: str) -> None:
+        """Envía el indicador 'escribiendo...' al chat del cliente."""
+        if not self.token:
+            return
+        chat_id = telefono if "@" in telefono else f"{telefono}@s.whatsapp.net"
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                await client.post(
+                    f"https://gate.whapi.cloud/chats/{chat_id}/typing",
+                    headers={"Authorization": f"Bearer {self.token}"},
+                )
+        except Exception:
+            pass  # El typing es decorativo — si falla, no afecta el mensaje
+
     async def enviar_mensaje(self, telefono: str, mensaje: str) -> bool:
         """Envía mensaje via Whapi.cloud."""
         if not self.token:
