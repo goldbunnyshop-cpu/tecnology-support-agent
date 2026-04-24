@@ -66,45 +66,56 @@ async def descargar_media(url: str, token: str) -> tuple[bytes, str] | None:
 
 async def descargar_media_por_id(media_id: str, token: str, mime_type: str = "image/jpeg") -> tuple[bytes, str] | None:
     """
-    Descarga media de Whapi usando el media_id.
-    Maneja redirects manualmente para que el header Authorization
-    no se pierda en el salto (httpx lo elimina en cross-origin redirects).
+    Descarga media de Whapi probando los endpoints documentados en orden.
+    Preserva el Authorization header en cada redirect (httpx lo eliminaría en cross-origin).
     """
     if not media_id or not token:
+        logger.warning(f"[VISION] media_id o token vacíos — abortando descarga")
         return None
 
-    url = f"https://gate.whapi.cloud/files/{media_id}"
+    token_preview = token[:10] + "..."
     headers = {"Authorization": f"Bearer {token}"}
-    logger.info(f"[VISION] Descarga por media_id — URL: {url}")
+
+    # Endpoints de Whapi a probar en orden
+    endpoints = [
+        f"https://gate.whapi.cloud/messages/media/{media_id}",
+        f"https://gate.whapi.cloud/media/{media_id}",
+        f"https://gate.whapi.cloud/files/{media_id}",
+    ]
 
     try:
         async with httpx.AsyncClient(timeout=20) as c:
-            # NO follow_redirects: los manejamos manualmente para preservar el token
-            for intento in range(4):  # máximo 3 redirects
-                r = await c.get(url, headers=headers, follow_redirects=False)
-                logger.info(f"[VISION] Intento {intento + 1} → HTTP {r.status_code} ({url[:60]})")
+            for endpoint in endpoints:
+                url = endpoint
+                logger.info(f"[VISION] Intentando → {url} | token: {token_preview}")
 
-                if r.status_code == 200:
-                    content_type = r.headers.get("content-type", mime_type).split(";")[0].strip()
-                    logger.info(f"[VISION] Descarga OK — {len(r.content)} bytes, {content_type}")
-                    return r.content, content_type
+                for _ in range(4):  # hasta 3 redirects por endpoint
+                    r = await c.get(url, headers=headers, follow_redirects=False)
+                    logger.info(f"[VISION] HTTP {r.status_code} ← {url[:70]}")
 
-                if r.status_code in (301, 302, 303, 307, 308):
-                    url = r.headers.get("location", "")
-                    if not url:
-                        logger.warning("[VISION] Redirect sin Location header")
-                        return None
-                    logger.info(f"[VISION] Redirect → {url[:80]}")
-                    continue  # repite el loop con la nueva URL y el mismo header
+                    if r.status_code == 200:
+                        content_type = r.headers.get("content-type", mime_type).split(";")[0].strip()
+                        logger.info(f"[VISION] ✓ Descarga OK — {len(r.content)} bytes, {content_type}")
+                        return r.content, content_type
 
-                logger.warning(f"[VISION] HTTP {r.status_code} descargando por ID '{media_id}'")
-                return None
+                    if r.status_code in (301, 302, 303, 307, 308):
+                        nueva_url = r.headers.get("location", "")
+                        if not nueva_url:
+                            logger.warning("[VISION] Redirect sin Location header")
+                            break
+                        logger.info(f"[VISION] Redirect → {nueva_url[:70]}")
+                        url = nueva_url
+                        continue
 
-            logger.warning("[VISION] Demasiados redirects, abortando")
+                    # 4xx/5xx no recuperable para este endpoint
+                    logger.warning(f"[VISION] HTTP {r.status_code} en {endpoint[:60]} — probando siguiente")
+                    break  # pasa al siguiente endpoint
+
+            logger.error(f"[VISION] Todos los endpoints fallaron para media_id='{media_id}'")
             return None
 
     except Exception as e:
-        logger.error(f"[VISION] Excepción descargando por ID: {e}")
+        logger.error(f"[VISION] Excepción descargando media_id='{media_id}': {e}")
         return None
 
 
