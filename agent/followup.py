@@ -12,8 +12,9 @@ load_dotenv()
 logger = logging.getLogger("agentkit")
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-INTERVALO_SEGUIMIENTO = 3600   # revisar seguimientos cada hora
-INTERVALO_RETOMA = 600         # revisar retomas cada 10 minutos
+INTERVALO_SEGUIMIENTO  = 3600  # revisar seguimientos cada hora
+INTERVALO_RETOMA       = 600   # revisar retomas cada 10 minutos
+INTERVALO_RECORDATORIO = 600   # revisar recordatorios de cita cada 10 minutos
 
 MENSAJES_FALLBACK = [
     "Hola, ¿pudo resolver lo de su equipo? Aquí seguimos para ayudarle cuando guste.",
@@ -194,18 +195,65 @@ async def ejecutar_alertas_presupuesto():
             logger.error(f"Error alerta presupuesto {lead.telefono}: {e}")
 
 
+async def ejecutar_recordatorios_cita():
+    """
+    Consulta Google Calendar para citas que empiezan en ~1 hora.
+    Envía recordatorio al cliente si aún no se envió uno.
+    """
+    from agent.google_calendar import obtener_eventos_proximos
+    from agent.memory import recordatorio_ya_enviado, registrar_recordatorio, guardar_mensaje
+    from agent.providers import obtener_proveedor
+    from agent.notifications import _formatear_numero_destino
+
+    proveedor = obtener_proveedor()
+    eventos = await obtener_eventos_proximos(minutos_desde=55, minutos_hasta=70)
+
+    for ev in eventos:
+        evento_id = ev["id"]
+        if await recordatorio_ya_enviado(evento_id):
+            continue
+
+        nombre    = ev["nombre"]
+        telefono  = ev["telefono"]
+        hora_txt  = ev["hora"]
+        dispositivo = ev.get("dispositivo", "")
+
+        phone_fmt, advertencia = _formatear_numero_destino(telefono)
+        if advertencia or not phone_fmt:
+            logger.warning(f"[RECORDATORIO] Teléfono inválido '{telefono}' — omitido")
+            continue
+
+        equipo_txt = f" para tu {dispositivo}" if dispositivo else ""
+        mensaje = (
+            f"¡Hola {nombre}! 😊 Te recordamos que tienes una cita{equipo_txt} "
+            f"en nuestro módulo hoy a las *{hora_txt}*. "
+            f"Te esperamos en Plazuela de la Fama 1, Col. La Fama, Tlalpan, CDMX. "
+            f"¿Confirmas tu asistencia? ✅"
+        )
+
+        enviado = await proveedor.enviar_mensaje(phone_fmt, mensaje)
+        if enviado:
+            await guardar_mensaje(phone_fmt, "assistant", mensaje)
+            await registrar_recordatorio(evento_id, phone_fmt)
+            logger.info(f"[RECORDATORIO] ✅ Enviado a {phone_fmt} ({nombre}) — cita a las {hora_txt}")
+        else:
+            logger.warning(f"[RECORDATORIO] ❌ No se pudo enviar a {phone_fmt}")
+
+
 async def iniciar_scheduler():
     """
     Scheduler principal que corre en segundo plano:
     - Seguimientos a leads: cada hora
     - Retomas nocturnas: cada 10 minutos
+    - Recordatorios de cita: cada 10 minutos
     - Alertas presupuesto 24h: cada hora
     - Reporte Excel: cada domingo a las 13:00 CDMX
     """
-    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, reporte/domingo 13h")
+    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, recordatorios/10min, reporte/domingo 13h")
 
     asyncio.create_task(iniciar_scheduler_reporte_semanal())
     asyncio.create_task(_loop_retomas())
+    asyncio.create_task(_loop_recordatorios())
 
     while True:
         await asyncio.sleep(INTERVALO_SEGUIMIENTO)
@@ -226,6 +274,15 @@ async def _loop_retomas():
             await ejecutar_retomas()
         except Exception as e:
             logger.error(f"Error en scheduler de retomas: {e}")
+
+
+async def _loop_recordatorios():
+    while True:
+        await asyncio.sleep(INTERVALO_RECORDATORIO)
+        try:
+            await ejecutar_recordatorios_cita()
+        except Exception as e:
+            logger.error(f"Error en scheduler de recordatorios: {e}")
 
 
 async def iniciar_scheduler_reporte_semanal():

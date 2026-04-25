@@ -48,6 +48,15 @@ class Mensaje(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class CitaRecordatorio(Base):
+    """Registro de recordatorios de citas ya enviados (evita duplicados)."""
+    __tablename__ = "citas_recordatorio"
+
+    evento_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    telefono: Mapped[str] = mapped_column(String(50), index=True)
+    enviado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class ClientePerfil(Base):
     """Perfil persistente del cliente — sobrevive reinicios del servidor."""
     __tablename__ = "clientes_perfil"
@@ -189,7 +198,7 @@ async def inicializar_db():
     from agent.leads import _migrar_columnas
     await _migrar_columnas()
     await _migrar_clientes_perfil()
-    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil")
+    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio")
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):
@@ -238,3 +247,23 @@ async def limpiar_historial(telefono: str):
         for msg in mensajes:
             await session.delete(msg)
         await session.commit()
+
+
+async def recordatorio_ya_enviado(evento_id: str) -> bool:
+    """Retorna True si ya se envió el recordatorio para este evento."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(CitaRecordatorio).where(CitaRecordatorio.evento_id == evento_id)
+        )
+        return result.scalar_one_or_none() is not None
+
+
+async def registrar_recordatorio(evento_id: str, telefono: str):
+    """Marca el recordatorio como enviado para no repetirlo."""
+    async with async_session() as session:
+        existe = await session.execute(
+            select(CitaRecordatorio).where(CitaRecordatorio.evento_id == evento_id)
+        )
+        if existe.scalar_one_or_none() is None:
+            session.add(CitaRecordatorio(evento_id=evento_id, telefono=telefono))
+            await session.commit()

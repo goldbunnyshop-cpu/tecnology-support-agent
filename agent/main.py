@@ -264,6 +264,55 @@ async def webhook_verificacion(request: Request):
     return {"status": "ok"}
 
 
+# ── Messenger ────────────────────────────────────────────────────────────────
+
+@app.get("/messenger")
+async def messenger_verificacion(request: Request):
+    """Meta verifica el webhook con un GET antes de activarlo."""
+    from agent.providers.messenger import ProveedorMessenger
+    messenger = ProveedorMessenger()
+    resultado = await messenger.validar_webhook(request)
+    if resultado is not None:
+        return PlainTextResponse(str(resultado))
+    return {"status": "ok"}
+
+
+@app.post("/messenger")
+async def messenger_handler(request: Request):
+    """Recibe mensajes de Messenger y los procesa igual que WhatsApp."""
+    from agent.providers.messenger import ProveedorMessenger
+    messenger = ProveedorMessenger()
+    try:
+        mensajes = await messenger.parsear_webhook(request)
+        for msg in mensajes:
+            if not msg.texto:
+                continue
+            historial = await obtener_historial(msg.telefono, limite=20)
+            asesor = await obtener_o_asignar_asesor(msg.telefono)
+            await crear_o_actualizar_lead(msg.telefono, fuente="messenger", asesor_asignado=asesor)
+            await actualizar_visita_cliente(msg.telefono, asesor)
+
+            perfil = await obtener_perfil(msg.telefono)
+            contexto_cliente = construir_contexto_cliente(perfil, asesor) if perfil else ""
+
+            partes_ctx = [_ctx_fecha_cdmx()]
+            if contexto_cliente:
+                partes_ctx.append(contexto_cliente)
+            partes_ctx.append(f"Canal: Facebook Messenger")
+            contexto_extra = "\n\n".join(partes_ctx)
+
+            respuesta = await generar_respuesta(msg.texto, historial, asesor, contexto_extra)
+            await guardar_mensaje(msg.telefono, "user", msg.texto)
+            await guardar_mensaje(msg.telefono, "assistant", respuesta)
+            await messenger.enviar_mensaje(msg.telefono, respuesta)
+
+            logger.info(f"[MESSENGER] {msg.telefono} → {respuesta[:60]}")
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"[MESSENGER] Error: {e}")
+        return {"status": "ok"}
+
+
 @app.post("/webhook")
 @app.post("/webhook/messages")
 @app.post("/webhook/messages/messages")
