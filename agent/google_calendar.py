@@ -335,6 +335,69 @@ async def agendar_cita(
     return await asyncio.to_thread(_agendar_sync, nombre, telefono, dispositivo, problema, fecha_hora)
 
 
+def _eventos_proximos_sync(minutos_desde: int = 55, minutos_hasta: int = 70) -> list[dict]:
+    """Retorna eventos que empiezan en la ventana [ahora+minutos_desde, ahora+minutos_hasta]."""
+    ahora = datetime.now(ZONA)
+    inicio_ventana = ahora + timedelta(minutes=minutos_desde)
+    fin_ventana = ahora + timedelta(minutes=minutos_hasta)
+
+    try:
+        service = _build_service()
+        items = service.events().list(
+            calendarId=CALENDAR_ID,
+            timeMin=inicio_ventana.isoformat(),
+            timeMax=fin_ventana.isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute().get("items", [])
+    except Exception as e:
+        logger.warning(f"[CALENDAR] Error obteniendo eventos próximos: {e}")
+        return []
+
+    resultados = []
+    for ev in items:
+        ev_id = ev.get("id", "")
+        desc = ev.get("description", "")
+        start = ev.get("start", {}).get("dateTime", "")
+
+        telefono = nombre = dispositivo = ""
+        for linea in desc.splitlines():
+            if linea.startswith("Teléfono:"):
+                telefono = linea.split(":", 1)[1].strip()
+            elif linea.startswith("Cliente:"):
+                nombre = linea.split(":", 1)[1].strip()
+            elif linea.startswith("Dispositivo:"):
+                dispositivo = linea.split(":", 1)[1].strip()
+
+        hora_txt = ""
+        if start:
+            try:
+                dt = datetime.fromisoformat(start).astimezone(ZONA)
+                hora_txt = dt.strftime("%I:%M %p").lstrip("0").replace("AM", "a.m.").replace("PM", "p.m.")
+            except Exception:
+                pass
+
+        if not ev_id or not telefono:
+            logger.warning(f"[CALENDAR] Evento sin teléfono ignorado: id={ev_id}")
+            continue
+
+        resultados.append({
+            "id": ev_id,
+            "nombre": nombre or "cliente",
+            "telefono": telefono,
+            "dispositivo": dispositivo,
+            "hora": hora_txt,
+        })
+        logger.info(f"[CALENDAR] Evento próximo: {nombre} a las {hora_txt} — tel={telefono}")
+
+    return resultados
+
+
+async def obtener_eventos_proximos(minutos_desde: int = 55, minutos_hasta: int = 70) -> list[dict]:
+    """Retorna eventos que empiezan en los próximos minutos indicados."""
+    return await asyncio.to_thread(_eventos_proximos_sync, minutos_desde, minutos_hasta)
+
+
 async def cancelar_cita(evento_id: str) -> bool:
     def _cancel():
         try:

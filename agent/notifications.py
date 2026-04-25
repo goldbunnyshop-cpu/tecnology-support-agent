@@ -37,7 +37,34 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
-COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar")
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita")
+
+TEXTO_MENU = (
+    "📋 *COMANDOS — Taller Interno TS*\n\n"
+    "✅ *listo: NÚMERO EQUIPO*\n"
+    "   Notifica al cliente que su equipo está listo\n"
+    "   _Ej: listo: 5541576331 PS4_\n\n"
+    "⏳ *demora: NÚMERO TIEMPO EQUIPO*\n"
+    "   Avisa que el equipo necesita más tiempo\n"
+    "   _Ej: demora: 5541576331 2 horas iPhone 13_\n\n"
+    "💰 *presupuesto: NÚMERO EQUIPO PRECIO*\n"
+    "   Envía el presupuesto al cliente\n"
+    "   _Ej: presupuesto: 5541576331 PS4 850_\n\n"
+    "🔍 *diagnostico: NÚMERO EQUIPO DESCRIPCIÓN*\n"
+    "   Comparte el diagnóstico técnico\n"
+    "   _Ej: diagnostico: 5541576331 PS4 falla en GPU_\n\n"
+    "🔐 *password: NÚMERO*\n"
+    "   Solicita la contraseña del dispositivo\n"
+    "   _Ej: password: 5541576331_\n\n"
+    "📞 *llamar: NÚMERO*\n"
+    "   Pide al cliente que llame al módulo\n"
+    "   _Ej: llamar: 5541576331_\n\n"
+    "🏠 *cita: NÚMERO*\n"
+    "   Indica que puede venir sin cita previa\n"
+    "   _Ej: cita: 5541576331_\n\n"
+    "📋 *menu*\n"
+    "   Muestra este menú"
+)
 
 
 def _normalizar_numero(numero: str) -> str:
@@ -251,6 +278,12 @@ async def procesar_comando_grupo(
 
     logger.info(f"[GRUPO CMD] Remitente verificado como Ulises. Texto: '{texto_cmd[:80]}'")
 
+    # ── menu (sin payload) ──
+    if texto_cmd.strip().lower() == "menu":
+        await proveedor.enviar_mensaje(chat_id_raw, TEXTO_MENU)
+        logger.info("[GRUPO CMD] Menú enviado al grupo")
+        return True
+
     resultado = parsear_comando(texto_cmd)
     if not resultado:
         logger.info(f"[GRUPO CMD] Texto no es un comando válido: '{texto_cmd[:60]}'")
@@ -391,6 +424,24 @@ async def procesar_comando_grupo(
         )
         ok = await _notificar_cliente(phone, msg_cliente)
         await _responder_grupo(f"{'✅' if ok else '❌'} Solicitud de llamada enviada a {phone}")
+
+    # ── cita ──
+    elif cmd == "cita":
+        phone = parsear_phone_simple(payload)
+        if not phone:
+            await _responder_grupo("⚠️ Formato: cita: NÚMERO")
+            return True
+        historial = await obtener_historial_fn(phone)
+        nombre = extraer_nombre_cliente(historial) or "cliente"
+        msg_cliente = (
+            f"Hola {nombre} \U0001f60a "
+            f"Queremos informarte que puedes pasar a nuestro módulo sin necesidad de cita previa. "
+            f"Te atendemos en nuestro horario habitual: "
+            f"Lunes a Viernes 10:30am–7:00pm · Sábados y Domingos 11:30am–6:30pm. "
+            f"¡Te esperamos cuando gustes!"
+        )
+        ok = await _notificar_cliente(phone, msg_cliente)
+        await _responder_grupo(f"{'✅' if ok else '❌'} Invitación sin cita enviada a {phone}")
 
     return True
 

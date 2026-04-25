@@ -102,7 +102,7 @@ def _ajustar_columnas(hoja, anchos: list[int]):
         hoja.column_dimensions[get_column_letter(i)].width = ancho
 
 
-def _agregar_hoja_leads(wb, nombre_hoja: str, filas: list[dict], color_estado: str, mostrar_fuente: bool = False):
+def _agregar_hoja_leads(wb, nombre_hoja: str, filas: list[dict], color_estado: str, mostrar_detalle_anuncio: bool = False):
     """Crea una hoja con los leads de un estado específico."""
     ws = wb.create_sheet(title=nombre_hoja)
 
@@ -111,6 +111,10 @@ def _agregar_hoja_leads(wb, nombre_hoja: str, filas: list[dict], color_estado: s
         "Fuente", "Último mensaje", "Días sin respuesta", "Seguimientos enviados", "Registrado"
     ]
     anchos = [18, 20, 20, 30, 18, 22, 20, 22, 22]
+
+    if mostrar_detalle_anuncio:
+        encabezados.append("Anuncio / Detalle")
+        anchos.append(40)
 
     ws.row_dimensions[1].height = 30
     for col, titulo in enumerate(encabezados, start=1):
@@ -157,6 +161,9 @@ def _agregar_hoja_leads(wb, nombre_hoja: str, filas: list[dict], color_estado: s
             datos.get("seguimientos_enviados", 0),
             registrado_str,
         ]
+
+        if mostrar_detalle_anuncio:
+            valores.append(datos.get("fuente_detalle", "") or "")
 
         ws.row_dimensions[fila_num].height = 20
         for col, valor in enumerate(valores, start=1):
@@ -247,6 +254,7 @@ async def generar_reporte_excel() -> str:
     }
 
     facebook_ads = []
+    FECHA_INICIO_ADS = datetime(2025, 3, 19, tzinfo=timezone.utc)
 
     for lead in leads:
         historial = await obtener_historial(lead.telefono, limite=10)
@@ -265,7 +273,15 @@ async def generar_reporte_excel() -> str:
         }
         grupos.get(lead.estado, grupos["activo"]).append(fila)
         if fuente in ("facebook_ad", "instagram_ad"):
-            facebook_ads.append(fila)
+            # Solo incluir leads desde el 19 de marzo
+            created = lead.created_at
+            if created:
+                if created.tzinfo is None:
+                    created = created.replace(tzinfo=timezone.utc)
+                if created >= FECHA_INICIO_ADS:
+                    facebook_ads.append(fila)
+            else:
+                facebook_ads.append(fila)
 
     # Construir Excel
     wb = openpyxl.Workbook()
@@ -275,7 +291,7 @@ async def generar_reporte_excel() -> str:
     _agregar_hoja_resumen(wb, conteos, semana)
     # Hoja exclusiva de Facebook/Instagram Ads (color naranja)
     if facebook_ads:
-        _agregar_hoja_leads(wb, "Facebook Ads", facebook_ads, "FFE0C0")
+        _agregar_hoja_leads(wb, "Facebook & Instagram Ads", facebook_ads, "FFE0C0", mostrar_detalle_anuncio=True)
     _agregar_hoja_leads(wb, "Activos",          grupos["activo"],         COLORES["activo"])
     _agregar_hoja_leads(wb, "En Seguimiento",    grupos["en_seguimiento"], COLORES["en_seguimiento"])
     _agregar_hoja_leads(wb, "Perdidos",          grupos["perdido"],        COLORES["perdido"])
