@@ -322,6 +322,10 @@ async def webhook_handler(request: Request):
                 asesor_asignado=asesor,
             )
 
+            # ── Sincronizar perfil (SÍNCRONO) — crea clientes_perfil si no existe ──
+            # Esto garantiza que obtener_perfil() más abajo siempre encuentre el registro.
+            await actualizar_visita_cliente(msg.telefono, asesor)
+
             # ── Cancelar retoma si el cliente ya respondió ──
             await cancelar_retoma(msg.telefono)
 
@@ -439,8 +443,10 @@ async def webhook_handler(request: Request):
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
             await proveedor.enviar_mensaje(msg.telefono, respuesta)
 
-            # ── Actualizar perfil en background ──
-            asyncio.create_task(_actualizar_perfil_cliente(msg.telefono, msg.texto, asesor))
+            # ── Detectar dispositivo en background (no bloquea) ──
+            dispositivo_detectado = detectar_dispositivo_en_texto(msg.texto)
+            if dispositivo_detectado:
+                asyncio.create_task(agregar_dispositivo_cliente(msg.telefono, dispositivo_detectado))
 
             # ── Alertas a Christian (en background, sin bloquear) ──
             asyncio.create_task(
