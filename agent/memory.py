@@ -16,10 +16,20 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./agentkit.db")
 
-if DATABASE_URL.startswith("postgresql://"):
+# Railway usa "postgres://" o "postgresql://"; asyncpg necesita "postgresql+asyncpg://"
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+_USANDO_SQLITE = DATABASE_URL.startswith("sqlite")
+
+# Pool de conexiones: más amplio en PostgreSQL, mínimo en SQLite
+_engine_kwargs: dict = {}
+if not _USANDO_SQLITE:
+    _engine_kwargs = {"pool_size": 5, "max_overflow": 10, "pool_pre_ping": True}
+
+engine = create_async_engine(DATABASE_URL, echo=False, **_engine_kwargs)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -141,13 +151,45 @@ async def agregar_servicio_cliente(telefono: str, servicio: str):
         await _agregar_a_lista(telefono, "servicios_json", entrada)
 
 
+async def _migrar_clientes_perfil():
+    """Agrega columnas nuevas a clientes_perfil si no existen."""
+    async with engine.begin() as conn:
+        for columna, definicion in [
+            ("nombre",           "VARCHAR(100)"),
+            ("dispositivos_json","TEXT DEFAULT '[]'"),
+            ("servicios_json",   "TEXT DEFAULT '[]'"),
+            ("ultima_visita",    "DATETIME"),
+            ("asesor_ultimo",    "VARCHAR(50) DEFAULT ''"),
+            ("notas",            "TEXT DEFAULT ''"),
+            ("created_at",       "DATETIME"),
+        ]:
+            try:
+                from sqlalchemy import text
+                await conn.execute(text(
+                    f"ALTER TABLE clientes_perfil ADD COLUMN {columna} {definicion}"
+                ))
+            except Exception:
+                pass  # columna ya existe
+
+
 async def inicializar_db():
     """Crea las tablas si no existen y aplica migraciones seguras."""
+    if _USANDO_SQLITE:
+        logger.warning(
+            "[BD] ⚠️  SQLite detectado — los datos se PIERDEN al reiniciar. "
+            "Configura DATABASE_URL con PostgreSQL en Railway para persistencia real."
+        )
+    else:
+        db_host = DATABASE_URL.split("@")[-1].split("/")[0] if "@" in DATABASE_URL else "?"
+        logger.info(f"[BD] ✅ PostgreSQL: host={db_host}")
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Migrar columnas nuevas en tablas existentes
+
     from agent.leads import _migrar_columnas
     await _migrar_columnas()
+    await _migrar_clientes_perfil()
+    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil")
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):
