@@ -375,8 +375,8 @@ def formatear_slots_para_claude(slots: list[str], fecha: date) -> str:
     return (
         f"══ DISPONIBILIDAD REAL — {fecha_str.upper()} ══\n"
         + "\n".join(bloques)
-        + "\nOfrece SOLO estos horarios. Cuando el cliente confirme uno, "
-        + "incluye el tag [[AGENDAR:...]] al final de tu respuesta.\n"
+        + "\nOfrece SOLO estos horarios. Pregunta: '¿Qué horario queda cómodo para agendar su cita? 😊' "
+        + "Cuando el cliente confirme uno, incluye el tag [[AGENDAR:...]] al final de tu respuesta.\n"
         + "════════════════════════════════════════════════════"
     )
 
@@ -415,8 +415,8 @@ def formatear_slots_multiples_para_claude(dias: list[tuple[date, list[str]]]) ->
     return (
         "══ DISPONIBILIDAD REAL ══\n"
         + "\n".join(partes)
-        + "\nOfrece SOLO estos horarios. Cuando el cliente confirme uno, "
-        + "incluye el tag [[AGENDAR:...]] al final de tu respuesta.\n"
+        + "\nOfrece SOLO estos horarios. Pregunta: '¿Qué horario queda cómodo para agendar su cita? 😊' "
+        + "Cuando el cliente confirme uno, incluye el tag [[AGENDAR:...]] al final de tu respuesta.\n"
         + "════════════════════════════════════════════════════"
     )
 

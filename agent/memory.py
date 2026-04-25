@@ -2,12 +2,15 @@
 # Generado por AgentKit
 
 import json
+import logging
 import os
 from datetime import datetime
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import String, Text, DateTime, select, update, Integer
 from dotenv import load_dotenv
+
+logger = logging.getLogger("agentkit")
 
 load_dotenv()
 
@@ -54,7 +57,16 @@ async def obtener_perfil(telefono: str) -> ClientePerfil | None:
         result = await session.execute(
             select(ClientePerfil).where(ClientePerfil.telefono == telefono)
         )
-        return result.scalar_one_or_none()
+        perfil = result.scalar_one_or_none()
+        if perfil is None:
+            logger.info(f"[MEMORIA] Perfil no encontrado para {telefono} → cliente nuevo")
+        else:
+            logger.info(
+                f"[MEMORIA] Cargando perfil {telefono} → "
+                f"nombre='{perfil.nombre or '?'}' "
+                f"asesor='{perfil.asesor_ultimo or '?'}'"
+            )
+        return perfil
 
 
 async def _upsert_perfil(telefono: str, **valores):
@@ -75,6 +87,7 @@ async def _upsert_perfil(telefono: str, **valores):
 
 async def guardar_nombre_cliente(telefono: str, nombre: str):
     """Guarda el nombre la primera vez (no sobreescribe si ya existe)."""
+    logger.info(f"[MEMORIA] Guardando nombre='{nombre}' para {telefono}")
     async with async_session() as session:
         result = await session.execute(
             select(ClientePerfil).where(ClientePerfil.telefono == telefono)
@@ -83,9 +96,13 @@ async def guardar_nombre_cliente(telefono: str, nombre: str):
         if perfil is None:
             session.add(ClientePerfil(telefono=telefono, nombre=nombre))
             await session.commit()
+            logger.info(f"[MEMORIA] Perfil creado con nombre='{nombre}' para {telefono}")
         elif not perfil.nombre:
             perfil.nombre = nombre
             await session.commit()
+            logger.info(f"[MEMORIA] Nombre actualizado → '{nombre}' para {telefono}")
+        else:
+            logger.info(f"[MEMORIA] Nombre ya existía ('{perfil.nombre}') — no se sobreescribe")
 
 
 async def actualizar_visita_cliente(telefono: str, asesor: str):

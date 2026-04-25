@@ -72,6 +72,27 @@ ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
 
+_DIAS_ES = {0: "lunes", 1: "martes", 2: "miércoles", 3: "jueves", 4: "viernes", 5: "sábado", 6: "domingo"}
+_MESES_ES = {
+    1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
+    7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre",
+}
+
+
+def _ctx_fecha_cdmx() -> str:
+    """Bloque de contexto con fecha y hora actual de CDMX para inyectar en cada respuesta."""
+    hoy = datetime.now(ZONA_CDMX)
+    man = hoy + timedelta(days=1)
+    pas = hoy + timedelta(days=2)
+    return (
+        f"══ FECHA Y HORA ACTUAL — CDMX ══\n"
+        f"Hoy: {_DIAS_ES[hoy.weekday()]} {hoy.day} de {_MESES_ES[hoy.month]} {hoy.year} · {hoy.strftime('%H:%M')}\n"
+        f"Mañana: {_DIAS_ES[man.weekday()]} {man.day} de {_MESES_ES[man.month]}\n"
+        f"Pasado mañana: {_DIAS_ES[pas.weekday()]} {pas.day} de {_MESES_ES[pas.month]}\n"
+        f"NUNCA le preguntes al cliente qué día o fecha es — ya la tienes.\n"
+        f"════════════════════════════════════════════════════"
+    )
+
 RESPUESTA_IMAGEN_FALLBACK = (
     "Recibí tu imagen \U0001f4f8 En cuanto un especialista la revise te contactamos. "
     "Mientras tanto, ¿puedes describirme qué le pasa a tu equipo?"
@@ -354,8 +375,10 @@ async def webhook_handler(request: Request):
                     await guardar_nombre_cliente(msg.telefono, nombre_detectado)
                     logger.info(f"Nombre detectado y guardado: {nombre_detectado} ({msg.telefono})")
 
-            # ── Inyectar teléfono para tag [[AGENDAR:...]] ──
-            partes_ctx = [contexto_cliente] if contexto_cliente else []
+            # ── Contexto base: fecha CDMX + perfil cliente + teléfono ──
+            partes_ctx: list[str] = [_ctx_fecha_cdmx()]
+            if contexto_cliente:
+                partes_ctx.append(contexto_cliente)
             partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
 
             # ── Disponibilidad real si menciona fecha con intención de visita ──

@@ -1,11 +1,14 @@
 # agent/leads.py — Seguimiento de leads y funnel de conversión
 # Generado por AgentKit
 
+import logging
 import random
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, DateTime, Integer, select, update, text
 from agent.memory import Base, async_session, engine
+
+logger = logging.getLogger("agentkit")
 
 
 ASESORES = ["Sofia", "Valentina", "Camila", "Diego", "Andres", "Rodrigo"]
@@ -59,17 +62,21 @@ async def obtener_o_asignar_asesor(telefono: str) -> str:
         lead = result.scalar_one_or_none()
 
         if lead is None:
-            return random.choice(ASESORES)
+            asesor = random.choice(ASESORES)
+            logger.info(f"[ASESOR] Cliente nuevo {telefono} → asignado: {asesor}")
+            return asesor
 
         asesor_actual = lead.asesor_asignado or ""
         ultimo = lead.ultimo_mensaje or datetime.utcnow()
         inactivo_72h = (datetime.utcnow() - ultimo) >= timedelta(hours=72)
 
         if asesor_actual and not inactivo_72h:
+            logger.info(f"[ASESOR] {telefono} → mantiene asesor: {asesor_actual}")
             return asesor_actual
 
         opciones = [a for a in ASESORES if a != asesor_actual] or ASESORES
         nuevo = random.choice(opciones)
+        logger.info(f"[ASESOR] {telefono} → inactivo 72h, cambio: {asesor_actual or '(sin asignar)'} → {nuevo}")
         await session.execute(
             update(Lead).where(Lead.telefono == telefono).values(asesor_asignado=nuevo)
         )
