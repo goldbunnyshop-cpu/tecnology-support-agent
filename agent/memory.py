@@ -16,13 +16,20 @@ load_dotenv()
 
 def _sqlite_url() -> str:
     """Usa /data/agentkit.db si el volumen está montado, si no ./agentkit.db."""
-    import pathlib
-    data_dir = pathlib.Path("/data")
-    if data_dir.exists() and data_dir.is_dir():
-        return "sqlite+aiosqlite:////data/agentkit.db"
-    return "sqlite+aiosqlite:///./agentkit.db"
+    data_dir = os.path.abspath("/data")
+    exists = os.path.exists(data_dir)
+    is_dir = os.path.isdir(data_dir)
+    print(f"[BD] _sqlite_url(): /data exists={exists} is_dir={is_dir}", flush=True)
+    if exists and is_dir:
+        path = f"sqlite+aiosqlite:////{data_dir}/agentkit.db"
+        print(f"[BD] _sqlite_url(): usando volumen persistente → {path}", flush=True)
+        return path
+    path = "sqlite+aiosqlite:///./agentkit.db"
+    print(f"[BD] _sqlite_url(): /data no disponible → usando {path}", flush=True)
+    return path
 
-DATABASE_URL = os.getenv("DATABASE_URL", _sqlite_url())
+_env_db_url = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = _env_db_url if _env_db_url else _sqlite_url()
 
 # Railway usa "postgres://" o "postgresql://"; asyncpg necesita "postgresql+asyncpg://"
 if DATABASE_URL.startswith("postgres://"):
@@ -194,10 +201,15 @@ async def _migrar_clientes_perfil():
 async def inicializar_db():
     """Crea las tablas si no existen y aplica migraciones seguras."""
     if _USANDO_SQLITE:
-        logger.warning(
-            "[BD] ⚠️  SQLite detectado — los datos se PIERDEN al reiniciar. "
-            "Configura DATABASE_URL con PostgreSQL en Railway para persistencia real."
-        )
+        ruta_sqlite = DATABASE_URL.replace("sqlite+aiosqlite://", "")
+        persistente = "/data/" in ruta_sqlite
+        if persistente:
+            logger.info(f"[BD] ✅ SQLite PERSISTENTE en volumen Railway: {ruta_sqlite}")
+        else:
+            logger.warning(
+                f"[BD] ⚠️  SQLite TEMPORAL ({ruta_sqlite}) — los datos se PIERDEN al reiniciar. "
+                "Monta un volumen en /data en Railway para persistencia."
+            )
     else:
         db_host = DATABASE_URL.split("@")[-1].split("/")[0] if "@" in DATABASE_URL else "?"
         logger.info(f"[BD] ✅ PostgreSQL: host={db_host}")
