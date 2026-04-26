@@ -49,7 +49,13 @@ TEXTO_MENU = (
     "*llamar:* [número] → Pide al cliente que llame\n"
     "*cita:* [número] → Indica que puede pasar sin cita\n"
     "*reanudar:* [número] → Reanuda conversación pausada\n\n"
-    "Ejemplo: listo: 5541576331 PS5"
+    "Ejemplo: listo: 5541576331 PS5\n\n"
+    "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    "📍 *Ubicación del taller*\n"
+    "Plazuela de la Fama 1, Col. La Fama\n"
+    "Tlalpan, CDMX, C.P. 14410\n"
+    "📞 55 9730 7793\n"
+    "🗺️ https://maps.app.goo.gl/XdCSu743LpyY6aAt7"
 )
 
 
