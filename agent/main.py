@@ -73,6 +73,16 @@ ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
 
+# Números internos — la pausa NO debe activarse si el destinatario es uno de estos
+_NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
+_NUMERO_CHRISTIAN = os.getenv("NUMERO_CHRISTIAN",  "5541576331")
+_NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
+
+
+def _es_numero_interno(telefono: str) -> bool:
+    """True si el teléfono pertenece a la empresa/equipo, no a un cliente."""
+    return any(telefono.endswith(n) or n.endswith(telefono) for n in _NUMEROS_INTERNOS)
+
 _DIAS_ES = {0: "lunes", 1: "martes", 2: "miércoles", 3: "jueves", 4: "viernes", 5: "sábado", 6: "domingo"}
 _MESES_ES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
@@ -326,10 +336,14 @@ async def webhook_handler(request: Request):
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
-            # ── Mensaje propio (Christian interviene) → pausar conversación ──
+            # ── Mensaje propio: el número de negocio envió a un cliente → pausar ──
+            # Solo pausa si el destinatario es un cliente real (no número interno)
             if msg.es_propio and not msg.es_grupo:
-                await pausar_conversacion(msg.telefono, horas=2)
-                logger.info(f"[PAUSA] Intervención detectada en {msg.telefono} — agente pausado 2h")
+                if not _es_numero_interno(msg.telefono):
+                    await pausar_conversacion(msg.telefono, horas=2)
+                    logger.info(f"[PAUSA] Intervención detectada en {msg.telefono} — agente pausado 2h")
+                else:
+                    logger.info(f"[PAUSA] Número interno {msg.telefono} — sin pausa")
                 continue
 
             if msg.es_propio:
