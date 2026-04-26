@@ -24,18 +24,18 @@ DURACION_MIN = 30
 DIAS_HABILES = {0, 1, 2, 3, 4, 5, 6}  # lunes a domingo
 
 MSG_FUERA_HORARIO = (
-    "Nuestro horario de atención es de lunes a viernes de 10:30 AM a 7:00 PM "
-    "y sábados y domingos de 11:30 AM a 6:30 PM. "
-    "¿En qué horario te queda mejor visitarnos? 😊"
+    "Nuestro horario de citas es de lunes a viernes de 10:30 AM a 8:30 PM "
+    "y sábados y domingos de 11:30 AM a 7:30 PM. "
+    "¿En qué horario le queda mejor visitarnos? 😊"
 )
 
 
 def _horario_dia(weekday: int) -> tuple[time, time]:
     """Retorna (hora_inicio, hora_fin) según el día de la semana."""
     if weekday <= 4:  # lunes(0)–viernes(4)
-        return time(10, 30), time(19, 0)   # 10:30 AM – 7:00 PM (último slot 18:30)
+        return time(10, 30), time(20, 30)  # 10:30 AM – 8:30 PM (último slot 20:00)
     else:              # sábado(5) y domingo(6)
-        return time(11, 30), time(18, 30)  # 11:30 AM – 6:30 PM (último slot 18:00)
+        return time(11, 30), time(19, 30)  # 11:30 AM – 7:30 PM (último slot 19:00)
 
 DIAS_ES = {
     0: "lunes", 1: "martes", 2: "miércoles", 3: "jueves",

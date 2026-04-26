@@ -17,6 +17,7 @@ from agent.memory import (
     inicializar_db, guardar_mensaje, obtener_historial,
     obtener_perfil, guardar_nombre_cliente,
     actualizar_visita_cliente, agregar_dispositivo_cliente,
+    pausar_conversacion, esta_pausada,
 )
 from agent.profile import (
     extraer_nombre_de_mensaje,
@@ -325,6 +326,12 @@ async def webhook_handler(request: Request):
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
+            # ── Mensaje propio (Christian interviene) → pausar conversación ──
+            if msg.es_propio and not msg.es_grupo:
+                await pausar_conversacion(msg.telefono, horas=2)
+                logger.info(f"[PAUSA] Intervención detectada en {msg.telefono} — agente pausado 2h")
+                continue
+
             if msg.es_propio:
                 continue
 
@@ -356,6 +363,11 @@ async def webhook_handler(request: Request):
             # ── Blacklist ──
             if msg.telefono in BLACKLIST:
                 logger.info(f"Blacklist: {msg.telefono}")
+                continue
+
+            # ── Modo pausa (intervención humana activa) ──
+            if await esta_pausada(msg.telefono):
+                logger.info(f"[PAUSA] {msg.telefono} — agente pausado, mensaje ignorado")
                 continue
 
             # ── Obtener asesor ANTES de actualizar ultimo_mensaje ──
