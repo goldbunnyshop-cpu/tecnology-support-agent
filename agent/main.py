@@ -78,6 +78,9 @@ _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
 _NUMERO_CHRISTIAN = os.getenv("NUMERO_CHRISTIAN",  "5541576331")
 _NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
 
+# Desactivar modo pausa globalmente hasta que esté bien configurado
+PAUSA_ACTIVA = False
+
 
 def _es_numero_interno(telefono: str) -> bool:
     """True si el teléfono pertenece a la empresa/equipo, no a un cliente."""
@@ -337,13 +340,10 @@ async def webhook_handler(request: Request):
 
         for msg in mensajes:
             # ── Mensaje propio: el número de negocio envió a un cliente → pausar ──
-            # Solo pausa si el destinatario es un cliente real (no número interno)
             if msg.es_propio and not msg.es_grupo:
-                if not _es_numero_interno(msg.telefono):
+                if PAUSA_ACTIVA and not _es_numero_interno(msg.telefono):
                     await pausar_conversacion(msg.telefono, horas=2)
                     logger.info(f"[PAUSA] Intervención detectada en {msg.telefono} — agente pausado 2h")
-                else:
-                    logger.info(f"[PAUSA] Número interno {msg.telefono} — sin pausa")
                 continue
 
             if msg.es_propio:
@@ -380,7 +380,7 @@ async def webhook_handler(request: Request):
                 continue
 
             # ── Modo pausa (intervención humana activa) ──
-            if await esta_pausada(msg.telefono):
+            if PAUSA_ACTIVA and await esta_pausada(msg.telefono):
                 logger.info(f"[PAUSA] {msg.telefono} — agente pausado, mensaje ignorado")
                 continue
 
