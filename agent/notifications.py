@@ -37,7 +37,7 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
-COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar", "clabe", "pago", "orden", "estatus", "consultar")
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar", "clabe", "pago", "orden", "estatus", "consultar", "marcar seguimiento")
 
 TEXTO_MENU = (
     "🛠️ *Comandos — Taller Interno TS*\n\n"
@@ -58,7 +58,12 @@ TEXTO_MENU = (
     "*estatus:* [folio] [recibido|proceso|listo|entregado]\n"
     "   _Ej: estatus: 45 listo_\n"
     "*consultar:* [folio] → Datos completos de una orden\n"
-    "   _Ej: consultar: 45_"
+    "   _Ej: consultar: 45_\n\n"
+    "*── Seguimiento ──*\n"
+    "*reporte seguimiento* → Lista completa con todos los clientes\n"
+    "*pendientes seguimiento* → Solo los que faltan contactar\n"
+    "*marcar seguimiento:* [número] → Marca como atendido manualmente\n"
+    "   _Ej: marcar seguimiento: 5541576331_"
 )
 
 
@@ -365,10 +370,22 @@ async def procesar_comando_grupo(
 
     logger.info(f"[GRUPO CMD] Remitente verificado como Ulises. Texto: '{texto_cmd[:80]}'")
 
-    # ── menu (sin payload) ──
-    if texto_cmd.strip().lower() == "menu":
+    texto_lower = texto_cmd.strip().lower()
+
+    # ── menu ──
+    if texto_lower == "menu":
         await proveedor.enviar_mensaje(chat_id_raw, TEXTO_MENU)
         logger.info("[GRUPO CMD] Menú enviado al grupo")
+        return True
+
+    # ── reporte seguimiento ──
+    if texto_lower == "reporte seguimiento":
+        await _cmd_reporte_seguimiento(chat_id_raw, proveedor)
+        return True
+
+    # ── pendientes seguimiento ──
+    if texto_lower == "pendientes seguimiento":
+        await _cmd_pendientes_seguimiento(chat_id_raw, proveedor)
         return True
 
     resultado = parsear_comando(texto_cmd)
@@ -661,6 +678,22 @@ async def procesar_comando_grupo(
             logger.error(f"[CRM] Error actualizando estatus: {e}")
             await _responder_grupo(f"❌ Error: {e}")
 
+    # ── marcar seguimiento ──
+    elif cmd == "marcar seguimiento":
+        identificador = payload.strip()
+        if not identificador:
+            await _responder_grupo("⚠️ Formato: marcar seguimiento: NÚMERO  — Ej: marcar seguimiento: 5541576331")
+            return True
+        try:
+            from agent.leads import marcar_seguimiento_manual
+            tel = await marcar_seguimiento_manual(identificador)
+            if tel:
+                await _responder_grupo(f"✅ Seguimiento marcado como atendido: {tel}")
+            else:
+                await _responder_grupo(f"❌ No se encontró cliente con '{identificador}'")
+        except Exception as e:
+            await _responder_grupo(f"❌ Error: {e}")
+
     # ── consultar (CRM) ──
     elif cmd == "consultar":
         folio_c = payload.strip().split()[0] if payload.strip() else ""
@@ -692,6 +725,124 @@ async def procesar_comando_grupo(
             await _responder_grupo(f"❌ Error: {e}")
 
     return True
+
+
+# ──────────────────────────────────────────────
+# Reportes de seguimiento (comandos internos)
+# ──────────────────────────────────────────────
+
+def _icono_prioridad(p: str) -> str:
+    return {"urgente": "🔴", "medio": "🟡", "bajo": "🟢"}.get(p, "⚪")
+
+
+def _fmt_fecha(dt) -> str:
+    if not dt:
+        return "—"
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import timezone
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cdmx = dt.astimezone(ZoneInfo("America/Mexico_City"))
+        return cdmx.strftime("%d/%m %H:%M")
+    except Exception:
+        return str(dt)[:10]
+
+
+async def _cmd_reporte_seguimiento(chat_id: str, proveedor):
+    """Genera reporte completo de todos los clientes con su estado de seguimiento."""
+    try:
+        from agent.leads import obtener_todos_los_leads_detalle
+        from agent.crm import obtener_mapa_ordenes_por_telefono
+        import re as _re
+
+        leads = await obtener_todos_los_leads_detalle()
+        if not leads:
+            await proveedor.enviar_mensaje(chat_id, "No hay clientes registrados aún.")
+            return
+
+        # Cargar órdenes de Sheets en un solo request
+        try:
+            mapa_ordenes = await obtener_mapa_ordenes_por_telefono()
+        except Exception:
+            mapa_ordenes = {}
+
+        bloques = {"urgente": [], "medio": [], "bajo": []}
+        for lead in leads:
+            tel_norm = _re.sub(r"\D", "", lead.telefono)
+            ordenes  = mapa_ordenes.get(tel_norm, [])
+            tiene_orden = bool(ordenes)
+            orden_txt = f"Orden #{ordenes[0]['folio']} ({ordenes[0]['estatus']})" if tiene_orden else "Sin orden"
+            seg_txt = "✅ Contactado" if lead.seguimiento_realizado else "⏳ Pendiente"
+            ico = _icono_prioridad(lead.prioridad)
+            linea = (
+                f"{ico} {lead.telefono} · {lead.estado} · {orden_txt} · "
+                f"últ: {_fmt_fecha(lead.ultimo_mensaje)} · {seg_txt}"
+            )
+            bloques.setdefault(lead.prioridad, []).append(linea)
+
+        total = len(leads)
+        pendientes = sum(1 for l in leads if not l.seguimiento_realizado and l.estado not in ("perdido", "convertido"))
+
+        partes = [f"📊 *Reporte Seguimiento* — {total} clientes · {pendientes} pendientes\n"]
+        for prioridad, items in [("urgente", bloques["urgente"]), ("medio", bloques["medio"]), ("bajo", bloques["bajo"])]:
+            if items:
+                partes.append(f"\n{_icono_prioridad(prioridad)} *{prioridad.upper()}* ({len(items)})")
+                partes.extend(items[:15])  # max 15 por bloque para no saturar
+                if len(items) > 15:
+                    partes.append(f"  ... y {len(items)-15} más")
+
+        msg = "\n".join(partes)
+        # WhatsApp tiene límite de ~4096 chars; truncar si es necesario
+        if len(msg) > 3800:
+            msg = msg[:3750] + "\n\n_(lista truncada — hay más clientes)_"
+
+        await proveedor.enviar_mensaje(chat_id, msg)
+        logger.info(f"[GRUPO CMD] Reporte seguimiento enviado — {total} clientes")
+
+    except Exception as e:
+        logger.error(f"[GRUPO CMD] Error en reporte seguimiento: {e}")
+        await proveedor.enviar_mensaje(chat_id, f"❌ Error generando reporte: {e}")
+
+
+async def _cmd_pendientes_seguimiento(chat_id: str, proveedor):
+    """Lista solo los clientes que aún necesitan seguimiento."""
+    try:
+        from agent.leads import obtener_pendientes_seguimiento
+        from agent.crm import obtener_mapa_ordenes_por_telefono
+        import re as _re
+
+        pendientes = await obtener_pendientes_seguimiento()
+        if not pendientes:
+            await proveedor.enviar_mensaje(chat_id, "✅ No hay clientes pendientes de seguimiento.")
+            return
+
+        try:
+            mapa_ordenes = await obtener_mapa_ordenes_por_telefono()
+        except Exception:
+            mapa_ordenes = {}
+
+        lineas = [f"⏳ *Pendientes de seguimiento* — {len(pendientes)} clientes\n"]
+        for lead in pendientes:
+            tel_norm = _re.sub(r"\D", "", lead.telefono)
+            ordenes  = mapa_ordenes.get(tel_norm, [])
+            orden_txt = f"#{ordenes[0]['folio']}" if ordenes else "sin orden"
+            ico = _icono_prioridad(lead.prioridad)
+            seg_n = lead.seguimientos_enviados
+            lineas.append(
+                f"{ico} {lead.telefono} · {orden_txt} · "
+                f"seg {seg_n}/4 · últ: {_fmt_fecha(lead.ultimo_mensaje)}"
+            )
+
+        msg = "\n".join(lineas[:50])  # máx 50 resultados
+        if len(pendientes) > 50:
+            msg += f"\n... y {len(pendientes)-50} más"
+
+        await proveedor.enviar_mensaje(chat_id, msg)
+
+    except Exception as e:
+        logger.error(f"[GRUPO CMD] Error en pendientes seguimiento: {e}")
+        await proveedor.enviar_mensaje(chat_id, f"❌ Error: {e}")
 
 
 # ──────────────────────────────────────────────

@@ -45,14 +45,14 @@ async def generar_mensaje_seguimiento(
     historial: list[dict],
     numero_seguimiento: int,
     asesor: str = "Sofia",
-) -> str:
+) -> tuple[str, str]:
     """
-    Genera un mensaje de seguimiento personalizado según el historial completo
-    de la conversación. Analiza el contexto antes de redactar.
+    Genera un mensaje de seguimiento personalizado.
+    Retorna (mensaje, prioridad) donde prioridad es "urgente"|"medio"|"bajo".
     """
     if not historial:
         fallback = _FALLBACK[min(numero_seguimiento, len(_FALLBACK) - 1)]
-        return f"{fallback}\n\n{asesor} — Tecnology Support"
+        return f"{fallback}\n\n{asesor} — Tecnology Support", "medio"
 
     fragmento = "\n".join(
         f"{'Agente' if m['role'] == 'assistant' else 'Cliente'}: {m['content']}"
@@ -64,54 +64,65 @@ async def generar_mensaje_seguimiento(
 
     prompt = f"""Eres {asesor}, asesor de Tecnology Support, un taller de reparación de electrónicos en CDMX.
 
-Un cliente dejó de responder. Lee el historial completo y escribe UN mensaje de seguimiento personalizado.
+Un cliente dejó de responder. Lee el historial y produce la respuesta EN ESTE FORMATO EXACTO:
+
+PRIORIDAD: [urgente|medio|bajo]
+MENSAJE:
+[el mensaje aquí]
+
+Criterios de prioridad:
+- urgente: preguntó precio, dijo que iba a ir, o mostró clara intención de reparación
+- medio: conversación activa sobre un dispositivo específico
+- bajo: solo preguntas generales sin dispositivo ni precio mencionado
 
 HISTORIAL:
 {fragmento}
 
 SEGUIMIENTO {numero_seguimiento + 1} DE 4. {nota_ultimo}
 
-ANTES DE ESCRIBIR, identifica mentalmente:
-- Nombre del cliente (si lo mencionó)
-- Dispositivo o equipo que mencionó
-- En qué punto quedó: ¿preguntó precio?, ¿dijo que iba a ir?, ¿solo pidió info?
-- Qué duda o acción quedó pendiente
+Escenarios para el mensaje:
+A — Preguntó precio → "Hola [nombre], ¿te quedó alguna duda sobre el precio del [servicio]? 😊"
+B — Iba a venir → "Hola [nombre], ¿pudiste venir a dejarnos tu [dispositivo]? Si necesitas reagendar, con gusto."
+C — Solo pidió info → "Hola [nombre], vi que preguntaste sobre [servicio/dispositivo]. ¿Aún lo necesitas?"
+D — Sin contexto → "Hola [nombre], hace un rato nos escribiste. ¿Pudimos ayudarte o tienes alguna duda? 😊"
 
-ELIGE el escenario que aplica y escribe el mensaje:
-
-Escenario A — Preguntó precio y no respondió:
-→ "Hola [nombre], quería saber si te quedó alguna duda sobre el precio del [servicio/dispositivo]. ¿Lo pudiste checar? 😊"
-
-Escenario B — Dijo que iba a ir y no vino:
-→ "Hola [nombre], ¿pudiste venir a dejarnos tu [dispositivo]? Si necesitas reagendar, con gusto te ayudo."
-
-Escenario C — Pidió información y desapareció:
-→ "Hola [nombre], vi que preguntaste sobre [servicio/dispositivo]. ¿Pudiste resolverlo o todavía lo necesitas?"
-
-Escenario D — Sin contexto claro:
-→ "Hola [nombre], hace un rato nos escribiste. ¿Pudimos ayudarte o tienes alguna duda pendiente? 😊"
-
-REGLAS:
-- Usa el nombre real del cliente si lo sabes; si no, no pongas placeholder
-- Menciona el dispositivo/servicio específico de la conversación
-- Máximo 2-3 oraciones. Tono natural, como un mensaje de WhatsApp real
-- Sin asteriscos, sin frases corporativas, sin "estimado cliente"
+Reglas del mensaje:
+- Usa nombre real si lo sabes
+- Menciona el dispositivo/servicio específico
+- Máximo 2-3 oraciones, tono natural de WhatsApp
+- Sin asteriscos, sin "estimado cliente"
 - Máximo 1 emoji
-- Firma al final en línea separada: "{asesor} — Tecnology Support"
-
-Escribe SOLO el mensaje final."""
+- Firma: "{asesor} — Tecnology Support" en línea separada"""
 
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=200,
+            max_tokens=250,
             messages=[{"role": "user", "content": prompt}],
         )
-        return response.content[0].text.strip()
+        texto = response.content[0].text.strip()
+
+        # Parsear prioridad y mensaje del formato estructurado
+        prioridad = "medio"
+        mensaje   = texto
+        lineas    = texto.splitlines()
+
+        if lineas and lineas[0].upper().startswith("PRIORIDAD:"):
+            p = lineas[0].split(":", 1)[1].strip().lower()
+            if p in ("urgente", "medio", "bajo"):
+                prioridad = p
+            # Quitar la línea PRIORIDAD: y la línea MENSAJE: si existe
+            resto = "\n".join(lineas[1:]).strip()
+            if resto.upper().startswith("MENSAJE:"):
+                resto = resto.split(":", 1)[1].strip()
+            mensaje = resto
+
+        return mensaje, prioridad
+
     except Exception as e:
         logger.error(f"Error generando mensaje de seguimiento: {e}")
         fallback = _FALLBACK[min(numero_seguimiento, len(_FALLBACK) - 1)]
-        return f"{fallback}\n\n{asesor} — Tecnology Support"
+        return f"{fallback}\n\n{asesor} — Tecnology Support", "medio"
 
 
 async def ejecutar_seguimientos():
@@ -135,14 +146,14 @@ async def ejecutar_seguimientos():
         try:
             historial = await obtener_historial(lead.telefono, limite=30)
             asesor = lead.asesor_asignado or "Sofia"
-            mensaje = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados, asesor)
+            mensaje, prioridad = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados, asesor)
             enviado = await proveedor.enviar_mensaje(lead.telefono, mensaje)
             if enviado:
                 await guardar_mensaje(lead.telefono, "assistant", mensaje)
-                await registrar_seguimiento_enviado(lead.telefono)
+                await registrar_seguimiento_enviado(lead.telefono, prioridad)
                 logger.info(
                     f"Seg {lead.seguimientos_enviados + 1}/{MAX_SEGUIMIENTOS} "
-                    f"[{asesor}] → {lead.telefono}: {mensaje[:60]}"
+                    f"[{asesor}] [{prioridad}] → {lead.telefono}: {mensaje[:60]}"
                 )
             else:
                 logger.warning(f"No se pudo enviar seguimiento a {lead.telefono}")

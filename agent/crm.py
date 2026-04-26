@@ -333,3 +333,38 @@ async def consultar_orden(folio: str) -> dict | None:
 
 async def obtener_ordenes_facturables() -> list[dict]:
     return await asyncio.to_thread(_ordenes_facturables_sync)
+
+
+def _mapa_ordenes_por_telefono_sync() -> dict[str, list[dict]]:
+    """
+    Carga TODA la hoja ORDENES una sola vez y devuelve un dict
+    {telefono_normalizado: [{"folio":..., "estatus":...}, ...]}
+    """
+    if not SHEET_ID:
+        return {}
+    try:
+        svc = _sheets_svc()
+        res = svc.spreadsheets().values().get(
+            spreadsheetId=SHEET_ID, range="ORDENES!A:O"
+        ).execute()
+        values = res.get("values", [])
+        mapa: dict[str, list] = {}
+        for row in values[1:]:  # saltar header
+            tel = re.sub(r"\D", "", _safe(row, C_TELEFONO))
+            if not tel:
+                continue
+            entrada = {
+                "folio":   _safe(row, C_FOLIO),
+                "estatus": _safe(row, C_ESTATUS),
+                "equipo":  _safe(row, C_EQUIPO),
+            }
+            mapa.setdefault(tel, []).append(entrada)
+        return mapa
+    except Exception as e:
+        logger.warning(f"[CRM] Error cargando mapa de órdenes: {e}")
+        return {}
+
+
+async def obtener_mapa_ordenes_por_telefono() -> dict[str, list[dict]]:
+    """Dict {tel: [órdenes]} cargado en un solo request a Sheets."""
+    return await asyncio.to_thread(_mapa_ordenes_por_telefono_sync)

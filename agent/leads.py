@@ -3,6 +3,7 @@
 
 import logging
 import random
+import re
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy import String, DateTime, Integer, select, update, text
@@ -23,6 +24,8 @@ class Lead(Base):
     ultimo_mensaje: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     seguimientos_enviados: Mapped[int] = mapped_column(Integer, default=0)
     seguimiento_enviado_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    seguimiento_realizado: Mapped[bool] = mapped_column(default=False)
+    prioridad: Mapped[str] = mapped_column(String(20), default="medio")
     estado: Mapped[str] = mapped_column(String(30), default="activo")
     fuente: Mapped[str] = mapped_column(String(50), default="desconocido")
     fuente_detalle: Mapped[str] = mapped_column(String(200), default="")
@@ -43,7 +46,9 @@ async def _migrar_columnas():
             ("retoma_en",               "DATETIME"),
             ("retoma_desde",            "DATETIME"),
             ("presupuesto_enviado_en",  "DATETIME"),
-            ("seguimiento_enviado_en",  "DATETIME"),
+            ("seguimiento_enviado_en",   "DATETIME"),
+            ("seguimiento_realizado",    "BOOLEAN DEFAULT 0"),
+            ("prioridad",               "VARCHAR(20) DEFAULT 'medio'"),
         ]:
             try:
                 await conn.execute(text(f"ALTER TABLE leads ADD COLUMN {columna} {definicion}"))
@@ -102,6 +107,7 @@ async def crear_o_actualizar_lead(
                 lead.estado = "activo"
                 lead.seguimientos_enviados = 0
                 lead.seguimiento_enviado_en = None
+                lead.seguimiento_realizado = False  # el cliente respondió, puede recibir seguimiento nuevo
             if fuente != "desconocido" and lead.fuente == "desconocido":
                 lead.fuente = fuente
                 lead.fuente_detalle = fuente_detalle
@@ -181,6 +187,7 @@ async def obtener_leads_para_seguimiento() -> list[Lead]:
         result = await session.execute(
             select(Lead).where(
                 Lead.seguimientos_enviados < MAX_SEGUIMIENTOS,
+                Lead.seguimiento_realizado == False,   # noqa: E712 — SQLAlchemy requiere ==
                 Lead.estado != "perdido",
                 Lead.estado != "convertido",
             )
@@ -219,16 +226,35 @@ async def obtener_leads_por_fuente(fuente: str) -> list[Lead]:
         return list(result.scalars().all())
 
 
-async def registrar_seguimiento_enviado(telefono: str):
-    """Incrementa el contador de seguimientos y registra el timestamp."""
+async def registrar_seguimiento_enviado(telefono: str, prioridad: str = "medio"):
+    """Incrementa el contador, registra timestamp y marca como contactado."""
     async with async_session() as session:
         result = await session.execute(select(Lead).where(Lead.telefono == telefono))
         lead = result.scalar_one_or_none()
         if lead:
             lead.seguimientos_enviados += 1
             lead.seguimiento_enviado_en = datetime.utcnow()
+            lead.seguimiento_realizado  = True
+            lead.prioridad              = prioridad
             lead.estado = "perdido" if lead.seguimientos_enviados >= MAX_SEGUIMIENTOS else "en_seguimiento"
         await session.commit()
+
+
+async def marcar_seguimiento_manual(identificador: str):
+    """
+    Marca como atendido por folio (si contiene letras) o por teléfono.
+    Usado desde el grupo interno con 'marcar seguimiento: X'.
+    """
+    async with async_session() as session:
+        # Intentar por teléfono primero
+        norm = re.sub(r"\D", "", identificador)
+        result = await session.execute(select(Lead).where(Lead.telefono.contains(norm)))
+        lead = result.scalar_one_or_none()
+        if lead:
+            lead.seguimiento_realizado = True
+            await session.commit()
+            return lead.telefono
+        return None
 
 
 async def marcar_como_convertido(telefono: str):
@@ -270,6 +296,34 @@ async def obtener_leads_sin_respuesta_presupuesto(horas: int = 24) -> list[Lead]
                 Lead.presupuesto_enviado_en <= limite,
                 Lead.ultimo_mensaje <= limite,  # no han respondido
             )
+        )
+        return list(result.scalars().all())
+
+
+async def obtener_pendientes_seguimiento() -> list[Lead]:
+    """Leads que AÚN necesitan seguimiento (seguimiento_realizado=False, no perdido/convertido)."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(Lead).where(
+                Lead.seguimiento_realizado == False,   # noqa: E712
+                Lead.estado != "perdido",
+                Lead.estado != "convertido",
+            ).order_by(Lead.ultimo_mensaje.desc())
+        )
+        return list(result.scalars().all())
+
+
+async def obtener_todos_los_leads_detalle() -> list[Lead]:
+    """Todos los leads ordenados por prioridad y último mensaje."""
+    from sqlalchemy import case, desc
+    orden_prioridad = case(
+        {"urgente": 1, "medio": 2, "bajo": 3},
+        value=Lead.prioridad,
+        else_=2,
+    )
+    async with async_session() as session:
+        result = await session.execute(
+            select(Lead).order_by(orden_prioridad, desc(Lead.ultimo_mensaje))
         )
         return list(result.scalars().all())
 
