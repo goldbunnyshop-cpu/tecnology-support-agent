@@ -240,6 +240,81 @@ async def ejecutar_recordatorios_cita():
             logger.warning(f"[RECORDATORIO] ❌ No se pudo enviar a {phone_fmt}")
 
 
+async def ejecutar_alerta_factura():
+    """
+    Últimos 3 días del mes: alerta al grupo interno sobre órdenes con pago
+    electrónico que aún no tienen factura.
+    """
+    from zoneinfo import ZoneInfo
+    import calendar
+    ZONA_MX = ZoneInfo("America/Mexico_City")
+    hoy = datetime.now(ZONA_MX)
+    ultimo_dia = calendar.monthrange(hoy.year, hoy.month)[1]
+    if hoy.day < ultimo_dia - 2:
+        return  # No es los últimos 3 días del mes
+
+    try:
+        from agent.crm import obtener_ordenes_facturables
+        from agent.providers import obtener_proveedor
+        from agent.notifications import GRUPO_INTERNO
+
+        ordenes = await obtener_ordenes_facturables()
+        if not ordenes:
+            return
+
+        proveedor = obtener_proveedor()
+
+        # Buscar el chat_id del grupo interno
+        import httpx, os
+        token = os.getenv("WHAPI_TOKEN", "")
+        grupo_id = None
+        async with httpx.AsyncClient(timeout=10) as http:
+            r = await http.get(
+                "https://gate.whapi.cloud/chats",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"count": 50},
+            )
+            if r.status_code == 200:
+                for chat in r.json().get("chats", []):
+                    nombre = chat.get("name", "")
+                    if GRUPO_INTERNO.lower() in nombre.lower():
+                        grupo_id = chat.get("id")
+                        break
+
+        if not grupo_id:
+            logger.warning("[CRM] No se encontró el grupo interno para alerta de factura")
+            return
+
+        lineas = "\n".join(
+            f"  #{o['folio']} — {o['cliente']} — ${o['total']} ({o['pago']})"
+            for o in ordenes[:20]
+        )
+        total_monto = sum(float(o["total"] or 0) for o in ordenes)
+        msg = (
+            f"🧾 *ALERTA — Generar factura al público en general*\n"
+            f"Quedan {ultimo_dia - hoy.day} días para fin de mes.\n\n"
+            f"Órdenes con pago electrónico sin factura ({len(ordenes)}):\n"
+            f"{lineas}\n\n"
+            f"💰 Total a facturar: ${total_monto:,.2f} MXN\n"
+            f"Usa el comando *consultar: FOLIO* para ver detalles de cada orden."
+        )
+        await proveedor.enviar_mensaje(grupo_id, msg)
+        logger.info(f"[CRM] Alerta de factura enviada — {len(ordenes)} órdenes pendientes")
+
+    except Exception as e:
+        logger.error(f"[CRM] Error en alerta de factura: {e}")
+
+
+async def _loop_alerta_factura():
+    """Verifica una vez al día si corresponde enviar alerta de factura."""
+    while True:
+        await asyncio.sleep(86400)  # 24 horas
+        try:
+            await ejecutar_alerta_factura()
+        except Exception as e:
+            logger.error(f"Error en loop alerta factura: {e}")
+
+
 async def iniciar_scheduler():
     """
     Scheduler principal que corre en segundo plano:
@@ -247,13 +322,15 @@ async def iniciar_scheduler():
     - Retomas nocturnas: cada 10 minutos
     - Recordatorios de cita: cada 10 minutos
     - Alertas presupuesto 24h: cada hora
+    - Alerta factura fin de mes: diaria
     - Reporte Excel: cada domingo a las 13:00 CDMX
     """
-    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, recordatorios/10min, reporte/domingo 13h")
+    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, recordatorios/10min, factura/diario, reporte/domingo 13h")
 
     asyncio.create_task(iniciar_scheduler_reporte_semanal())
     asyncio.create_task(_loop_retomas())
     asyncio.create_task(_loop_recordatorios())
+    asyncio.create_task(_loop_alerta_factura())
 
     while True:
         await asyncio.sleep(INTERVALO_SEGUIMIENTO)

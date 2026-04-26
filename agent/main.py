@@ -226,6 +226,8 @@ async def _analizar_y_responder_video(msg, historial: list, asesor: str) -> str:
 async def lifespan(app: FastAPI):
     from agent.leads import Lead  # noqa: F401
     await inicializar_db()
+    from agent.crm import inicializar_crm
+    await inicializar_crm()
     logger.info(f"Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
     scheduler_task = asyncio.create_task(iniciar_scheduler())
     yield
