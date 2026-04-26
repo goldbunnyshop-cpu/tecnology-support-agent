@@ -258,6 +258,10 @@ def _slots_sync(fecha: date) -> list[str]:
             except Exception:
                 pass
 
+    # Si la fecha es hoy, excluir slots que ya pasaron (+ 30 min de margen mínimo)
+    hoy_cdmx = datetime.now(ZONA).date()
+    ahora_limite = datetime.now(ZONA) + timedelta(minutes=30) if fecha == hoy_cdmx else None
+
     libres = [
         slot.strftime("%H:%M")
         for slot in todos
@@ -265,10 +269,12 @@ def _slots_sync(fecha: date) -> list[str]:
             (slot + timedelta(minutes=DURACION_MIN)) <= oi or slot >= of
             for oi, of in ocupados
         )
+        and (ahora_limite is None or slot >= ahora_limite)
     ]
     logger.info(
         f"[CALENDAR] Eventos ocupados: {len(ocupados)} | "
         f"Slots libres: {len(libres)} | {', '.join(libres)}"
+        + (f" | filtrando pasados (límite {ahora_limite.strftime('%H:%M')})" if ahora_limite else "")
     )
     return libres
 
