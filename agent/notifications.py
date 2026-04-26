@@ -37,7 +37,7 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
-COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar")
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar", "clabe", "pago")
 
 TEXTO_MENU = (
     "🛠️ *Comandos — Taller Interno TS*\n\n"
@@ -45,17 +45,13 @@ TEXTO_MENU = (
     "*demora:* [número] [tiempo] [equipo] → Necesita más tiempo\n"
     "*diagnostico:* [número] [equipo] [descripción] → Informa diagnóstico\n"
     "*presupuesto:* [número] [equipo] [precio] → Envía presupuesto\n"
+    "*clabe:* [número] → Envía CLABE de pago al cliente\n"
+    "*pago:* [número] [monto] → Envía instrucciones de pago\n"
     "*password:* [número] → Solicita contraseña al cliente\n"
     "*llamar:* [número] → Pide al cliente que llame\n"
     "*cita:* [número] → Indica que puede pasar sin cita\n"
     "*reanudar:* [número] → Reanuda conversación pausada\n\n"
-    "Ejemplo: listo: 5541576331 PS5\n\n"
-    "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    "📍 *Ubicación del taller*\n"
-    "Plazuela de la Fama 1, Col. La Fama\n"
-    "Tlalpan, CDMX, C.P. 14410\n"
-    "📞 55 9730 7793\n"
-    "🗺️ https://maps.app.goo.gl/XdCSu743LpyY6aAt7"
+    "Ejemplo: listo: 5541576331 PS5"
 )
 
 
@@ -196,9 +192,24 @@ def parsear_diagnostico(payload: str) -> tuple[str, str, str] | None:
 
 
 def parsear_phone_simple(payload: str) -> str | None:
-    """password/llamar: PHONE → phone (solo el número)"""
+    """password/llamar/clabe: PHONE → phone (solo el número)"""
     phone = re.sub(r"\D", "", payload.strip().split()[0]) if payload.strip() else ""
     return phone if phone else None
+
+
+def parsear_pago(payload: str) -> tuple[str, str] | None:
+    """pago: PHONE MONTO → (phone, monto)"""
+    phone, monto = _extraer_phone_y_resto(payload)
+    if not phone or not monto:
+        return None
+    monto = re.sub(r"[$,\s]", "", monto).strip()
+    return (phone, monto) if monto else None
+
+
+def _formatear_clabe(clabe_raw: str) -> str:
+    """Formatea una CLABE en grupos de 4 dígitos separados por espacios."""
+    digitos = re.sub(r"\D", "", clabe_raw)
+    return " ".join(digitos[i:i+4] for i in range(0, len(digitos), 4))
 
 
 # ──────────────────────────────────────────────
@@ -449,6 +460,54 @@ async def procesar_comando_grupo(
         )
         ok = await _notificar_cliente(phone, msg_cliente)
         await _responder_grupo(f"{'✅' if ok else '❌'} Invitación sin cita enviada a {phone}")
+
+    # ── clabe ──
+    elif cmd == "clabe":
+        phone = parsear_phone_simple(payload)
+        if not phone:
+            await _responder_grupo("⚠️ Formato: clabe: NÚMERO")
+            return True
+        phone_fmt, advertencia = _formatear_numero_destino(phone)
+        if advertencia:
+            await _responder_grupo(advertencia)
+            return True
+        clabe_numero = "4152313316221613"
+        msg1 = (
+            "Para realizar tu pago por transferencia:\n"
+            "🏦 Banco: Hey Banco\n"
+            "👤 Razón Social: Gold Bunny TS"
+        )
+        msg2 = _formatear_clabe(clabe_numero)
+        ok1 = await proveedor.enviar_mensaje(phone_fmt, msg1)
+        if ok1:
+            await guardar_mensaje_fn(phone_fmt, "assistant", msg1)
+        ok2 = await proveedor.enviar_mensaje(phone_fmt, msg2)
+        if ok2:
+            await guardar_mensaje_fn(phone_fmt, "assistant", msg2)
+        ok = ok1 and ok2
+        await _responder_grupo(f"{'✅' if ok else '❌'} CLABE enviada a {phone_fmt}")
+
+    # ── pago ──
+    elif cmd == "pago":
+        parsed = parsear_pago(payload)
+        if not parsed:
+            await _responder_grupo("⚠️ Formato: pago: NÚMERO MONTO")
+            return True
+        phone, monto = parsed
+        phone_fmt, advertencia = _formatear_numero_destino(phone)
+        if advertencia:
+            await _responder_grupo(advertencia)
+            return True
+        historial = await obtener_historial_fn(phone_fmt)
+        nombre = extraer_nombre_cliente(historial) or "cliente"
+        msg_cliente = (
+            f"Hola {nombre} \U0001f60a "
+            f"Para completar tu pago de *${monto} MXN* puedes realizarlo "
+            f"por transferencia a nuestra CLABE o en efectivo en el módulo. "
+            f"¿Cuál prefieres?"
+        )
+        ok = await _notificar_cliente(phone, msg_cliente)
+        await _responder_grupo(f"{'✅' if ok else '❌'} Instrucciones de pago enviadas a {phone_fmt} (${monto})")
 
     return True
 
