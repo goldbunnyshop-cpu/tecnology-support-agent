@@ -37,21 +37,28 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
-COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar", "clabe", "pago")
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar", "clabe", "pago", "orden", "estatus", "consultar")
 
 TEXTO_MENU = (
     "🛠️ *Comandos — Taller Interno TS*\n\n"
+    "*── Notificaciones al cliente ──*\n"
     "*listo:* [número] [equipo] → Cliente listo para recoger\n"
     "*demora:* [número] [tiempo] [equipo] → Necesita más tiempo\n"
     "*diagnostico:* [número] [equipo] [descripción] → Informa diagnóstico\n"
     "*presupuesto:* [número] [equipo] [precio] → Envía presupuesto\n"
-    "*clabe:* [número] → Envía CLABE de pago al cliente\n"
-    "*pago:* [número] [monto] → Envía instrucciones de pago\n"
-    "*password:* [número] → Solicita contraseña al cliente\n"
-    "*llamar:* [número] → Pide al cliente que llame\n"
-    "*cita:* [número] → Indica que puede pasar sin cita\n"
-    "*reanudar:* [número] → Reanuda conversación pausada\n\n"
-    "Ejemplo: listo: 5541576331 PS5"
+    "*clabe:* [número] → Envía CLABE de pago\n"
+    "*pago:* [número] [monto] → Instrucciones de pago\n"
+    "*password:* [número] → Solicita contraseña\n"
+    "*llamar:* [número] → Pide que llame\n"
+    "*cita:* [número] → Puede pasar sin cita\n"
+    "*reanudar:* [número] → Reanuda agente\n\n"
+    "*── CRM / Órdenes ──*\n"
+    "*orden:* [folio] [número] [equipo] [total] [pago] [refacción?]\n"
+    "   _Ej: orden: 45 5541576331 PS5 2500 tarjeta 350_\n"
+    "*estatus:* [folio] [recibido|proceso|listo|entregado]\n"
+    "   _Ej: estatus: 45 listo_\n"
+    "*consultar:* [folio] → Datos completos de una orden\n"
+    "   _Ej: consultar: 45_"
 )
 
 
@@ -210,6 +217,83 @@ def _formatear_clabe(clabe_raw: str) -> str:
     """Formatea una CLABE en grupos de 4 dígitos separados por espacios."""
     digitos = re.sub(r"\D", "", clabe_raw)
     return " ".join(digitos[i:i+4] for i in range(0, len(digitos), 4))
+
+
+_FORMAS_PAGO = ("efectivo", "tarjeta", "transferencia", "trans")
+_MAPA_ESTATUS = {
+    "recibido":   "Recibido",
+    "proceso":    "En proceso",
+    "en proceso": "En proceso",
+    "listo":      "Listo",
+    "entregado":  "Entregado",
+}
+
+
+def parsear_orden_crm(payload: str) -> dict | None:
+    """
+    orden: FOLIO TELÉFONO EQUIPO... TOTAL PAGO [REFACCION]
+    Ejemplo: 45 5541576331 PS5 2500 tarjeta 350
+    Parsea desde los extremos para manejar equipos con espacios.
+    """
+    partes = payload.strip().split()
+    if len(partes) < 5:
+        return None
+
+    folio = partes[0]
+    phone = re.sub(r"\D", "", partes[1])
+    if not phone:
+        return None
+
+    # Parsear de derecha a izquierda
+    resto = partes[2:]
+
+    # Último campo opcional: refacción (número después de la forma de pago)
+    refaccion = 0.0
+    if len(resto) >= 2 and re.match(r"^\d+(\.\d+)?$", resto[-1]) and resto[-2].lower() in _FORMAS_PAGO:
+        refaccion = float(resto[-1])
+        resto = resto[:-1]
+
+    # Siguiente desde la derecha: forma de pago
+    if not resto or resto[-1].lower() not in _FORMAS_PAGO:
+        return None
+    forma_pago = resto[-1].lower()
+    resto = resto[:-1]
+
+    # Siguiente: total (número)
+    if not resto or not re.match(r"^\d+(\.\d+)?$", resto[-1]):
+        return None
+    total = float(resto[-1])
+    resto = resto[:-1]
+
+    # Lo que queda: nombre del equipo
+    equipo = " ".join(resto)
+    if not equipo:
+        return None
+
+    return {
+        "folio":     folio,
+        "phone":     phone,
+        "equipo":    equipo,
+        "total":     total,
+        "forma_pago": forma_pago,
+        "refaccion": refaccion,
+    }
+
+
+def parsear_estatus_crm(payload: str) -> tuple[str, str] | None:
+    """
+    estatus: FOLIO NUEVO_ESTATUS
+    Ejemplo: 45 listo
+    """
+    partes = payload.strip().split(None, 1)
+    if len(partes) < 2:
+        return None
+    folio      = partes[0]
+    estatus_raw = partes[1].strip().lower()
+    estatus    = _MAPA_ESTATUS.get(estatus_raw)
+    if not estatus:
+        return None
+    return folio, estatus
 
 
 # ──────────────────────────────────────────────
@@ -508,6 +592,104 @@ async def procesar_comando_grupo(
         )
         ok = await _notificar_cliente(phone, msg_cliente)
         await _responder_grupo(f"{'✅' if ok else '❌'} Instrucciones de pago enviadas a {phone_fmt} (${monto})")
+
+    # ── orden (CRM) ──
+    elif cmd == "orden":
+        parsed = parsear_orden_crm(payload)
+        if not parsed:
+            await _responder_grupo(
+                "⚠️ Formato: orden: FOLIO NÚMERO EQUIPO TOTAL PAGO [REFACCIÓN]\n"
+                "Ej: orden: 45 5541576331 PS5 2500 tarjeta 350"
+            )
+            return True
+
+        phone_fmt, advertencia = _formatear_numero_destino(parsed["phone"])
+        if advertencia:
+            await _responder_grupo(advertencia)
+            return True
+
+        # Obtener nombre del cliente del historial si existe
+        historial = await obtener_historial_fn(phone_fmt)
+        nombre = extraer_nombre_cliente(historial) or phone_fmt
+
+        try:
+            from agent.crm import registrar_orden
+            resultado = await registrar_orden(
+                folio     = parsed["folio"],
+                telefono  = phone_fmt,
+                cliente   = nombre,
+                equipo    = parsed["equipo"],
+                modelo    = "",
+                falla     = "",
+                total     = parsed["total"],
+                forma_pago= parsed["forma_pago"],
+                refaccion = parsed["refaccion"],
+            )
+            com_txt = f"  💳 Comisión: ${resultado['comision']}" if resultado["comision"] else ""
+            drive_txt = f"\n  📁 Drive: {resultado['link_drive']}" if resultado["link_drive"] else ""
+            await _responder_grupo(
+                f"✅ Orden #{resultado['folio']} registrada\n"
+                f"  👤 {nombre} ({phone_fmt})\n"
+                f"  🔧 {resultado['equipo']}\n"
+                f"  💰 ${resultado['total']} ({parsed['forma_pago']}){com_txt}\n"
+                f"  📊 Ganancia: ${resultado['ganancia']}"
+                f"{drive_txt}"
+            )
+        except Exception as e:
+            logger.error(f"[CRM] Error registrando orden: {e}")
+            await _responder_grupo(f"❌ Error registrando orden: {e}")
+
+    # ── estatus (CRM) ──
+    elif cmd == "estatus":
+        parsed_e = parsear_estatus_crm(payload)
+        if not parsed_e:
+            await _responder_grupo(
+                "⚠️ Formato: estatus: FOLIO ESTATUS\n"
+                "Estatus válidos: recibido | proceso | listo | entregado\n"
+                "Ej: estatus: 45 listo"
+            )
+            return True
+        folio_e, nuevo_e = parsed_e
+        try:
+            from agent.crm import actualizar_estatus_orden
+            ok = await actualizar_estatus_orden(folio_e, nuevo_e)
+            if ok:
+                await _responder_grupo(f"✅ Folio #{folio_e.zfill(4)} → *{nuevo_e}*")
+            else:
+                await _responder_grupo(f"❌ Folio #{folio_e.zfill(4)} no encontrado en ORDENES")
+        except Exception as e:
+            logger.error(f"[CRM] Error actualizando estatus: {e}")
+            await _responder_grupo(f"❌ Error: {e}")
+
+    # ── consultar (CRM) ──
+    elif cmd == "consultar":
+        folio_c = payload.strip().split()[0] if payload.strip() else ""
+        if not folio_c:
+            await _responder_grupo("⚠️ Formato: consultar: FOLIO  — Ej: consultar: 45")
+            return True
+        try:
+            from agent.crm import consultar_orden
+            orden = await consultar_orden(folio_c)
+            if not orden:
+                await _responder_grupo(f"❌ Folio #{folio_c.zfill(4)} no encontrado")
+            else:
+                drive_txt = f"\n📁 {orden['link_drive']}" if orden["link_drive"] else ""
+                factura_txt = f"\n🧾 Factura: {orden['factura']}" if orden["factura"] else ""
+                await _responder_grupo(
+                    f"📋 *Orden #{orden['folio']}*\n"
+                    f"👤 {orden['cliente']} · {orden['telefono']}\n"
+                    f"🔧 {orden['equipo']} {orden['modelo']}\n"
+                    f"🗒️ {orden['falla'] or 'Sin descripción'}\n"
+                    f"📅 Ingreso: {orden['fecha']}\n"
+                    f"📊 Estatus: *{orden['estatus']}*\n"
+                    f"💰 ${orden['total']} ({orden['forma_pago']})\n"
+                    f"   Comisión: ${orden['comision']} | Refacción: ${orden['refaccion']}\n"
+                    f"   Ganancia: ${orden['ganancia']}"
+                    f"{drive_txt}{factura_txt}"
+                )
+        except Exception as e:
+            logger.error(f"[CRM] Error consultando orden: {e}")
+            await _responder_grupo(f"❌ Error: {e}")
 
     return True
 
