@@ -22,6 +22,7 @@ class Lead(Base):
     telefono: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     ultimo_mensaje: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     seguimientos_enviados: Mapped[int] = mapped_column(Integer, default=0)
+    seguimiento_enviado_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     estado: Mapped[str] = mapped_column(String(30), default="activo")
     fuente: Mapped[str] = mapped_column(String(50), default="desconocido")
     fuente_detalle: Mapped[str] = mapped_column(String(200), default="")
@@ -36,12 +37,13 @@ async def _migrar_columnas():
     """Agrega columnas nuevas si no existen (migración segura sin perder datos)."""
     async with engine.begin() as conn:
         for columna, definicion in [
-            ("fuente",           "VARCHAR(50) DEFAULT 'desconocido'"),
-            ("fuente_detalle",   "VARCHAR(200) DEFAULT ''"),
-            ("asesor_asignado",  "VARCHAR(50) DEFAULT ''"),
-            ("retoma_en",              "DATETIME"),
-            ("retoma_desde",           "DATETIME"),
-            ("presupuesto_enviado_en", "DATETIME"),
+            ("fuente",                  "VARCHAR(50) DEFAULT 'desconocido'"),
+            ("fuente_detalle",          "VARCHAR(200) DEFAULT ''"),
+            ("asesor_asignado",         "VARCHAR(50) DEFAULT ''"),
+            ("retoma_en",               "DATETIME"),
+            ("retoma_desde",            "DATETIME"),
+            ("presupuesto_enviado_en",  "DATETIME"),
+            ("seguimiento_enviado_en",  "DATETIME"),
         ]:
             try:
                 await conn.execute(text(f"ALTER TABLE leads ADD COLUMN {columna} {definicion}"))
@@ -99,6 +101,7 @@ async def crear_o_actualizar_lead(
             if lead.estado in ("en_seguimiento", "perdido"):
                 lead.estado = "activo"
                 lead.seguimientos_enviados = 0
+                lead.seguimiento_enviado_en = None
             if fuente != "desconocido" and lead.fuente == "desconocido":
                 lead.fuente = fuente
                 lead.fuente_detalle = fuente_detalle
@@ -152,19 +155,59 @@ async def obtener_retomas_pendientes() -> list[Lead]:
         return list(result.scalars().all())
 
 
-async def obtener_leads_para_seguimiento(horas_sin_respuesta: int = 24) -> list[Lead]:
-    """Devuelve leads sin actividad que aún no han recibido los 3 seguimientos."""
-    limite = datetime.utcnow() - timedelta(hours=horas_sin_respuesta)
+# Intervalos de seguimiento por número de seguimientos ya enviados
+# (0 = primer seguimiento pendiente, 1 = segundo, etc.)
+_INTERVALOS_SEGUIMIENTO = {
+    0: timedelta(hours=2),    # Seg 1: 2h desde el último mensaje del cliente
+    1: timedelta(hours=24),   # Seg 2: 24h desde que se envió el seguimiento 1
+    2: timedelta(hours=36),   # Seg 3: 36h desde que se envió el seguimiento 2
+    3: timedelta(days=10),    # Seg 4: 10 días desde que se envió el seguimiento 3
+}
+MAX_SEGUIMIENTOS = 4
+
+
+async def obtener_leads_para_seguimiento() -> list[Lead]:
+    """
+    Retorna TODOS los leads que necesitan seguimiento ahora.
+
+    Criterios por número de seguimientos enviados:
+      0 enviados → esperar 2h  desde Lead.ultimo_mensaje
+      1 enviado  → esperar 24h desde Lead.seguimiento_enviado_en
+      2 enviados → esperar 36h desde Lead.seguimiento_enviado_en
+      3 enviados → esperar 10d desde Lead.seguimiento_enviado_en
+    """
+    ahora = datetime.utcnow()
     async with async_session() as session:
         result = await session.execute(
             select(Lead).where(
-                Lead.ultimo_mensaje < limite,
-                Lead.seguimientos_enviados < 3,
+                Lead.seguimientos_enviados < MAX_SEGUIMIENTOS,
                 Lead.estado != "perdido",
                 Lead.estado != "convertido",
             )
         )
-        return list(result.scalars().all())
+        todos = result.scalars().all()
+
+    candidatos = []
+    for lead in todos:
+        n = lead.seguimientos_enviados
+        intervalo = _INTERVALOS_SEGUIMIENTO.get(n)
+        if intervalo is None:
+            continue
+
+        if n == 0:
+            # Primer seguimiento: contar desde el último mensaje del cliente
+            ref = lead.ultimo_mensaje or lead.created_at
+        else:
+            # Siguientes: contar desde que se envió el seguimiento anterior
+            ref = lead.seguimiento_enviado_en
+
+        if ref is None:
+            continue
+
+        if ahora - ref >= intervalo:
+            candidatos.append(lead)
+
+    return candidatos
 
 
 async def obtener_leads_por_fuente(fuente: str) -> list[Lead]:
@@ -177,13 +220,14 @@ async def obtener_leads_por_fuente(fuente: str) -> list[Lead]:
 
 
 async def registrar_seguimiento_enviado(telefono: str):
-    """Incrementa el contador de seguimientos. Marca como perdido al llegar a 3."""
+    """Incrementa el contador de seguimientos y registra el timestamp."""
     async with async_session() as session:
         result = await session.execute(select(Lead).where(Lead.telefono == telefono))
         lead = result.scalar_one_or_none()
         if lead:
             lead.seguimientos_enviados += 1
-            lead.estado = "perdido" if lead.seguimientos_enviados >= 3 else "en_seguimiento"
+            lead.seguimiento_enviado_en = datetime.utcnow()
+            lead.estado = "perdido" if lead.seguimientos_enviados >= MAX_SEGUIMIENTOS else "en_seguimiento"
         await session.commit()
 
 

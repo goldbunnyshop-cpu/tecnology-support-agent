@@ -4,7 +4,8 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, time as dt_time
+from zoneinfo import ZoneInfo
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 
@@ -12,9 +13,25 @@ load_dotenv()
 logger = logging.getLogger("agentkit")
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-INTERVALO_SEGUIMIENTO  = 3600  # revisar seguimientos cada hora
+INTERVALO_SEGUIMIENTO  = 1800  # revisar seguimientos cada 30 minutos
 INTERVALO_RETOMA       = 600   # revisar retomas cada 10 minutos
 INTERVALO_RECORDATORIO = 600   # revisar recordatorios de cita cada 10 minutos
+
+_ZONA_MX = ZoneInfo("America/Mexico_City")
+
+
+def es_horario_habil() -> bool:
+    """
+    True si ahora es horario hábil en CDMX:
+      Lunes–viernes: 10:00 – 21:00
+      Sábados–domingos: 11:00 – 20:00
+    """
+    ahora = datetime.now(_ZONA_MX)
+    hora  = ahora.time().replace(second=0, microsecond=0)
+    if ahora.weekday() <= 4:   # lunes a viernes
+        return dt_time(10, 0) <= hora <= dt_time(21, 0)
+    else:                      # sábado y domingo
+        return dt_time(11, 0) <= hora <= dt_time(20, 0)
 
 MENSAJES_FALLBACK = [
     "Hola, ¿pudo resolver lo de su equipo? Aquí seguimos para ayudarle cuando guste.",
@@ -46,8 +63,8 @@ Reglas:
 - Tono amable, sin presión, profesional
 - Termina con una pregunta abierta o invitación suave a regresar
 - Sin emojis
-- Es el seguimiento número {numero_seguimiento + 1} de 3
-- Si es el seguimiento 3, el tono es de despedida cordial dejando la puerta abierta
+- Es el seguimiento número {numero_seguimiento + 1} de 4
+- Si es el seguimiento 4, el tono es de despedida cordial dejando la puerta abierta
 Solo escribe el mensaje, sin explicaciones."""
 
     try:
@@ -63,17 +80,21 @@ Solo escribe el mensaje, sin explicaciones."""
 
 
 async def ejecutar_seguimientos():
-    from agent.leads import obtener_leads_para_seguimiento, registrar_seguimiento_enviado
+    from agent.leads import obtener_leads_para_seguimiento, registrar_seguimiento_enviado, MAX_SEGUIMIENTOS
     from agent.memory import obtener_historial, guardar_mensaje
     from agent.providers import obtener_proveedor
 
+    # Nunca enviar seguimientos fuera de horario hábil
+    if not es_horario_habil():
+        return
+
     proveedor = obtener_proveedor()
-    leads = await obtener_leads_para_seguimiento(horas_sin_respuesta=24)
+    leads = await obtener_leads_para_seguimiento()
 
     if not leads:
         return
 
-    logger.info(f"Seguimiento automático: {len(leads)} leads sin actividad")
+    logger.info(f"Seguimiento automático: {len(leads)} leads para contactar")
 
     for lead in leads:
         try:
@@ -83,7 +104,10 @@ async def ejecutar_seguimientos():
             if enviado:
                 await guardar_mensaje(lead.telefono, "assistant", mensaje)
                 await registrar_seguimiento_enviado(lead.telefono)
-                logger.info(f"Seguimiento {lead.seguimientos_enviados + 1}/3 → {lead.telefono}")
+                logger.info(
+                    f"Seguimiento {lead.seguimientos_enviados + 1}/{MAX_SEGUIMIENTOS} "
+                    f"→ {lead.telefono}"
+                )
             else:
                 logger.warning(f"No se pudo enviar seguimiento a {lead.telefono}")
         except Exception as e:
