@@ -37,7 +37,7 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
-COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita")
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar")
 
 TEXTO_MENU = (
     "📋 *COMANDOS — Taller Interno TS*\n\n"
@@ -62,6 +62,9 @@ TEXTO_MENU = (
     "🏠 *cita: NÚMERO*\n"
     "   Indica que puede venir sin cita previa\n"
     "   _Ej: cita: 5541576331_\n\n"
+    "▶️ *reanudar: NÚMERO*\n"
+    "   Reactiva el agente para un cliente pausado\n"
+    "   _Ej: reanudar: 5541576331_\n\n"
     "📋 *menu*\n"
     "   Muestra este menú"
 )
@@ -424,6 +427,21 @@ async def procesar_comando_grupo(
         )
         ok = await _notificar_cliente(phone, msg_cliente)
         await _responder_grupo(f"{'✅' if ok else '❌'} Solicitud de llamada enviada a {phone}")
+
+    # ── reanudar ──
+    elif cmd == "reanudar":
+        phone = parsear_phone_simple(payload)
+        if not phone:
+            await _responder_grupo("⚠️ Formato: reanudar: NÚMERO")
+            return True
+        from agent.memory import reanudar_conversacion
+        phone_fmt, advertencia = _formatear_numero_destino(phone)
+        if advertencia:
+            await _responder_grupo(advertencia)
+            return True
+        await reanudar_conversacion(phone_fmt)
+        await _responder_grupo(f"✅ Agente reanudado para {phone_fmt}")
+        logger.info(f"[PAUSA] Reanudado manualmente por operador: {phone_fmt}")
 
     # ── cita ──
     elif cmd == "cita":

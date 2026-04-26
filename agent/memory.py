@@ -68,6 +68,7 @@ class ClientePerfil(Base):
     ultima_visita: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     asesor_ultimo: Mapped[str] = mapped_column(String(50), default="")
     notas: Mapped[str] = mapped_column(Text, default="")
+    pausada_hasta: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -170,6 +171,7 @@ async def _migrar_clientes_perfil():
             ("ultima_visita",    "DATETIME"),
             ("asesor_ultimo",    "VARCHAR(50) DEFAULT ''"),
             ("notas",            "TEXT DEFAULT ''"),
+            ("pausada_hasta",    "DATETIME"),
             ("created_at",       "DATETIME"),
         ]:
             try:
@@ -247,6 +249,36 @@ async def limpiar_historial(telefono: str):
         for msg in mensajes:
             await session.delete(msg)
         await session.commit()
+
+
+async def pausar_conversacion(telefono: str, horas: int = 2):
+    """Pausa el agente para este cliente durante N horas (intervención humana)."""
+    hasta = datetime.utcnow() + __import__("datetime").timedelta(hours=horas)
+    await _upsert_perfil(telefono, pausada_hasta=hasta)
+    logger.info(f"[PAUSA] Conversación {telefono} pausada hasta {hasta.strftime('%H:%M')} UTC")
+
+
+async def reanudar_conversacion(telefono: str):
+    """Reactiva el agente para este cliente."""
+    await _upsert_perfil(telefono, pausada_hasta=None)
+    logger.info(f"[PAUSA] Conversación {telefono} reanudada")
+
+
+async def esta_pausada(telefono: str) -> bool:
+    """Retorna True si el agente está pausado para este cliente."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(ClientePerfil).where(ClientePerfil.telefono == telefono)
+        )
+        perfil = result.scalar_one_or_none()
+        if not perfil or not perfil.pausada_hasta:
+            return False
+        if datetime.utcnow() >= perfil.pausada_hasta:
+            # Venció la pausa — limpiar automáticamente
+            perfil.pausada_hasta = None
+            await session.commit()
+            return False
+        return True
 
 
 async def recordatorio_ya_enviado(evento_id: str) -> bool:
