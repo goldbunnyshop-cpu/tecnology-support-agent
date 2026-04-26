@@ -14,7 +14,15 @@ logger = logging.getLogger("agentkit")
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./agentkit.db")
+def _sqlite_url() -> str:
+    """Usa /data/agentkit.db si el volumen está montado, si no ./agentkit.db."""
+    import pathlib
+    data_dir = pathlib.Path("/data")
+    if data_dir.exists() and data_dir.is_dir():
+        return "sqlite+aiosqlite:////data/agentkit.db"
+    return "sqlite+aiosqlite:///./agentkit.db"
+
+DATABASE_URL = os.getenv("DATABASE_URL", _sqlite_url())
 
 # Railway usa "postgres://" o "postgresql://"; asyncpg necesita "postgresql+asyncpg://"
 if DATABASE_URL.startswith("postgres://"):
