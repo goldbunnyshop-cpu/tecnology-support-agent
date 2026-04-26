@@ -27,15 +27,18 @@ class ProveedorMessenger(ProveedorWhatsApp):
 
     # ── Verificación GET del webhook ──────────────────────────────────────────
 
-    async def validar_webhook(self, request: Request) -> dict | int | None:
+    async def validar_webhook(self, request: Request) -> str | None:
         params    = request.query_params
         mode      = params.get("hub.mode")
         token     = params.get("hub.verify_token")
-        challenge = params.get("hub.challenge")
+        challenge = params.get("hub.challenge", "")
         if mode == "subscribe" and token == self.verify_token:
             logger.info("[MESSENGER] Webhook verificado por Meta")
-            return int(challenge)
-        logger.warning("[MESSENGER] Verificación fallida — token incorrecto")
+            return challenge
+        logger.warning(
+            f"[MESSENGER] Verificación fallida — mode='{mode}' token='{token}' "
+            f"esperado='{self.verify_token}'"
+        )
         return None
 
     # ── Parseo de mensajes entrantes ─────────────────────────────────────────
