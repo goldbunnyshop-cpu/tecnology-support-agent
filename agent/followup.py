@@ -33,50 +33,85 @@ def es_horario_habil() -> bool:
     else:                      # sábado y domingo
         return dt_time(11, 0) <= hora <= dt_time(20, 0)
 
-MENSAJES_FALLBACK = [
-    "Hola, ¿pudo resolver lo de su equipo? Aquí seguimos para ayudarle cuando guste.",
-    "Buenas, queríamos saber si sigue con la duda sobre su dispositivo. En Tecnology Support estamos listos.",
-    "Hola, este es nuestro último mensaje. Cuando necesite apoyo con su equipo, aquí estaremos. ¡Buen día!",
+_FALLBACK = [
+    "Hola, ¿pudiste resolver lo de tu equipo? Aquí seguimos para ayudarte cuando gustes. 😊",
+    "Buenas, queríamos saber si sigues necesitando apoyo con tu dispositivo. Avísanos.",
+    "Hola, ¿pudiste solucionar lo de tu equipo? Si necesitas algo, con gusto te atendemos.",
+    "Hola, este es nuestro último mensaje. Cuando necesites apoyo, aquí estaremos. ¡Que estés bien! 😊",
 ]
 
 
-async def generar_mensaje_seguimiento(historial: list[dict], numero_seguimiento: int) -> str:
+async def generar_mensaje_seguimiento(
+    historial: list[dict],
+    numero_seguimiento: int,
+    asesor: str = "Sofia",
+) -> str:
+    """
+    Genera un mensaje de seguimiento personalizado según el historial completo
+    de la conversación. Analiza el contexto antes de redactar.
+    """
     if not historial:
-        return MENSAJES_FALLBACK[min(numero_seguimiento, 2)]
+        fallback = _FALLBACK[min(numero_seguimiento, len(_FALLBACK) - 1)]
+        return f"{fallback}\n\n{asesor} — Tecnology Support"
 
-    contexto = "\n".join(
-        f"{'Cliente' if m['role'] == 'user' else 'Agente'}: {m['content']}"
-        for m in historial[-8:]
+    fragmento = "\n".join(
+        f"{'Agente' if m['role'] == 'assistant' else 'Cliente'}: {m['content']}"
+        for m in historial[-20:]
     )
 
-    prompt = f"""Eres el asistente de Tecnology Support, un taller de reparación de dispositivos electrónicos.
+    es_ultimo = numero_seguimiento >= 3
+    nota_ultimo = "(Es el ÚLTIMO intento — tono de despedida cordial, deja la puerta abierta.)" if es_ultimo else ""
 
-Un cliente inició una conversación pero dejó de responder. Este es el historial:
+    prompt = f"""Eres {asesor}, asesor de Tecnology Support, un taller de reparación de electrónicos en CDMX.
 
-{contexto}
+Un cliente dejó de responder. Lee el historial completo y escribe UN mensaje de seguimiento personalizado.
 
----
-Redacta UN mensaje de seguimiento corto (máximo 2 oraciones) para retomar el contacto.
-Reglas:
-- Si conoces el nombre del cliente, úsalo
-- Menciona el dispositivo o problema que comentó si lo hay
-- Tono amable, sin presión, profesional
-- Termina con una pregunta abierta o invitación suave a regresar
-- Sin emojis
-- Es el seguimiento número {numero_seguimiento + 1} de 4
-- Si es el seguimiento 4, el tono es de despedida cordial dejando la puerta abierta
-Solo escribe el mensaje, sin explicaciones."""
+HISTORIAL:
+{fragmento}
+
+SEGUIMIENTO {numero_seguimiento + 1} DE 4. {nota_ultimo}
+
+ANTES DE ESCRIBIR, identifica mentalmente:
+- Nombre del cliente (si lo mencionó)
+- Dispositivo o equipo que mencionó
+- En qué punto quedó: ¿preguntó precio?, ¿dijo que iba a ir?, ¿solo pidió info?
+- Qué duda o acción quedó pendiente
+
+ELIGE el escenario que aplica y escribe el mensaje:
+
+Escenario A — Preguntó precio y no respondió:
+→ "Hola [nombre], quería saber si te quedó alguna duda sobre el precio del [servicio/dispositivo]. ¿Lo pudiste checar? 😊"
+
+Escenario B — Dijo que iba a ir y no vino:
+→ "Hola [nombre], ¿pudiste venir a dejarnos tu [dispositivo]? Si necesitas reagendar, con gusto te ayudo."
+
+Escenario C — Pidió información y desapareció:
+→ "Hola [nombre], vi que preguntaste sobre [servicio/dispositivo]. ¿Pudiste resolverlo o todavía lo necesitas?"
+
+Escenario D — Sin contexto claro:
+→ "Hola [nombre], hace un rato nos escribiste. ¿Pudimos ayudarte o tienes alguna duda pendiente? 😊"
+
+REGLAS:
+- Usa el nombre real del cliente si lo sabes; si no, no pongas placeholder
+- Menciona el dispositivo/servicio específico de la conversación
+- Máximo 2-3 oraciones. Tono natural, como un mensaje de WhatsApp real
+- Sin asteriscos, sin frases corporativas, sin "estimado cliente"
+- Máximo 1 emoji
+- Firma al final en línea separada: "{asesor} — Tecnology Support"
+
+Escribe SOLO el mensaje final."""
 
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=120,
-            messages=[{"role": "user", "content": prompt}]
+            max_tokens=200,
+            messages=[{"role": "user", "content": prompt}],
         )
         return response.content[0].text.strip()
     except Exception as e:
         logger.error(f"Error generando mensaje de seguimiento: {e}")
-        return MENSAJES_FALLBACK[min(numero_seguimiento, 2)]
+        fallback = _FALLBACK[min(numero_seguimiento, len(_FALLBACK) - 1)]
+        return f"{fallback}\n\n{asesor} — Tecnology Support"
 
 
 async def ejecutar_seguimientos():
@@ -98,15 +133,16 @@ async def ejecutar_seguimientos():
 
     for lead in leads:
         try:
-            historial = await obtener_historial(lead.telefono)
-            mensaje = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados)
+            historial = await obtener_historial(lead.telefono, limite=30)
+            asesor = lead.asesor_asignado or "Sofia"
+            mensaje = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados, asesor)
             enviado = await proveedor.enviar_mensaje(lead.telefono, mensaje)
             if enviado:
                 await guardar_mensaje(lead.telefono, "assistant", mensaje)
                 await registrar_seguimiento_enviado(lead.telefono)
                 logger.info(
-                    f"Seguimiento {lead.seguimientos_enviados + 1}/{MAX_SEGUIMIENTOS} "
-                    f"→ {lead.telefono}"
+                    f"Seg {lead.seguimientos_enviados + 1}/{MAX_SEGUIMIENTOS} "
+                    f"[{asesor}] → {lead.telefono}: {mensaje[:60]}"
                 )
             else:
                 logger.warning(f"No se pudo enviar seguimiento a {lead.telefono}")
