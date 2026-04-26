@@ -256,16 +256,54 @@ async def generar_reporte_manual():
 
 
 @app.post("/importar-chats")
-async def importar_chats_endpoint():
-    asyncio.create_task(_importar_y_reportar())
-    return {"status": "ok", "mensaje": "Importacion iniciada en segundo plano."}
+async def importar_chats_endpoint(
+    desde: str | None = None,
+    mensajes: int = 200,
+    reimportar: bool = False,
+):
+    """
+    Importa y clasifica chats de Whapi.
+
+    Params:
+        desde      — Fecha de corte ISO (YYYY-MM-DD). Solo procesa mensajes >= esa fecha.
+        mensajes   — Mensajes a traer por chat (default 200, max recomendado 500).
+        reimportar — Si True, fuerza reimportación de chats ya en DB.
+
+    Ejemplo: POST /importar-chats?desde=2026-03-19&mensajes=200&reimportar=true
+    """
+    from datetime import date as date_type
+    fecha_desde: date_type | None = None
+    if desde:
+        try:
+            fecha_desde = date_type.fromisoformat(desde)
+        except ValueError:
+            return {"status": "error", "detalle": f"Fecha inválida: '{desde}'. Usa formato YYYY-MM-DD."}
+
+    asyncio.create_task(_importar_y_reportar(fecha_desde, mensajes, reimportar))
+    return {
+        "status": "ok",
+        "mensaje": "Importación iniciada en segundo plano.",
+        "parametros": {
+            "desde":      str(fecha_desde) if fecha_desde else "sin filtro",
+            "mensajes":   mensajes,
+            "reimportar": reimportar,
+        },
+    }
 
 
-async def _importar_y_reportar():
-    resumen = await importar_todos_los_chats()
-    if resumen["importados"] > 0:
+async def _importar_y_reportar(
+    desde=None,
+    mensajes_por_chat: int = 200,
+    reimportar: bool = False,
+):
+    resumen = await importar_todos_los_chats(
+        desde=desde,
+        mensajes_por_chat=mensajes_por_chat,
+        reimportar=reimportar,
+    )
+    if resumen["clientes_nuevos_encontrados"] > 0:
         await generar_reporte_excel()
-        logger.info(f"Importacion + reporte completados: {resumen}")
+    logger.info(f"[IMPORT] Resumen final: {resumen}")
 
 
 @app.get("/webhook")
