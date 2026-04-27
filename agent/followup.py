@@ -41,6 +41,16 @@ _FALLBACK = [
 ]
 
 
+def _tiene_presupuesto_en_historial(historial: list[dict]) -> bool:
+    """Detecta si ya se envió un presupuesto al cliente (por el comando presupuesto: del grupo)."""
+    for msg in historial:
+        if msg["role"] == "assistant":
+            c = msg["content"].lower()
+            if "costo del servicio" in c or ("presupuesto" in c and "$" in c):
+                return True
+    return False
+
+
 async def generar_mensaje_seguimiento(
     historial: list[dict],
     numero_seguimiento: int,
@@ -62,6 +72,14 @@ async def generar_mensaje_seguimiento(
     es_ultimo = numero_seguimiento >= 3
     nota_ultimo = "(Es el ÚLTIMO intento — tono de despedida cordial, deja la puerta abierta.)" if es_ultimo else ""
 
+    tiene_presupuesto = _tiene_presupuesto_en_historial(historial)
+    ctx_presupuesto = (
+        "\nCONTEXTO IMPORTANTE: Ya se envió un presupuesto al cliente. "
+        "NO menciones el costo de diagnóstico ($200). "
+        "Enfoca el mensaje en dar continuidad a la decisión y ayudar a agendar la visita."
+        if tiene_presupuesto else ""
+    )
+
     prompt = f"""Eres {asesor}, asesor de Tecnology Support, un taller de reparación de electrónicos en CDMX.
 
 Un cliente dejó de responder. Lee el historial y produce la respuesta EN ESTE FORMATO EXACTO:
@@ -74,6 +92,7 @@ Criterios de prioridad:
 - urgente: preguntó precio, dijo que iba a ir, o mostró clara intención de reparación
 - medio: conversación activa sobre un dispositivo específico
 - bajo: solo preguntas generales sin dispositivo ni precio mencionado
+{ctx_presupuesto}
 
 HISTORIAL:
 {fragmento}
@@ -84,7 +103,8 @@ Escenarios para el mensaje:
 A — Preguntó precio → "Hola [nombre], ¿te quedó alguna duda sobre el precio del [servicio]? 😊"
 B — Iba a venir → "Hola [nombre], ¿pudiste venir a dejarnos tu [dispositivo]? Si necesitas reagendar, con gusto."
 C — Solo pidió info → "Hola [nombre], vi que preguntaste sobre [servicio/dispositivo]. ¿Aún lo necesitas?"
-D — Sin contexto → "Hola [nombre], hace un rato nos escribiste. ¿Pudimos ayudarte o tienes alguna duda? 😊"
+D — Ya tiene presupuesto → "Hola [nombre], soy {asesor} de Tecnology Support 😊 Quería dar seguimiento a tu [equipo]. ¿Pudiste revisar el presupuesto que te compartimos? ¿Te quedó alguna duda antes de traerlo al módulo?"
+E — Sin contexto → "Hola [nombre], hace un rato nos escribiste. ¿Pudimos ayudarte o tienes alguna duda? 😊"
 
 Reglas del mensaje:
 - Usa nombre real si lo sabes
@@ -433,6 +453,79 @@ async def _loop_recordatorios():
             logger.error(f"Error en scheduler de recordatorios: {e}")
 
 
+def _enviar_email_smtp_sync(ruta_excel: str, usuario: str, contrasena: str, destino: str):
+    """Envía el reporte Excel por Gmail SMTP (síncrono — se llama con to_thread)."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.base import MIMEBase
+    from email.mime.text import MIMEText
+    from email import encoders
+
+    fecha = datetime.now(_ZONA_MX).strftime("%d/%m/%Y")
+
+    msg = MIMEMultipart()
+    msg["From"]    = usuario
+    msg["To"]      = destino
+    msg["Subject"] = f"Reporte semanal Tecnology Support — {fecha}"
+    msg.attach(MIMEText(
+        f"Hola,\n\nAdjunto el reporte semanal de leads y órdenes "
+        f"de Tecnology Support generado el {fecha}.\n\n"
+        f"Tecnology Support — Sistema de gestión",
+        "plain",
+    ))
+    with open(ruta_excel, "rb") as f:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f"attachment; filename={os.path.basename(ruta_excel)}",
+        )
+        msg.attach(part)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(usuario, contrasena)
+        server.send_message(msg)
+
+
+async def _enviar_reporte_semanal(ruta_excel: str):
+    """
+    Intenta enviar el reporte por SMTP (Gmail).
+    Fallback: sube a Google Drive y envía el link a Christian por WhatsApp.
+    """
+    gmail_user = os.getenv("GMAIL_USER", "")
+    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
+    dest_email = os.getenv("REPORT_EMAIL", "goldbunnyshop@gmail.com")
+
+    if gmail_user and gmail_pass:
+        try:
+            await asyncio.to_thread(
+                _enviar_email_smtp_sync, ruta_excel, gmail_user, gmail_pass, dest_email
+            )
+            logger.info(f"[REPORTE] Enviado por correo a {dest_email}")
+            return
+        except Exception as e:
+            logger.warning(f"[REPORTE] Error SMTP: {e} — intentando Drive")
+
+    try:
+        from agent.crm import subir_reporte_a_drive
+        from agent.providers import obtener_proveedor
+
+        link = await subir_reporte_a_drive(ruta_excel)
+        if link:
+            proveedor  = obtener_proveedor()
+            christian  = os.getenv("CHRISTIAN_NUMERO", "5541576331")
+            fecha_txt  = datetime.now(_ZONA_MX).strftime("%d/%m/%Y")
+            await proveedor.enviar_mensaje(
+                christian,
+                f"📊 *Reporte semanal listo — {fecha_txt}*\n"
+                f"Descárgalo en Drive:\n{link}",
+            )
+            logger.info(f"[REPORTE] Link Drive enviado a Christian: {link}")
+    except Exception as e:
+        logger.error(f"[REPORTE] Error enviando por Drive: {e}")
+
+
 async def iniciar_scheduler_reporte_semanal():
     from agent.reports import generar_reporte_excel
 
@@ -440,10 +533,11 @@ async def iniciar_scheduler_reporte_semanal():
 
     while True:
         try:
-            logger.info("Generando reporte semanal de leads (domingo 13h)...")
+            logger.info("Generando reporte semanal (domingo 13h)...")
             ruta = await generar_reporte_excel()
-            logger.info(f"Reporte semanal guardado en: {ruta}")
+            logger.info(f"Reporte guardado en: {ruta}")
+            await _enviar_reporte_semanal(ruta)
         except Exception as e:
-            logger.error(f"Error generando reporte semanal: {e}")
+            logger.error(f"Error en reporte semanal: {e}")
 
         await asyncio.sleep(7 * 24 * 3600)
