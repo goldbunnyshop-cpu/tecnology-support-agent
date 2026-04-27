@@ -51,6 +51,36 @@ def _tiene_presupuesto_en_historial(historial: list[dict]) -> bool:
     return False
 
 
+def _cliente_satisfecho_historial(historial: list[dict]) -> bool:
+    """
+    Detecta si el cliente expresó satisfacción con el servicio en mensajes recientes.
+    Revisa solo los últimos 6 mensajes del cliente para evitar falsos positivos.
+    """
+    satisfaccion_kw = [
+        "ya lo recogí", "ya fui por", "ya lo tengo", "ya pasé", "ya lo llevé",
+        "quedó bien", "quedó perfecto", "quedó excelente", "quedó muy bien", "quedó genial",
+        "funciona bien", "funciona perfecto", "ya funciona", "ya sirve",
+        "excelente servicio", "muy buen servicio", "buen trabajo",
+        "los recomiendo", "les recomiendo", "muy recomendados",
+    ]
+    mensajes_cliente = [m for m in historial if m["role"] == "user"][-6:]
+    for msg in mensajes_cliente:
+        c = msg["content"].lower()
+        if any(kw in c for kw in satisfaccion_kw):
+            return True
+    return False
+
+
+def _reseña_ya_solicitada(historial: list[dict]) -> bool:
+    """Detecta si ya se solicitó una reseña en esta conversación para no repetirla."""
+    for msg in historial:
+        if msg["role"] == "assistant":
+            c = msg["content"].lower()
+            if "maps.app.goo.gl" in c or "reseña en google" in c or "déjanos una reseña" in c:
+                return True
+    return False
+
+
 async def generar_mensaje_seguimiento(
     historial: list[dict],
     numero_seguimiento: int,
@@ -80,6 +110,18 @@ async def generar_mensaje_seguimiento(
         if tiene_presupuesto else ""
     )
 
+    satisfecho = _cliente_satisfecho_historial(historial)
+    reseña_enviada = _reseña_ya_solicitada(historial)
+    google_url = os.getenv("GOOGLE_REVIEW_URL", "https://maps.app.goo.gl/XdCSu743LpyY6aAt7")
+    ctx_resena = (
+        f"\nCONTEXTO IMPORTANTE: El cliente ya expresó satisfacción con el servicio. "
+        f"Usa el Escenario F — solicita una reseña en Google. URL: {google_url}"
+        if (satisfecho and not reseña_enviada) else
+        "\nCONTEXTO: El cliente ya expresó satisfacción y la reseña ya fue solicitada. "
+        "Solo agradece con calidez si responde positivamente, no repitas el pedido de reseña."
+        if (satisfecho and reseña_enviada) else ""
+    )
+
     prompt = f"""Eres {asesor}, asesor de Tecnology Support, un taller de reparación de electrónicos en CDMX.
 
 Un cliente dejó de responder. Lee el historial y produce la respuesta EN ESTE FORMATO EXACTO:
@@ -92,7 +134,7 @@ Criterios de prioridad:
 - urgente: preguntó precio, dijo que iba a ir, o mostró clara intención de reparación
 - medio: conversación activa sobre un dispositivo específico
 - bajo: solo preguntas generales sin dispositivo ni precio mencionado
-{ctx_presupuesto}
+{ctx_presupuesto}{ctx_resena}
 
 HISTORIAL:
 {fragmento}
@@ -105,6 +147,7 @@ B — Iba a venir → "Hola [nombre], ¿pudiste venir a dejarnos tu [dispositivo
 C — Solo pidió info → "Hola [nombre], vi que preguntaste sobre [servicio/dispositivo]. ¿Aún lo necesitas?"
 D — Ya tiene presupuesto → "Hola [nombre], soy {asesor} de Tecnology Support 😊 Quería dar seguimiento a tu [equipo]. ¿Pudiste revisar el presupuesto que te compartimos? ¿Te quedó alguna duda antes de traerlo al módulo?"
 E — Sin contexto → "Hola [nombre], hace un rato nos escribiste. ¿Pudimos ayudarte o tienes alguna duda? 😊"
+F — Cliente satisfecho (usa solo si el contexto indica satisfacción) → "Hola [nombre], me alegra mucho que quedó bien 😊 Si tienes un momento, nos ayudaría muchísimo una reseña en Google: {google_url} ¡Gracias de antemano!"
 
 Reglas del mensaje:
 - Usa nombre real si lo sabes
