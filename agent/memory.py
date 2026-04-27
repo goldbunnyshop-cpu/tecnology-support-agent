@@ -72,6 +72,15 @@ class CitaRecordatorio(Base):
     enviado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class MensajeProcesado(Base):
+    """Registro de message_ids ya procesados — evita duplicados por reenvíos de Whapi."""
+    __tablename__ = "mensajes_procesados"
+
+    mensaje_id: Mapped[str] = mapped_column(String(200), primary_key=True)
+    telefono: Mapped[str] = mapped_column(String(50), index=True)
+    procesado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class ClientePerfil(Base):
     """Perfil persistente del cliente — sobrevive reinicios del servidor."""
     __tablename__ = "clientes_perfil"
@@ -220,7 +229,7 @@ async def inicializar_db():
     from agent.leads import _migrar_columnas
     await _migrar_columnas()
     await _migrar_clientes_perfil()
-    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio")
+    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio, mensajes_procesados")
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):
@@ -318,4 +327,28 @@ async def registrar_recordatorio(evento_id: str, telefono: str):
         )
         if existe.scalar_one_or_none() is None:
             session.add(CitaRecordatorio(evento_id=evento_id, telefono=telefono))
+            await session.commit()
+
+
+async def mensaje_ya_procesado(mensaje_id: str) -> bool:
+    """Retorna True si este mensaje_id ya fue procesado (deduplicación contra reenvíos de Whapi)."""
+    if not mensaje_id:
+        return False
+    async with async_session() as session:
+        result = await session.execute(
+            select(MensajeProcesado).where(MensajeProcesado.mensaje_id == mensaje_id)
+        )
+        return result.scalar_one_or_none() is not None
+
+
+async def marcar_mensaje_procesado(mensaje_id: str, telefono: str):
+    """Registra el mensaje_id como procesado para evitar procesarlo dos veces."""
+    if not mensaje_id:
+        return
+    async with async_session() as session:
+        existe = await session.execute(
+            select(MensajeProcesado).where(MensajeProcesado.mensaje_id == mensaje_id)
+        )
+        if existe.scalar_one_or_none() is None:
+            session.add(MensajeProcesado(mensaje_id=mensaje_id, telefono=telefono))
             await session.commit()

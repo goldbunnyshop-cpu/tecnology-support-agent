@@ -18,6 +18,7 @@ from agent.memory import (
     obtener_perfil, guardar_nombre_cliente,
     actualizar_visita_cliente, agregar_dispositivo_cliente,
     pausar_conversacion, esta_pausada,
+    mensaje_ya_procesado, marcar_mensaje_procesado,
 )
 from agent.profile import (
     extraer_nombre_de_mensaje,
@@ -81,6 +82,15 @@ _NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
 
 # Desactivar modo pausa globalmente hasta que esté bien configurado
 PAUSA_ACTIVA = False
+
+# Locks por número de teléfono — evita procesar dos mensajes del mismo cliente en paralelo
+_locks: dict[str, asyncio.Lock] = {}
+
+
+def _obtener_lock(telefono: str) -> asyncio.Lock:
+    if telefono not in _locks:
+        _locks[telefono] = asyncio.Lock()
+    return _locks[telefono]
 
 
 def _es_numero_interno(telefono: str) -> bool:
@@ -424,6 +434,11 @@ async def webhook_handler(request: Request):
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
+            # ── Deduplicación rápida: Whapi puede reenviar el mismo webhook varias veces ──
+            if msg.mensaje_id and await mensaje_ya_procesado(msg.mensaje_id):
+                logger.info(f"[DEDUP] {msg.mensaje_id} ({msg.telefono}) ya procesado — ignorando")
+                continue
+
             # ── Mensaje propio: el número de negocio envió a un cliente → pausar ──
             if msg.es_propio and not msg.es_grupo:
                 if PAUSA_ACTIVA and not _es_numero_interno(msg.telefono):
@@ -469,157 +484,165 @@ async def webhook_handler(request: Request):
                 logger.info(f"[PAUSA] {msg.telefono} — agente pausado, mensaje ignorado")
                 continue
 
-            # ── Obtener asesor ANTES de actualizar ultimo_mensaje ──
-            asesor = await obtener_o_asignar_asesor(msg.telefono)
+            async with _obtener_lock(msg.telefono):
+                # ── Double-check dedup dentro del lock (maneja carrera entre requests) ──
+                if msg.mensaje_id and await mensaje_ya_procesado(msg.mensaje_id):
+                    logger.info(f"[DEDUP] {msg.mensaje_id} ({msg.telefono}) — skip (lock)")
+                    continue
+                if msg.mensaje_id:
+                    await marcar_mensaje_procesado(msg.mensaje_id, msg.telefono)
 
-            # ── Registrar lead ──
-            fuente        = getattr(msg, "fuente", "desconocido")
-            fuente_detalle = getattr(msg, "fuente_detalle", "")
-            await crear_o_actualizar_lead(
-                msg.telefono,
-                fuente=fuente,
-                fuente_detalle=fuente_detalle,
-                asesor_asignado=asesor,
-            )
+                # ── Obtener asesor ANTES de actualizar ultimo_mensaje ──
+                asesor = await obtener_o_asignar_asesor(msg.telefono)
 
-            # ── Sincronizar perfil (SÍNCRONO) — crea clientes_perfil si no existe ──
-            # Esto garantiza que obtener_perfil() más abajo siempre encuentre el registro.
-            await actualizar_visita_cliente(msg.telefono, asesor)
-
-            # ── Cancelar retoma si el cliente ya respondió ──
-            await cancelar_retoma(msg.telefono)
-
-            # ── Modo nocturno ──
-            if es_horario_nocturno():
-                contenido = msg.texto or f"[{msg.tipo}]"
-                await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
-                continue
-
-            # ── Imagen ──
-            if msg.tipo == "image":
-                await guardar_mensaje(msg.telefono, "user", "[imagen recibida]")
-                await proveedor.enviar_typing(msg.telefono)
-                historial_vision = await obtener_historial(msg.telefono)
-                respuesta_img = await _analizar_y_responder_imagen(
-                    msg, historial_vision, asesor
-                )
-                await guardar_mensaje(msg.telefono, "assistant", respuesta_img)
-                await proveedor.enviar_mensaje(msg.telefono, respuesta_img)
-                continue
-
-            # ── Video ──
-            if msg.tipo == "video":
-                await guardar_mensaje(msg.telefono, "user", "[video recibido]")
-                await proveedor.enviar_typing(msg.telefono)
-                historial_vision = await obtener_historial(msg.telefono)
-                respuesta_vid = await _analizar_y_responder_video(
-                    msg, historial_vision, asesor
-                )
-                await guardar_mensaje(msg.telefono, "assistant", respuesta_vid)
-                await proveedor.enviar_mensaje(msg.telefono, respuesta_vid)
-                continue
-
-            if not msg.texto:
-                continue
-
-            logger.info(f"[{asesor}] {msg.telefono}: {msg.texto[:60]}")
-
-            # ── Cargar perfil del cliente ──
-            perfil = await obtener_perfil(msg.telefono)
-            log_estado_memoria(msg.telefono, perfil)
-            contexto_cliente = construir_contexto_cliente(perfil)
-
-            # ── Detectar nombre si aún no está guardado ──
-            if not (perfil and perfil.nombre):
-                nombre_detectado = extraer_nombre_de_mensaje(msg.texto)
-                if not nombre_detectado:
-                    historial_previo = await obtener_historial(msg.telefono)
-                    nombre_detectado = extraer_nombre_de_historial_asistente(historial_previo)
-                if nombre_detectado:
-                    await guardar_nombre_cliente(msg.telefono, nombre_detectado)
-                    logger.info(f"Nombre detectado y guardado: {nombre_detectado} ({msg.telefono})")
-
-            # ── Contexto base: fecha CDMX + perfil cliente + teléfono ──
-            partes_ctx: list[str] = [_ctx_fecha_cdmx()]
-            if contexto_cliente:
-                partes_ctx.append(contexto_cliente)
-            partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
-
-            # ── Disponibilidad real si menciona fecha con intención de visita ──
-            if detectar_intencion_agendar(msg.texto):
-                fechas_cita = parsear_fechas_en_texto(msg.texto)
-                if fechas_cita:
-                    dias_slots = []
-                    for fc in fechas_cita:
-                        slots = await obtener_slots_disponibles(fc)
-                        dias_slots.append((fc, slots))
-                    partes_ctx.append(formatear_slots_multiples_para_claude(dias_slots))
-                    logger.info(f"[CALENDAR] Disponibilidad inyectada para {[str(f) for f in fechas_cita]}")
-
-            contexto_cliente = "\n\n".join(partes_ctx)
-
-            historial = await obtener_historial(msg.telefono)
-            await proveedor.enviar_typing(msg.telefono)
-            respuesta = await generar_respuesta(
-                msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
-            )
-
-            # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
-            tag = parsear_tag_agendar(respuesta)
-            if tag:
-                try:
-                    fh = datetime.strptime(
-                        f"{tag['fecha_str']} {tag['hora_str']}", "%Y-%m-%d %H:%M"
-                    ).replace(tzinfo=ZONA_CDMX)
-                    resultado = await agendar_cita(
-                        nombre=tag["nombre"],
-                        telefono=msg.telefono,
-                        dispositivo=tag["dispositivo"],
-                        problema=tag["problema"],
-                        fecha_hora=fh,
-                    )
-                    if resultado["ok"]:
-                        respuesta = resultado["confirmacion"]
-                        asyncio.create_task(
-                            notificar_cita_agendada(
-                                proveedor=proveedor,
-                                nombre=resultado["nombre"],
-                                telefono=msg.telefono,
-                                dispositivo=resultado["dispositivo"],
-                                problema=tag["problema"],
-                                fecha_texto=resultado["fecha_texto"],
-                                hora_texto=resultado["hora_texto"],
-                            )
-                        )
-                        logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} — {resultado['fecha_texto']} {resultado['hora_texto']}")
-                    else:
-                        respuesta = quitar_tags(respuesta)
-                        logger.warning(f"[CALENDAR] Fallo al agendar: {resultado.get('error')}")
-                except Exception as e:
-                    logger.error(f"[CALENDAR] Error procesando tag AGENDAR: {e}")
-                    respuesta = quitar_tags(respuesta)
-
-            await guardar_mensaje(msg.telefono, "user", msg.texto)
-            await guardar_mensaje(msg.telefono, "assistant", respuesta)
-            await proveedor.enviar_mensaje(msg.telefono, respuesta)
-
-            # ── Detectar dispositivo en background (no bloquea) ──
-            dispositivo_detectado = detectar_dispositivo_en_texto(msg.texto)
-            if dispositivo_detectado:
-                asyncio.create_task(agregar_dispositivo_cliente(msg.telefono, dispositivo_detectado))
-
-            # ── Alertas a Christian (en background, sin bloquear) ──
-            asyncio.create_task(
-                detectar_y_notificar_christian(
-                    msg.texto,
-                    historial,
+                # ── Registrar lead ──
+                fuente        = getattr(msg, "fuente", "desconocido")
+                fuente_detalle = getattr(msg, "fuente_detalle", "")
+                await crear_o_actualizar_lead(
                     msg.telefono,
-                    respuesta,
-                    proveedor,
+                    fuente=fuente,
+                    fuente_detalle=fuente_detalle,
+                    asesor_asignado=asesor,
                 )
-            )
 
-            logger.info(f"[{asesor}] → {msg.telefono}: {respuesta[:80]}...")
+                # ── Sincronizar perfil (SÍNCRONO) — crea clientes_perfil si no existe ──
+                # Esto garantiza que obtener_perfil() más abajo siempre encuentre el registro.
+                await actualizar_visita_cliente(msg.telefono, asesor)
+
+                # ── Cancelar retoma si el cliente ya respondió ──
+                await cancelar_retoma(msg.telefono)
+
+                # ── Modo nocturno ──
+                if es_horario_nocturno():
+                    contenido = msg.texto or f"[{msg.tipo}]"
+                    await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
+                    continue
+
+                # ── Imagen ──
+                if msg.tipo == "image":
+                    await guardar_mensaje(msg.telefono, "user", "[imagen recibida]")
+                    await proveedor.enviar_typing(msg.telefono)
+                    historial_vision = await obtener_historial(msg.telefono)
+                    respuesta_img = await _analizar_y_responder_imagen(
+                        msg, historial_vision, asesor
+                    )
+                    await guardar_mensaje(msg.telefono, "assistant", respuesta_img)
+                    await proveedor.enviar_mensaje(msg.telefono, respuesta_img)
+                    continue
+
+                # ── Video ──
+                if msg.tipo == "video":
+                    await guardar_mensaje(msg.telefono, "user", "[video recibido]")
+                    await proveedor.enviar_typing(msg.telefono)
+                    historial_vision = await obtener_historial(msg.telefono)
+                    respuesta_vid = await _analizar_y_responder_video(
+                        msg, historial_vision, asesor
+                    )
+                    await guardar_mensaje(msg.telefono, "assistant", respuesta_vid)
+                    await proveedor.enviar_mensaje(msg.telefono, respuesta_vid)
+                    continue
+
+                if not msg.texto:
+                    continue
+
+                logger.info(f"[{asesor}] {msg.telefono}: {msg.texto[:60]}")
+
+                # ── Cargar perfil del cliente ──
+                perfil = await obtener_perfil(msg.telefono)
+                log_estado_memoria(msg.telefono, perfil)
+                contexto_cliente = construir_contexto_cliente(perfil)
+
+                # ── Detectar nombre si aún no está guardado ──
+                if not (perfil and perfil.nombre):
+                    nombre_detectado = extraer_nombre_de_mensaje(msg.texto)
+                    if not nombre_detectado:
+                        historial_previo = await obtener_historial(msg.telefono)
+                        nombre_detectado = extraer_nombre_de_historial_asistente(historial_previo)
+                    if nombre_detectado:
+                        await guardar_nombre_cliente(msg.telefono, nombre_detectado)
+                        logger.info(f"Nombre detectado y guardado: {nombre_detectado} ({msg.telefono})")
+
+                # ── Contexto base: fecha CDMX + perfil cliente + teléfono ──
+                partes_ctx: list[str] = [_ctx_fecha_cdmx()]
+                if contexto_cliente:
+                    partes_ctx.append(contexto_cliente)
+                partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
+
+                # ── Disponibilidad real si menciona fecha con intención de visita ──
+                if detectar_intencion_agendar(msg.texto):
+                    fechas_cita = parsear_fechas_en_texto(msg.texto)
+                    if fechas_cita:
+                        dias_slots = []
+                        for fc in fechas_cita:
+                            slots = await obtener_slots_disponibles(fc)
+                            dias_slots.append((fc, slots))
+                        partes_ctx.append(formatear_slots_multiples_para_claude(dias_slots))
+                        logger.info(f"[CALENDAR] Disponibilidad inyectada para {[str(f) for f in fechas_cita]}")
+
+                contexto_cliente = "\n\n".join(partes_ctx)
+
+                historial = await obtener_historial(msg.telefono)
+                await proveedor.enviar_typing(msg.telefono)
+                respuesta = await generar_respuesta(
+                    msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
+                )
+
+                # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
+                tag = parsear_tag_agendar(respuesta)
+                if tag:
+                    try:
+                        fh = datetime.strptime(
+                            f"{tag['fecha_str']} {tag['hora_str']}", "%Y-%m-%d %H:%M"
+                        ).replace(tzinfo=ZONA_CDMX)
+                        resultado = await agendar_cita(
+                            nombre=tag["nombre"],
+                            telefono=msg.telefono,
+                            dispositivo=tag["dispositivo"],
+                            problema=tag["problema"],
+                            fecha_hora=fh,
+                        )
+                        if resultado["ok"]:
+                            respuesta = resultado["confirmacion"]
+                            asyncio.create_task(
+                                notificar_cita_agendada(
+                                    proveedor=proveedor,
+                                    nombre=resultado["nombre"],
+                                    telefono=msg.telefono,
+                                    dispositivo=resultado["dispositivo"],
+                                    problema=tag["problema"],
+                                    fecha_texto=resultado["fecha_texto"],
+                                    hora_texto=resultado["hora_texto"],
+                                )
+                            )
+                            logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} — {resultado['fecha_texto']} {resultado['hora_texto']}")
+                        else:
+                            respuesta = quitar_tags(respuesta)
+                            logger.warning(f"[CALENDAR] Fallo al agendar: {resultado.get('error')}")
+                    except Exception as e:
+                        logger.error(f"[CALENDAR] Error procesando tag AGENDAR: {e}")
+                        respuesta = quitar_tags(respuesta)
+
+                await guardar_mensaje(msg.telefono, "user", msg.texto)
+                await guardar_mensaje(msg.telefono, "assistant", respuesta)
+                await proveedor.enviar_mensaje(msg.telefono, respuesta)
+
+                # ── Detectar dispositivo en background (no bloquea) ──
+                dispositivo_detectado = detectar_dispositivo_en_texto(msg.texto)
+                if dispositivo_detectado:
+                    asyncio.create_task(agregar_dispositivo_cliente(msg.telefono, dispositivo_detectado))
+
+                # ── Alertas a Christian (en background, sin bloquear) ──
+                asyncio.create_task(
+                    detectar_y_notificar_christian(
+                        msg.texto,
+                        historial,
+                        msg.telefono,
+                        respuesta,
+                        proveedor,
+                    )
+                )
+
+                logger.info(f"[{asesor}] → {msg.telefono}: {respuesta[:80]}...")
 
         return {"status": "ok"}
 
