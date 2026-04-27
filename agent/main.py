@@ -31,6 +31,7 @@ from agent.leads import (
     crear_o_actualizar_lead,
     obtener_o_asignar_asesor,
     obtener_resumen_leads,
+    obtener_todos_los_leads_detalle,
     programar_retoma,
     cancelar_retoma,
     marcar_presupuesto_enviado,
@@ -247,8 +248,49 @@ async def health_check():
 
 
 @app.get("/leads")
-async def ver_leads():
-    return await obtener_resumen_leads()
+async def ver_leads(detalle: bool = False):
+    """
+    GET /leads              — resumen de conteos por estado y fuente
+    GET /leads?detalle=true — lista completa con nombre, dispositivo, estado y último mensaje
+    """
+    import json as _json
+    if not detalle:
+        return await obtener_resumen_leads()
+
+    leads = await obtener_todos_los_leads_detalle()
+    resultado = []
+    for lead in leads:
+        perfil = await obtener_perfil(lead.telefono)
+        historial = await obtener_historial(lead.telefono, limite=4)
+        nombre = (perfil.nombre or "") if perfil else ""
+        dispositivos: list[str] = []
+        if perfil:
+            try:
+                dispositivos = _json.loads(perfil.dispositivos_json or "[]")
+            except Exception:
+                dispositivos = []
+        ultimo_contenido = ""
+        if historial:
+            ultimo_contenido = historial[-1]["content"][:200]
+        resultado.append({
+            "telefono":              lead.telefono,
+            "nombre":                nombre,
+            "asesor":                lead.asesor_asignado or "",
+            "estado":                lead.estado,
+            "prioridad":             lead.prioridad,
+            "dispositivos":          dispositivos[-3:] if dispositivos else [],
+            "fuente":                lead.fuente,
+            "seguimientos_enviados": lead.seguimientos_enviados,
+            "seguimiento_realizado": lead.seguimiento_realizado,
+            "ultimo_mensaje":        lead.ultimo_mensaje.isoformat() if lead.ultimo_mensaje else None,
+            "ultimo_contenido":      ultimo_contenido,
+            "conversacion_reciente": [
+                {"rol": m["role"], "texto": m["content"][:150]}
+                for m in historial
+            ],
+            "creado":                lead.created_at.isoformat() if lead.created_at else None,
+        })
+    return {"total": len(resultado), "leads": resultado}
 
 
 @app.post("/reporte")
