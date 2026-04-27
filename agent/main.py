@@ -248,7 +248,7 @@ async def health_check():
 
 
 @app.get("/leads")
-async def ver_leads(detalle: bool = False):
+async def ver_leads(detalle: bool = False, estados: str = "todos"):
     """
     GET /leads              — resumen de conteos por estado y fuente
     GET /leads?detalle=true — lista completa con nombre, dispositivo, estado y último mensaje
@@ -258,6 +258,9 @@ async def ver_leads(detalle: bool = False):
         return await obtener_resumen_leads()
 
     leads = await obtener_todos_los_leads_detalle()
+    if estados != "todos":
+        filtrar = [e.strip() for e in estados.split(",")]
+        leads = [l for l in leads if l.estado in filtrar]
     resultado = []
     for lead in leads:
         perfil = await obtener_perfil(lead.telefono)
