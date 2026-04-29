@@ -8,9 +8,10 @@ from datetime import datetime
 
 logger = logging.getLogger("agentkit")
 
-CHRISTIAN_NUMERO = os.getenv("CHRISTIAN_NUMERO", "5541576331")
-ULISES_NUMERO    = os.getenv("ULISES_NUMERO",    "5633500566")
-GRUPO_INTERNO    = os.getenv("GRUPO_INTERNO_NOMBRE", "Taller Interno TS")
+CHRISTIAN_NUMERO  = os.getenv("CHRISTIAN_NUMERO", "5541576331")
+ULISES_NUMERO     = os.getenv("ULISES_NUMERO",    "5633500566")
+GRUPO_INTERNO     = os.getenv("GRUPO_INTERNO_NOMBRE", "Taller Interno TS")
+GRUPO_INTERNO_ID  = os.getenv("GRUPO_INTERNO_ID", "")  # chat_id del grupo @g.us para notificaciones
 
 # Palabras clave que activan alerta a Christian en mensajes del cliente
 KEYWORDS_ALERTA = [
@@ -37,7 +38,7 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
-COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "reanudar", "clabe", "pago", "nota", "orden", "estatus", "consultar", "marcar seguimiento")
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "pausa", "reanudar", "clabe", "pago", "nota", "orden", "estatus", "consultar", "marcar seguimiento")
 
 TEXTO_MENU = (
     "🛠️ *Comandos — Taller Interno TS*\n\n"
@@ -51,6 +52,7 @@ TEXTO_MENU = (
     "*password:* [número] → Solicita contraseña\n"
     "*llamar:* [número] → Pide que llame\n"
     "*cita:* [número] → Puede pasar sin cita\n"
+    "*pausa:* [número] → Pausa agente 2h (tú atiendes)\n"
     "*reanudar:* [número] → Reanuda agente\n\n"
     "*── CRM / Órdenes ──*\n"
     "*nota:* [folio_físico] [número] [equipo] [modelo] [falla] [total] [pago] [refaccion:costo]\n"
@@ -454,7 +456,13 @@ async def procesar_comando_grupo(
         await _cmd_pendientes_seguimiento(chat_id_raw, proveedor)
         return True
 
-    resultado = parsear_comando(texto_cmd)
+    # Normalizar: eliminar caracteres invisibles que WhatsApp puede insertar
+    texto_normalizado = (
+        texto_cmd.strip()
+        .replace('​', '')   # Zero-width space
+        .replace(' ', ' ')  # Non-breaking space
+    )
+    resultado = parsear_comando(texto_normalizado)
     if not resultado:
         logger.info(f"[GRUPO CMD] Texto no es un comando válido: '{texto_cmd[:60]}'")
         return False
@@ -595,20 +603,41 @@ async def procesar_comando_grupo(
         ok = await _notificar_cliente(phone, msg_cliente)
         await _responder_grupo(f"{'✅' if ok else '❌'} Solicitud de llamada enviada a {phone}")
 
-    # ── reanudar ──
-    elif cmd == "reanudar":
+    # ── pausa (manual: Christian toma el caso) ──
+    elif cmd == "pausa":
         phone = parsear_phone_simple(payload)
         if not phone:
-            await _responder_grupo("⚠️ Formato: reanudar: NÚMERO")
+            await _responder_grupo("⚠️ Formato: pausa: NÚMERO\nEj: pausa: 5215614693930")
             return True
-        from agent.memory import reanudar_conversacion
         phone_fmt, advertencia = _formatear_numero_destino(phone)
         if advertencia:
             await _responder_grupo(advertencia)
             return True
+        from agent.memory import pausar_conversacion
+        await pausar_conversacion(phone_fmt, horas=2)
+        await _responder_grupo(
+            f"✅ Pausa activada: {phone_fmt} (120 min)\n"
+            f"El agente no responderá mientras Christian interviene."
+        )
+        logger.info(f"[PAUSA] Cliente {phone_fmt} pausado por Christian")
+
+    # ── reanudar ──
+    elif cmd == "reanudar":
+        phone = parsear_phone_simple(payload)
+        if not phone:
+            await _responder_grupo("⚠️ Formato: reanudar: NÚMERO\nEj: reanudar: 5215614693930")
+            return True
+        phone_fmt, advertencia = _formatear_numero_destino(phone)
+        if advertencia:
+            await _responder_grupo(advertencia)
+            return True
+        from agent.memory import reanudar_conversacion
         await reanudar_conversacion(phone_fmt)
-        await _responder_grupo(f"✅ Agente reanudado para {phone_fmt}")
-        logger.info(f"[PAUSA] Reanudado manualmente por operador: {phone_fmt}")
+        await _responder_grupo(
+            f"✅ Conversación reanudada: {phone_fmt}\n"
+            f"Agente puede responder de nuevo."
+        )
+        logger.info(f"[REANUDAR] Cliente {phone_fmt} reanudado")
 
     # ── cita ──
     elif cmd == "cita":
@@ -1122,23 +1151,43 @@ async def notificar_cita_agendada(
     problema: str,
     fecha_texto: str,
     hora_texto: str,
+    asesor: str = "",
+    evento_id: str = "",
 ) -> None:
-    """Notifica a Christian y Ulises cuando se agenda una nueva cita."""
-    mensaje = (
+    """Notifica a Christian, Ulises y al grupo interno cuando se agenda una cita."""
+    linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
+    mensaje_individual = (
         f"📅 *NUEVA CITA AGENDADA*\n"
         f"👤 Cliente: {nombre}\n"
         f"📱 Dispositivo: {dispositivo}\n"
         f"🔧 Problema: {problema}\n"
         f"📆 Fecha: {fecha_texto.capitalize()}\n"
         f"🕐 Hora: {hora_texto}\n"
-        f"📞 Teléfono: {telefono}"
+        f"📞 Teléfono: {telefono}\n"
+        f"{linea_asesor}"
     )
     for numero in [CHRISTIAN_NUMERO, ULISES_NUMERO]:
         try:
-            await proveedor.enviar_mensaje(numero, mensaje)
+            await proveedor.enviar_mensaje(numero, mensaje_individual)
             logger.info(f"[CALENDAR] Notificación cita → {numero}")
         except Exception as e:
             logger.error(f"[CALENDAR] Error notificando a {numero}: {e}")
+
+    # Email + grupo via appointment_notifications (maneja dedup, email SMTP y búsqueda de grupo)
+    try:
+        from agent.appointment_notifications import notificar_nueva_cita
+        await notificar_nueva_cita(
+            nombre=nombre,
+            telefono=telefono,
+            dispositivo=dispositivo,
+            problema=problema,
+            fecha_texto=fecha_texto,
+            hora_texto=hora_texto,
+            asesor=asesor or "Agente",
+            evento_id=evento_id,
+        )
+    except Exception as e:
+        logger.error(f"[CALENDAR] Error en notificación email/grupo: {e}")
 
 
 async def notificar_christian_vision(
