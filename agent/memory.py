@@ -4,15 +4,37 @@
 import json
 import logging
 import os
-from datetime import datetime
+import re as _re
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Text, DateTime, select, update, Integer
+from sqlalchemy import Boolean, String, Text, DateTime, select, update, Integer, or_, UniqueConstraint
 from dotenv import load_dotenv
 
 logger = logging.getLogger("agentkit")
 
+
+def _variantes_telefono(telefono: str) -> list[str]:
+    """
+    Devuelve todas las variantes posibles de un número mexicano
+    (10 dígitos y 13 dígitos con 521) para búsquedas tolerantes a formato.
+    """
+    d = _re.sub(r"\D", "", telefono or "")
+    variantes: list[str] = [d]
+    if len(d) == 13 and d.startswith("521"):
+        variantes.append(d[3:])          # 5215531351098 → 5531351098
+    elif len(d) == 12 and d.startswith("52"):
+        variantes.append(d[2:])          # 525531351098  → 5531351098
+        variantes.append(f"521{d[2:]}")  # 525531351098  → 5215531351098
+    elif len(d) == 10:
+        variantes.append(f"521{d}")      # 5531351098    → 5215531351098
+    # deduplica manteniendo orden
+    seen: set[str] = set()
+    return [v for v in variantes if v and not (v in seen or seen.add(v))]  # type: ignore[func-returns-value]
+
+
 load_dotenv()
+
 
 def _sqlite_url() -> str:
     """Usa /data/agentkit.db si el volumen está montado, si no ./agentkit.db."""
@@ -81,6 +103,30 @@ class MensajeProcesado(Base):
     procesado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class CitaNotificada(Base):
+    """Registro de notificaciones de citas enviadas a Ulises (evita duplicados)."""
+    __tablename__ = "citas_notificadas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    evento_id: Mapped[str] = mapped_column(String(200), index=True)
+    notificacion_tipo: Mapped[str] = mapped_column(String(30))  # inmediata | recordatorio_1h | resumen_diario
+    cliente_tel: Mapped[str] = mapped_column(String(50), default="")
+    enviado_email: Mapped[bool] = mapped_column(default=False)
+    enviado_grupo: Mapped[bool] = mapped_column(default=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ConfirmacionCitaEnviada(Base):
+    """Evita enviar la confirmación de cita al cliente más de una vez por evento."""
+    __tablename__ = "confirmaciones_citas_enviadas"
+    __table_args__ = (UniqueConstraint("cliente_telefono", "evento_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cliente_telefono: Mapped[str] = mapped_column(String(50), index=True)
+    evento_id: Mapped[str] = mapped_column(String(200))
+    enviado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class ClientePerfil(Base):
     """Perfil persistente del cliente — sobrevive reinicios del servidor."""
     __tablename__ = "clientes_perfil"
@@ -94,6 +140,18 @@ class ClientePerfil(Base):
     notas: Mapped[str] = mapped_column(Text, default="")
     pausada_hasta: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Pausa(Base):
+    """Pausas activas — agente detenido por intervención manual de Christian."""
+    __tablename__ = "pausas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cliente_telefono: Mapped[str] = mapped_column(String(50), index=True)
+    fecha_pausa: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    duracion_minutos: Mapped[int] = mapped_column(Integer, default=120)
+    razon: Mapped[str] = mapped_column(String(100), default="intervencion_manual")
+    activa: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 async def obtener_perfil(telefono: str) -> ClientePerfil | None:
@@ -229,7 +287,7 @@ async def inicializar_db():
     from agent.leads import _migrar_columnas
     await _migrar_columnas()
     await _migrar_clientes_perfil()
-    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio, mensajes_procesados")
+    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio, mensajes_procesados, citas_notificadas, pausas")
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):
@@ -282,28 +340,76 @@ async def limpiar_historial(telefono: str):
 
 async def pausar_conversacion(telefono: str, horas: int = 2):
     """Pausa el agente para este cliente durante N horas (intervención humana)."""
-    hasta = datetime.utcnow() + __import__("datetime").timedelta(hours=horas)
+    minutos = horas * 60
+    async with async_session() as session:
+        # Desactivar pausas previas activas para este cliente
+        result = await session.execute(
+            select(Pausa).where(Pausa.cliente_telefono == telefono, Pausa.activa == True)
+        )
+        for p in result.scalars().all():
+            p.activa = False
+        session.add(Pausa(
+            cliente_telefono=telefono,
+            duracion_minutos=minutos,
+            razon="intervencion_manual",
+        ))
+        await session.commit()
+    # Compatibilidad con código existente que lee ClientePerfil.pausada_hasta
+    hasta = datetime.utcnow() + timedelta(hours=horas)
     await _upsert_perfil(telefono, pausada_hasta=hasta)
-    logger.info(f"[PAUSA] Conversación {telefono} pausada hasta {hasta.strftime('%H:%M')} UTC")
+    logger.info(f"[PAUSA] Cliente {telefono} pausado — {minutos} min (intervención manual de Christian)")
 
 
 async def reanudar_conversacion(telefono: str):
-    """Reactiva el agente para este cliente."""
-    await _upsert_perfil(telefono, pausada_hasta=None)
-    logger.info(f"[PAUSA] Conversación {telefono} reanudada")
+    """Reactiva el agente para este cliente (acepta 10 o 13 dígitos)."""
+    variantes = _variantes_telefono(telefono)
+    async with async_session() as session:
+        result = await session.execute(
+            select(Pausa).where(
+                Pausa.cliente_telefono.in_(variantes),
+                Pausa.activa == True,
+            )
+        )
+        for p in result.scalars().all():
+            p.activa = False
+        await session.commit()
+    for tel in variantes:
+        await _upsert_perfil(tel, pausada_hasta=None)
+    logger.info(f"[PAUSA] Reanudar manual: {telefono} (comando de Christian)")
 
 
 async def esta_pausada(telefono: str) -> bool:
-    """Retorna True si el agente está pausado para este cliente."""
+    """Retorna True si el agente está pausado para este cliente.
+    Acepta 10 o 13 dígitos — busca todas las variantes del número."""
+    variantes = _variantes_telefono(telefono)
     async with async_session() as session:
+        # Fuente primaria: tabla pausas (busca todas las variantes del número)
         result = await session.execute(
-            select(ClientePerfil).where(ClientePerfil.telefono == telefono)
+            select(Pausa)
+            .where(
+                Pausa.cliente_telefono.in_(variantes),
+                Pausa.activa == True,
+            )
+            .order_by(Pausa.fecha_pausa.desc())
         )
-        perfil = result.scalar_one_or_none()
+        pausa = result.scalar_one_or_none()
+        if pausa:
+            expira = pausa.fecha_pausa + timedelta(minutes=pausa.duracion_minutos)
+            if datetime.utcnow() < expira:
+                return True
+            # Pausa vencida — desactivar automáticamente
+            pausa.activa = False
+            await session.commit()
+            return False
+
+        # Fallback: revisar ClientePerfil (pausas de versiones anteriores)
+        result2 = await session.execute(
+            select(ClientePerfil).where(ClientePerfil.telefono.in_(variantes))
+        )
+        perfil = result2.scalar_one_or_none()
         if not perfil or not perfil.pausada_hasta:
             return False
         if datetime.utcnow() >= perfil.pausada_hasta:
-            # Venció la pausa — limpiar automáticamente
             perfil.pausada_hasta = None
             await session.commit()
             return False
@@ -352,3 +458,70 @@ async def marcar_mensaje_procesado(mensaje_id: str, telefono: str):
         if existe.scalar_one_or_none() is None:
             session.add(MensajeProcesado(mensaje_id=mensaje_id, telefono=telefono))
             await session.commit()
+
+
+async def cita_notificada_ya_enviada(evento_id: str, tipo: str) -> bool:
+    """Retorna True si ya se envió esta notificación de cita a Ulises."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(CitaNotificada).where(
+                CitaNotificada.evento_id == evento_id,
+                CitaNotificada.notificacion_tipo == tipo,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+
+async def registrar_cita_notificada(
+    evento_id: str,
+    tipo: str,
+    cliente_tel: str,
+    enviado_email: bool,
+    enviado_grupo: bool,
+) -> None:
+    """Registra que se envió una notificación de cita para no repetirla."""
+    async with async_session() as session:
+        existe = await session.execute(
+            select(CitaNotificada).where(
+                CitaNotificada.evento_id == evento_id,
+                CitaNotificada.notificacion_tipo == tipo,
+            )
+        )
+        if existe.scalar_one_or_none() is None:
+            session.add(CitaNotificada(
+                evento_id=evento_id,
+                notificacion_tipo=tipo,
+                cliente_tel=cliente_tel,
+                enviado_email=enviado_email,
+                enviado_grupo=enviado_grupo,
+            ))
+            await session.commit()
+
+
+async def confirmacion_cita_ya_enviada(cliente_telefono: str, evento_id: str) -> bool:
+    """Retorna True si esta confirmación ya fue enviada al cliente — evita duplicados."""
+    if not evento_id:
+        return False
+    async with async_session() as session:
+        result = await session.execute(
+            select(ConfirmacionCitaEnviada).where(
+                ConfirmacionCitaEnviada.cliente_telefono == cliente_telefono,
+                ConfirmacionCitaEnviada.evento_id == evento_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+
+async def marcar_confirmacion_cita_enviada(cliente_telefono: str, evento_id: str) -> None:
+    """Marca la confirmación como enviada para no repetirla."""
+    if not evento_id:
+        return
+    async with async_session() as session:
+        try:
+            session.add(ConfirmacionCitaEnviada(
+                cliente_telefono=cliente_telefono,
+                evento_id=evento_id,
+            ))
+            await session.commit()
+        except Exception:
+            await session.rollback()  # UNIQUE constraint → ya registrada, ignorar

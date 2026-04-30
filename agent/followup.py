@@ -449,21 +449,102 @@ async def _loop_alerta_factura():
             logger.error(f"Error en loop alerta factura: {e}")
 
 
+def _segundos_hasta_proximas_9am() -> float:
+    """Segundos hasta las 9:00 AM CDMX del próximo día (o hoy si aún no llega)."""
+    from datetime import timedelta as _td
+    ahora = datetime.now(_ZONA_MX)
+    proximas = ahora.replace(hour=9, minute=0, second=0, microsecond=0)
+    if ahora >= proximas:
+        proximas += _td(days=1)
+    segundos = (proximas - ahora).total_seconds()
+    logger.info(f"Próximo resumen diario de citas: {proximas.strftime('%A %d/%m a las %H:%M')} ({segundos/3600:.1f}h)")
+    return segundos
+
+
+async def ejecutar_notificaciones_citas_ulises():
+    """
+    Detecta citas en Google Calendar no notificadas a Ulises:
+    - Recordatorio 1h antes (ventana 55-70 min)
+    - Citas nuevas en los próximos 7 días (no registradas con tipo=inmediata)
+    """
+    from datetime import timedelta as _td
+    from agent.google_calendar import obtener_eventos_proximos, obtener_eventos_rango
+    from agent.memory import cita_notificada_ya_enviada
+    from agent.appointment_notifications import notificar_nueva_cita, notificar_recordatorio_1h
+
+    # 1) Recordatorio 1h para Ulises
+    eventos_1h = await obtener_eventos_proximos(minutos_desde=55, minutos_hasta=70)
+    for ev in eventos_1h:
+        if not await cita_notificada_ya_enviada(ev["id"], "recordatorio_1h"):
+            await notificar_recordatorio_1h(
+                nombre=ev["nombre"],
+                telefono=ev["telefono"],
+                dispositivo=ev.get("dispositivo", ""),
+                hora_texto=ev["hora"],
+                evento_id=ev["id"],
+            )
+
+    # 2) Citas nuevas detectadas directamente en Google Calendar (no creadas vía bot)
+    desde = datetime.now(_ZONA_MX).date()
+    hasta = desde + _td(days=7)
+    todos = await obtener_eventos_rango(desde, hasta)
+    for ev in todos:
+        if not ev.get("telefono"):
+            continue
+        if not await cita_notificada_ya_enviada(ev["id"], "inmediata"):
+            await notificar_nueva_cita(
+                nombre=ev["nombre"],
+                telefono=ev["telefono"],
+                dispositivo=ev.get("dispositivo", ""),
+                problema=ev.get("problema", ""),
+                fecha_texto=ev.get("fecha_txt", ""),
+                hora_texto=ev["hora"],
+                asesor="Agenda externa",
+                evento_id=ev["id"],
+            )
+
+
+async def _loop_notificaciones_citas_ulises():
+    """Verifica citas nuevas y recordatorios 1h para Ulises cada 10 minutos."""
+    while True:
+        await asyncio.sleep(INTERVALO_RECORDATORIO)
+        try:
+            await ejecutar_notificaciones_citas_ulises()
+        except Exception as e:
+            logger.error(f"Error en notificaciones citas Ulises: {e}")
+
+
+async def _loop_resumen_diario_citas():
+    """Envía el resumen diario de citas a Ulises a las 9:00 AM CDMX."""
+    await asyncio.sleep(_segundos_hasta_proximas_9am())
+    while True:
+        try:
+            from agent.appointment_notifications import enviar_resumen_diario
+            await enviar_resumen_diario()
+        except Exception as e:
+            logger.error(f"Error en resumen diario de citas: {e}")
+        await asyncio.sleep(24 * 3600)
+
+
 async def iniciar_scheduler():
     """
     Scheduler principal que corre en segundo plano:
     - Seguimientos a leads: cada hora
     - Retomas nocturnas: cada 10 minutos
-    - Recordatorios de cita: cada 10 minutos
+    - Recordatorios de cita (cliente): cada 10 minutos
+    - Notificaciones citas Ulises (email+grupo): cada 10 minutos
+    - Resumen diario de citas: 9:00 AM CDMX
     - Alertas presupuesto 24h: cada hora
     - Alerta factura fin de mes: diaria
     - Reporte Excel: cada domingo a las 13:00 CDMX
     """
-    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, recordatorios/10min, factura/diario, reporte/domingo 13h")
+    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, recordatorios/10min, citas-ulises/10min, resumen-citas/9am, factura/diario, reporte/domingo 13h")
 
     asyncio.create_task(iniciar_scheduler_reporte_semanal())
     asyncio.create_task(_loop_retomas())
     asyncio.create_task(_loop_recordatorios())
+    asyncio.create_task(_loop_notificaciones_citas_ulises())
+    asyncio.create_task(_loop_resumen_diario_citas())
     asyncio.create_task(_loop_alerta_factura())
 
     while True:

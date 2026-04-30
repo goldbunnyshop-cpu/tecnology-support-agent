@@ -239,56 +239,61 @@ async def analizar_thumbnail_b64(thumbnail_b64: str) -> dict:
 
 
 def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "Sofia") -> str:
-    """Genera el mensaje al cliente basado en el análisis de visión."""
+    """
+    Genera el mensaje al cliente basado en el análisis de visión.
+
+    Casos:
+    A — Daño visible → diagnóstico + invitación al módulo
+    B/C — Equipo identificado sin daño → confirmar dispositivo, preguntar qué falla tiene
+    D — Imagen borrosa o dispositivo no identificado → pedir descripción del problema
+    """
+    # ── Caso D: imagen borrosa / no se pudo analizar ──────────────────────────
     if not analisis.get("puede_diagnosticar", True):
         if tipo_media == "video":
             return (
-                "Recibí tu video \U0001f3a5 Vi el contenido pero necesito más contexto para diagnosticar. "
+                "Recibí tu video \U0001f3a5 pero no pude ver el problema con claridad. "
                 "¿Puedes describirme qué falla presenta tu equipo? "
                 "Por ejemplo: no enciende, se congela, hace ruido extraño, etc."
             )
         return (
-            "Recibí tu imagen \U0001f4f8 pero no pude identificar el dispositivo con claridad. "
-            "¿Puedes tomar otra foto con mejor iluminación o más cerca del problema? "
-            "¡Así podré darte un diagnóstico más preciso!"
+            "La foto quedó un poco borrosa. "
+            "Cuéntame, ¿qué problema tiene tu equipo?"
         )
 
-    dispositivo = analisis.get("dispositivo", "tu equipo")
-    dano = analisis.get("dano_visible", "")
+    dispositivo = analisis.get("dispositivo", "")
+    dano        = analisis.get("dano_visible", "")
+    hay_dano    = bool(dano and dano != "No se aprecia daño visible")
+
+    # ── Casos B/C: equipo identificado pero sin daño visible ─────────────────
+    if not hay_dano:
+        if dispositivo and dispositivo != "No identificado":
+            return (
+                f"✅ Por la foto veo que tienes un *{dispositivo}*. "
+                f"¡Perfecto, así puedo asesorarte mejor! 😊 "
+                f"Cuéntame, ¿qué problema tiene o qué servicio necesitas?"
+            )
+        # No se identificó el dispositivo y sin daño
+        return (
+            "Recibí tu foto \U0001f4f8 No pude identificar bien el equipo. "
+            "¿Puedes contarme qué dispositivo es y cuál es el problema?"
+        )
+
+    # ── Caso A: hay daño visible → flujo de diagnóstico ──────────────────────
     reparacion = analisis.get("reparacion_necesaria", "Diagnóstico físico requerido")
-    precio = analisis.get("precio_estimado", "Por cotizar")
-    severidad = analisis.get("severidad", "no_determinable")
+    precio     = analisis.get("precio_estimado", "Por cotizar")
+    intro      = "Vi la foto de tu equipo \U0001f4f8" if tipo_media == "image" else "Revisé tu video \U0001f3a5"
+    equipo_txt = dispositivo or "tu equipo"
+    desc_dano  = f"Parece que tienes {dano} en tu {equipo_txt}."
 
-    if tipo_media == "video" and severidad == "no_determinable":
+    if reparacion == "Diagnóstico físico requerido" or precio == "Por cotizar":
         return (
-            f"Vi tu video \U0001f3a5 Pude revisar el estado visual de tu {dispositivo}. "
-            f"Para un diagnóstico preciso de la falla funcional, necesitamos revisarlo en nuestro módulo. "
-            f"¿Te gustaría traerlo? Hacemos el diagnóstico sin costo."
-        )
-
-    intro = "Vi la foto de tu equipo \U0001f4f8" if tipo_media == "image" else "Revisé tu video \U0001f3a5"
-
-    if dano and dano != "No se aprecia daño visible":
-        descripcion_dano = f"Parece que tienes {dano} en tu {dispositivo}."
-    else:
-        descripcion_dano = f"Revisé tu {dispositivo} y no aprecio daño físico visible."
-
-    if reparacion == "Diagnóstico físico requerido":
-        return (
-            f"{intro} {descripcion_dano} "
-            f"Para confirmarlo necesitamos revisarlo en nuestro módulo. "
-            f"El diagnóstico es sin costo. ¿Te gustaría traerlo?"
-        )
-
-    if precio == "Por cotizar":
-        return (
-            f"{intro} {descripcion_dano} "
-            f"El costo exacto te lo confirmamos cuando lo revisemos en nuestro módulo. "
-            f"¿Te gustaría traerlo?"
+            f"{intro} {desc_dano} "
+            f"Para un diagnóstico preciso necesitamos revisarlo en nuestro módulo. "
+            f"El diagnóstico es sin costo y lo hacemos en el momento. ¿Te gustaría traerlo?"
         )
 
     return (
-        f"{intro} {descripcion_dano} "
+        f"{intro} {desc_dano} "
         f"Con base en lo que vemos, el costo aproximado es de *{precio} MXN*. "
         f"Este es un diagnóstico preliminar — el precio exacto se confirma cuando lo revisamos físicamente. "
         f"¿Te gustaría traerlo a nuestro módulo?"
