@@ -379,13 +379,21 @@ async def reanudar_conversacion(telefono: str):
 
 
 async def limpiar_todas_pausas() -> int:
-    """Desactiva TODAS las pausas activas. Retorna cuántas se limpiaron."""
+    """Desactiva TODAS las pausas activas en ambas tablas. Retorna cuántas se limpiaron."""
     async with async_session() as session:
+        # Limpiar tabla pausas
         result = await session.execute(select(Pausa).where(Pausa.activa == True))
         pausas = result.scalars().all()
         count = len(pausas)
         for p in pausas:
             p.activa = False
+        # Limpiar también ClientePerfil.pausada_hasta (fallback legacy)
+        result2 = await session.execute(
+            select(ClientePerfil).where(ClientePerfil.pausada_hasta != None)
+        )
+        for perfil in result2.scalars().all():
+            perfil.pausada_hasta = None
+            count += 1
         await session.commit()
     logger.info(f"[PAUSA] Limpieza total: {count} pausas desactivadas")
     return count
