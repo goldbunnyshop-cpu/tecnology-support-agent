@@ -484,7 +484,8 @@ async def webhook_handler(request: Request):
                 continue
 
             # ── Modo pausa (intervención humana activa) ──
-            if PAUSA_ACTIVA and await esta_pausada(msg.telefono):
+            # Siempre revisa la pausa manual (independiente de PAUSA_ACTIVA)
+            if await esta_pausada(msg.telefono):
                 logger.info(f"[PAUSA ACTIVA] {msg.telefono} — mensaje ignorado, Christian está atendiendo")
                 continue
 
