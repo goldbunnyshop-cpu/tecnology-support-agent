@@ -378,6 +378,19 @@ async def reanudar_conversacion(telefono: str):
     logger.info(f"[PAUSA] Reanudar manual: {telefono} (comando de Christian)")
 
 
+async def limpiar_todas_pausas() -> int:
+    """Desactiva TODAS las pausas activas. Retorna cuántas se limpiaron."""
+    async with async_session() as session:
+        result = await session.execute(select(Pausa).where(Pausa.activa == True))
+        pausas = result.scalars().all()
+        count = len(pausas)
+        for p in pausas:
+            p.activa = False
+        await session.commit()
+    logger.info(f"[PAUSA] Limpieza total: {count} pausas desactivadas")
+    return count
+
+
 async def esta_pausada(telefono: str) -> bool:
     """Retorna True si el agente está pausado para este cliente.
     Acepta 10 o 13 dígitos — busca todas las variantes del número."""
