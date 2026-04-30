@@ -15,8 +15,8 @@ import httpx
 logger = logging.getLogger("agentkit")
 
 _ZONA_MX     = ZoneInfo("America/Mexico_City")
-EMAIL_ULISES  = os.getenv("EMAIL_ULISES", "10telefonos10@gmail.com")
-SMTP_SERVER   = os.getenv("SMTP_SERVER",  "smtp.gmail.com")
+EMAIL_ULISES  = os.getenv("EMAIL_ULISES", "10telefonos10@hotmail.com")
+SMTP_SERVER   = os.getenv("SMTP_SERVER",  "smtp-mail.outlook.com")
 SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
 GRUPO_NOMBRE  = os.getenv("GRUPO_INTERNO_NOMBRE", "Taller Interno TS")
 _UBICACION    = "Plazuela de la Fama 1, Col. La Fama, Tlalpan"
