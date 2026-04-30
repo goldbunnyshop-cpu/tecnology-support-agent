@@ -19,6 +19,7 @@ from agent.memory import (
     actualizar_visita_cliente, agregar_dispositivo_cliente,
     pausar_conversacion, esta_pausada,
     mensaje_ya_procesado, marcar_mensaje_procesado,
+    confirmacion_cita_ya_enviada, marcar_confirmacion_cita_enviada,
 )
 from agent.profile import (
     extraer_nombre_de_mensaje,
@@ -55,6 +56,9 @@ from agent.google_calendar import (
     parsear_tag_agendar,
     agendar_cita,
     quitar_tags,
+    UBICACION_MODULO,
+    DIAS_ES,
+    MESES_ES,
 )
 from agent.vision import (
     descargar_media,
@@ -80,8 +84,8 @@ _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
 _NUMERO_CHRISTIAN = os.getenv("NUMERO_CHRISTIAN",  "5541576331")
 _NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
 
-# Desactivar modo pausa globalmente hasta que esté bien configurado
-PAUSA_ACTIVA = False
+# Pausa activa: mensaje saliente de 5659866275 → pausa esa conversación 2h
+PAUSA_ACTIVA = True
 
 # Locks por número de teléfono — evita procesar dos mensajes del mismo cliente en paralelo
 _locks: dict[str, asyncio.Lock] = {}
@@ -443,7 +447,6 @@ async def webhook_handler(request: Request):
             if msg.es_propio and not msg.es_grupo:
                 if PAUSA_ACTIVA and not _es_numero_interno(msg.telefono):
                     await pausar_conversacion(msg.telefono, horas=2)
-                    logger.info(f"[PAUSA] Intervención detectada en {msg.telefono} — agente pausado 2h")
                 continue
 
             if msg.es_propio:
@@ -481,7 +484,7 @@ async def webhook_handler(request: Request):
 
             # ── Modo pausa (intervención humana activa) ──
             if PAUSA_ACTIVA and await esta_pausada(msg.telefono):
-                logger.info(f"[PAUSA] {msg.telefono} — agente pausado, mensaje ignorado")
+                logger.info(f"[PAUSA ACTIVA] {msg.telefono} — mensaje ignorado, Christian está atendiendo")
                 continue
 
             async with _obtener_lock(msg.telefono):
@@ -582,6 +585,17 @@ async def webhook_handler(request: Request):
                 contexto_cliente = "\n\n".join(partes_ctx)
 
                 historial = await obtener_historial(msg.telefono)
+
+                # Si la última respuesta del agente fue una confirmación de cita,
+                # indicarle a Claude que ya está agendada y responda preguntas normalmente
+                if historial and historial[-1]["role"] == "assistant" and "CITA CONFIRMADA" in historial[-1]["content"].upper():
+                    contexto_cliente += (
+                        "\n\n⚠️ NOTA SISTEMA: Esta conversación ya tiene una cita confirmada. "
+                        "Responde NORMALMENTE a cualquier pregunta adicional del cliente "
+                        "(ubicación, cambios, precios, etc.). "
+                        "NO repitas la confirmación. NO incluyas [[AGENDAR:...]] de nuevo."
+                    )
+
                 await proveedor.enviar_typing(msg.telefono)
                 respuesta = await generar_respuesta(
                     msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
@@ -600,24 +614,63 @@ async def webhook_handler(request: Request):
                             dispositivo=tag["dispositivo"],
                             problema=tag["problema"],
                             fecha_hora=fh,
+                            asesor=asesor,
                         )
                         if resultado["ok"]:
-                            respuesta = resultado["confirmacion"]
+                            evento_id = resultado.get("evento_id", "")
+                            # Dedup: ignorar si ya se envió esta confirmación al cliente
+                            if evento_id and await confirmacion_cita_ya_enviada(msg.telefono, evento_id):
+                                logger.warning(f"[CALENDAR] Confirmación duplicada ignorada — {msg.telefono} / {evento_id}")
+                                respuesta = quitar_tags(respuesta)
+                            else:
+                                respuesta = resultado["confirmacion"]
+                                if evento_id:
+                                    await marcar_confirmacion_cita_enviada(msg.telefono, evento_id)
+                                asyncio.create_task(
+                                    notificar_cita_agendada(
+                                        proveedor=proveedor,
+                                        nombre=resultado["nombre"],
+                                        telefono=msg.telefono,
+                                        dispositivo=resultado["dispositivo"],
+                                        problema=tag["problema"],
+                                        fecha_texto=resultado["fecha_texto"],
+                                        hora_texto=resultado["hora_texto"],
+                                        asesor=asesor,
+                                        evento_id=evento_id,
+                                    )
+                                )
+                                logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} — {resultado['fecha_texto']} {resultado['hora_texto']}")
+                        else:
+                            # Calendar falló → igual confirmar al cliente con datos del tag
+                            logger.warning(f"[CALENDAR] Fallo al agendar: {resultado.get('error')} — enviando confirmación manual")
+                            dia  = DIAS_ES.get(fh.weekday(), "")
+                            mes  = MESES_ES.get(fh.month, "")
+                            fecha_txt = f"{dia} {fh.day} de {mes}"
+                            hora_txt  = fh.strftime("%I:%M %p").lstrip("0").replace("AM", "a.m.").replace("PM", "p.m.")
+                            linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
+                            respuesta = (
+                                f"✅ *¡CITA CONFIRMADA!*\n\n"
+                                f"📋 *Resumen:*\n"
+                                f"👤 {tag['nombre']}\n"
+                                f"📱 {tag['dispositivo']}\n"
+                                f"⏰ {fecha_txt.capitalize()} · {hora_txt}\n"
+                                f"{linea_asesor}"
+                                f"\n{UBICACION_MODULO}\n\n"
+                                f"📞 Si necesitas cambiar la cita, escríbenos 😊"
+                            )
                             asyncio.create_task(
                                 notificar_cita_agendada(
                                     proveedor=proveedor,
-                                    nombre=resultado["nombre"],
+                                    nombre=tag["nombre"],
                                     telefono=msg.telefono,
-                                    dispositivo=resultado["dispositivo"],
+                                    dispositivo=tag["dispositivo"],
                                     problema=tag["problema"],
-                                    fecha_texto=resultado["fecha_texto"],
-                                    hora_texto=resultado["hora_texto"],
+                                    fecha_texto=fecha_txt,
+                                    hora_texto=hora_txt,
+                                    asesor=asesor,
+                                    evento_id="",
                                 )
                             )
-                            logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} — {resultado['fecha_texto']} {resultado['hora_texto']}")
-                        else:
-                            respuesta = quitar_tags(respuesta)
-                            logger.warning(f"[CALENDAR] Fallo al agendar: {resultado.get('error')}")
                     except Exception as e:
                         logger.error(f"[CALENDAR] Error procesando tag AGENDAR: {e}")
                         respuesta = quitar_tags(respuesta)
