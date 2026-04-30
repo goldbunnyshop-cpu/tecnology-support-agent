@@ -126,7 +126,7 @@ class ProveedorWhapi(ProveedorWhatsApp):
                 telefono     = telefono or _limpiar(chat_id),
                 texto        = texto,
                 mensaje_id   = msg.get("id", ""),
-                es_propio    = msg.get("from_me", False),
+                es_propio    = bool(msg.get("from_me") or msg.get("is_from_me")),
                 tipo         = tipo,
                 es_grupo     = es_grupo,
                 remitente    = remitente,

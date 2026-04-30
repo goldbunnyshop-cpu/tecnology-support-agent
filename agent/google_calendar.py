@@ -23,6 +23,14 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 DURACION_MIN = 30
 DIAS_HABILES = {0, 1, 2, 3, 4, 5, 6}  # lunes a domingo
 
+UBICACION_MODULO = (
+    "📍 *UBICACIÓN:*\n"
+    "Plazuela de la Fama 1, Col. La Fama, Tlalpan\n"
+    "Interior de La Comer Tlalpan (Comercial Mexicana)\n"
+    "Zona de Fuentes Brotantes\n"
+    "3 calles de Metrobús Ayuntamiento"
+)
+
 MSG_FUERA_HORARIO = (
     "Nuestro horario de citas es de lunes a viernes de 10:30 AM a 8:30 PM "
     "y sábados y domingos de 11:30 AM a 7:30 PM. "
@@ -280,7 +288,7 @@ def _slots_sync(fecha: date) -> list[str]:
 
 
 def _agendar_sync(
-    nombre: str, telefono: str, dispositivo: str, problema: str, fh: datetime
+    nombre: str, telefono: str, dispositivo: str, problema: str, fh: datetime, asesor: str = ""
 ) -> dict:
     fin = fh + timedelta(minutes=DURACION_MIN)
     dia = DIAS_ES.get(fh.weekday(), "")
@@ -304,6 +312,7 @@ def _agendar_sync(
         creado = service.events().insert(calendarId=CALENDAR_ID, body=body).execute()
         eid = creado.get("id", "")
         logger.info(f"[CALENDAR] ✅ Cita agendada: {nombre} | {fecha_txt} {hora_txt} | id={eid}")
+        linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
         return {
             "ok": True,
             "evento_id": eid,
@@ -312,13 +321,14 @@ def _agendar_sync(
             "fecha_texto": fecha_txt,
             "hora_texto": hora_txt,
             "confirmacion": (
-                f"✅ *¡Cita confirmada!*\n"
+                f"✅ *¡CITA CONFIRMADA!*\n\n"
+                f"📋 *Resumen:*\n"
                 f"👤 {nombre}\n"
-                f"📅 {fecha_txt.capitalize()}\n"
-                f"🕐 {hora_txt}\n"
                 f"📱 {dispositivo}\n"
-                f"📍 Te esperamos en nuestro módulo.\n\n"
-                f"_Si necesitas cambiar la fecha, escríbenos con anticipación. ¡Hasta entonces!_ 😊"
+                f"⏰ {fecha_txt.capitalize()} · {hora_txt}\n"
+                f"{linea_asesor}"
+                f"\n{UBICACION_MODULO}\n\n"
+                f"📞 Si necesitas cambiar la cita, escríbenos 😊"
             ),
         }
     except RuntimeError as e:
@@ -335,17 +345,57 @@ async def obtener_slots_disponibles(fecha: date) -> list[str]:
 
 
 async def agendar_cita(
-    nombre: str, telefono: str, dispositivo: str, problema: str, fecha_hora: datetime
+    nombre: str, telefono: str, dispositivo: str, problema: str, fecha_hora: datetime, asesor: str = ""
 ) -> dict:
     """Crea el evento en Google Calendar. Retorna dict con ok, confirmacion, etc."""
-    return await asyncio.to_thread(_agendar_sync, nombre, telefono, dispositivo, problema, fecha_hora)
+    return await asyncio.to_thread(_agendar_sync, nombre, telefono, dispositivo, problema, fecha_hora, asesor)
+
+
+def _parsear_evento(ev: dict) -> dict | None:
+    """Extrae los campos relevantes de un evento de Google Calendar."""
+    ev_id = ev.get("id", "")
+    desc  = ev.get("description", "")
+    start = ev.get("start", {}).get("dateTime", "")
+
+    telefono = nombre = dispositivo = problema = ""
+    for linea in desc.splitlines():
+        if linea.startswith("Teléfono:"):
+            telefono = linea.split(":", 1)[1].strip()
+        elif linea.startswith("Cliente:"):
+            nombre = linea.split(":", 1)[1].strip()
+        elif linea.startswith("Dispositivo:"):
+            dispositivo = linea.split(":", 1)[1].strip()
+        elif linea.startswith("Problema:"):
+            problema = linea.split(":", 1)[1].strip()
+
+    hora_txt = fecha_txt = ""
+    if start:
+        try:
+            dt = datetime.fromisoformat(start).astimezone(ZONA)
+            hora_txt  = dt.strftime("%I:%M %p").lstrip("0").replace("AM", "a.m.").replace("PM", "p.m.")
+            fecha_txt = f"{DIAS_ES.get(dt.weekday(),'')} {dt.day} de {MESES_ES.get(dt.month,'')}"
+        except Exception:
+            pass
+
+    if not ev_id:
+        return None
+
+    return {
+        "id":          ev_id,
+        "nombre":      nombre or "cliente",
+        "telefono":    telefono,
+        "dispositivo": dispositivo,
+        "problema":    problema,
+        "hora":        hora_txt,
+        "fecha_txt":   fecha_txt,
+    }
 
 
 def _eventos_proximos_sync(minutos_desde: int = 55, minutos_hasta: int = 70) -> list[dict]:
     """Retorna eventos que empiezan en la ventana [ahora+minutos_desde, ahora+minutos_hasta]."""
     ahora = datetime.now(ZONA)
     inicio_ventana = ahora + timedelta(minutes=minutos_desde)
-    fin_ventana = ahora + timedelta(minutes=minutos_hasta)
+    fin_ventana    = ahora + timedelta(minutes=minutos_hasta)
 
     try:
         service = _build_service()
@@ -362,46 +412,70 @@ def _eventos_proximos_sync(minutos_desde: int = 55, minutos_hasta: int = 70) -> 
 
     resultados = []
     for ev in items:
-        ev_id = ev.get("id", "")
-        desc = ev.get("description", "")
-        start = ev.get("start", {}).get("dateTime", "")
-
-        telefono = nombre = dispositivo = ""
-        for linea in desc.splitlines():
-            if linea.startswith("Teléfono:"):
-                telefono = linea.split(":", 1)[1].strip()
-            elif linea.startswith("Cliente:"):
-                nombre = linea.split(":", 1)[1].strip()
-            elif linea.startswith("Dispositivo:"):
-                dispositivo = linea.split(":", 1)[1].strip()
-
-        hora_txt = ""
-        if start:
-            try:
-                dt = datetime.fromisoformat(start).astimezone(ZONA)
-                hora_txt = dt.strftime("%I:%M %p").lstrip("0").replace("AM", "a.m.").replace("PM", "p.m.")
-            except Exception:
-                pass
-
-        if not ev_id or not telefono:
-            logger.warning(f"[CALENDAR] Evento sin teléfono ignorado: id={ev_id}")
+        parsed = _parsear_evento(ev)
+        if parsed is None or not parsed["telefono"]:
+            logger.warning(f"[CALENDAR] Evento sin teléfono ignorado: id={ev.get('id','')}")
             continue
-
-        resultados.append({
-            "id": ev_id,
-            "nombre": nombre or "cliente",
-            "telefono": telefono,
-            "dispositivo": dispositivo,
-            "hora": hora_txt,
-        })
-        logger.info(f"[CALENDAR] Evento próximo: {nombre} a las {hora_txt} — tel={telefono}")
+        resultados.append(parsed)
+        logger.info(f"[CALENDAR] Evento próximo: {parsed['nombre']} a las {parsed['hora']} — tel={parsed['telefono']}")
 
     return resultados
+
+
+def _eventos_del_dia_sync(fecha_obj=None) -> list[dict]:
+    """Retorna todos los eventos del día indicado (default: hoy CDMX)."""
+    from datetime import date as date_t
+    if fecha_obj is None:
+        fecha_obj = datetime.now(ZONA).date()
+    inicio = datetime(fecha_obj.year, fecha_obj.month, fecha_obj.day, 0, 0, tzinfo=ZONA)
+    fin    = inicio + timedelta(days=1)
+    try:
+        service = _build_service()
+        items = service.events().list(
+            calendarId=CALENDAR_ID,
+            timeMin=inicio.isoformat(),
+            timeMax=fin.isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute().get("items", [])
+    except Exception as e:
+        logger.warning(f"[CALENDAR] Error obteniendo eventos del día: {e}")
+        return []
+    return [p for ev in items if (p := _parsear_evento(ev))]
+
+
+def _eventos_rango_sync(desde, hasta) -> list[dict]:
+    """Retorna eventos entre dos fechas (date objects, CDMX)."""
+    inicio = datetime(desde.year, desde.month, desde.day, 0, 0, tzinfo=ZONA)
+    fin    = datetime(hasta.year, hasta.month, hasta.day, 23, 59, tzinfo=ZONA)
+    try:
+        service = _build_service()
+        items = service.events().list(
+            calendarId=CALENDAR_ID,
+            timeMin=inicio.isoformat(),
+            timeMax=fin.isoformat(),
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute().get("items", [])
+    except Exception as e:
+        logger.warning(f"[CALENDAR] Error obteniendo eventos del rango: {e}")
+        return []
+    return [p for ev in items if (p := _parsear_evento(ev))]
 
 
 async def obtener_eventos_proximos(minutos_desde: int = 55, minutos_hasta: int = 70) -> list[dict]:
     """Retorna eventos que empiezan en los próximos minutos indicados."""
     return await asyncio.to_thread(_eventos_proximos_sync, minutos_desde, minutos_hasta)
+
+
+async def obtener_eventos_del_dia(fecha_obj=None) -> list[dict]:
+    """Retorna todos los eventos del día (default: hoy CDMX)."""
+    return await asyncio.to_thread(_eventos_del_dia_sync, fecha_obj)
+
+
+async def obtener_eventos_rango(desde, hasta) -> list[dict]:
+    """Retorna eventos entre dos fechas (date objects, CDMX)."""
+    return await asyncio.to_thread(_eventos_rango_sync, desde, hasta)
 
 
 async def cancelar_cita(evento_id: str) -> bool:
