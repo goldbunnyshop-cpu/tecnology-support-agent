@@ -621,6 +621,17 @@ async def procesar_comando_grupo(
         )
         logger.info(f"[PAUSA] Cliente {phone_fmt} pausado por Christian")
 
+    # ── reanudar todo (limpia todas las pausas activas) ──
+    elif cmd == "reanudar" and payload.strip().lower() == "todo":
+        from agent.memory import limpiar_todas_pausas
+        count = await limpiar_todas_pausas()
+        await _responder_grupo(
+            f"✅ Todas las pausas limpiadas ({count} desactivadas)\n"
+            f"El agente responde a todos los clientes."
+        )
+        logger.info(f"[PAUSA] Limpieza total ejecutada por Christian — {count} pausas")
+        return True
+
     # ── reanudar ──
     elif cmd == "reanudar":
         phone = parsear_phone_simple(payload)
