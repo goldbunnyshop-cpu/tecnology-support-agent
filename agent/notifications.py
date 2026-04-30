@@ -456,6 +456,17 @@ async def procesar_comando_grupo(
         await _cmd_pendientes_seguimiento(chat_id_raw, proveedor)
         return True
 
+    # ── reanudar todo (sin dos puntos) ──
+    if texto_lower == "reanudar todo":
+        from agent.memory import limpiar_todas_pausas
+        count = await limpiar_todas_pausas()
+        await proveedor.enviar_mensaje(chat_id_raw,
+            f"✅ Todas las pausas limpiadas ({count} desactivadas)\n"
+            f"El agente responde a todos los clientes."
+        )
+        logger.info(f"[PAUSA] Limpieza total: {count} pausas eliminadas")
+        return True
+
     # Normalizar: eliminar caracteres invisibles que WhatsApp puede insertar
     texto_normalizado = (
         texto_cmd.strip()

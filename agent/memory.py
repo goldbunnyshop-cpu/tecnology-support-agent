@@ -405,7 +405,8 @@ async def esta_pausada(telefono: str) -> bool:
             )
             .order_by(Pausa.fecha_pausa.desc())
         )
-        pausa = result.scalar_one_or_none()
+        # Usar .first() para evitar error si hay múltiples filas activas
+        pausa = result.scalars().first()
         if pausa:
             expira = pausa.fecha_pausa + timedelta(minutes=pausa.duracion_minutos)
             if datetime.utcnow() < expira:
@@ -419,7 +420,7 @@ async def esta_pausada(telefono: str) -> bool:
         result2 = await session.execute(
             select(ClientePerfil).where(ClientePerfil.telefono.in_(variantes))
         )
-        perfil = result2.scalar_one_or_none()
+        perfil = result2.scalars().first()
         if not perfil or not perfil.pausada_hasta:
             return False
         if datetime.utcnow() >= perfil.pausada_hasta:
