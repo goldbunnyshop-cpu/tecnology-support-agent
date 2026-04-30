@@ -84,8 +84,9 @@ _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
 _NUMERO_CHRISTIAN = os.getenv("NUMERO_CHRISTIAN",  "5541576331")
 _NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
 
-# Pausa activa: mensaje saliente de 5659866275 → pausa esa conversación 2h
-PAUSA_ACTIVA = True
+# PAUSA_ACTIVA = False: el bot se pausaba a sí mismo al enviar respuestas.
+# La pausa manual se activa con el comando "pausa: NÚMERO" desde el grupo.
+PAUSA_ACTIVA = False
 
 # Locks por número de teléfono — evita procesar dos mensajes del mismo cliente en paralelo
 _locks: dict[str, asyncio.Lock] = {}
