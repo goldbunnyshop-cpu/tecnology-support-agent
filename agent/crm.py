@@ -54,16 +54,26 @@ HEADER = [
 
 def _creds():
     import base64
-    raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("GOOGLE_CREDENTIALS", "")
-    if not raw:
-        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON no configurado")
-    raw = raw.strip()
-    try:
-        decoded = base64.b64decode(raw.encode()).decode("utf-8")
-        info = json.loads(decoded)
-    except Exception:
-        info = json.loads(raw.replace("\\n", "\n"))
-    return Credentials.from_service_account_info(info, scopes=SCOPES)
+    # GOOGLE_CREDENTIALS tiene el JSON en base64 (3172 chars) — usar primero
+    # GOOGLE_SERVICE_ACCOUNT_JSON puede ser JSON crudo como fallback
+    raw_b64  = os.getenv("GOOGLE_CREDENTIALS", "").strip()
+    raw_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
+
+    if raw_b64:
+        try:
+            info = json.loads(base64.b64decode(raw_b64.encode()).decode("utf-8"))
+            return Credentials.from_service_account_info(info, scopes=SCOPES)
+        except Exception as e:
+            logger.warning(f"[CRM] GOOGLE_CREDENTIALS base64 falló: {e}")
+
+    if raw_json:
+        try:
+            info = json.loads(raw_json.replace("\\n", "\n"))
+            return Credentials.from_service_account_info(info, scopes=SCOPES)
+        except Exception as e:
+            logger.warning(f"[CRM] GOOGLE_SERVICE_ACCOUNT_JSON falló: {e}")
+
+    raise RuntimeError("No se encontraron credenciales Google válidas")
 
 def _sheets_svc():
     return build("sheets", "v4", credentials=_creds())
@@ -468,9 +478,6 @@ def _subir_reporte_a_drive_sync(ruta_local: str) -> str:
 
 async def inicializar_crm():
     try:
-        raw1 = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-        raw2 = os.getenv("GOOGLE_CREDENTIALS", "")
-        logger.info(f"[CRM DEBUG] GOOGLE_SERVICE_ACCOUNT_JSON len={len(raw1)} GOOGLE_CREDENTIALS len={len(raw2)}")
         await asyncio.to_thread(_asegurar_bloque_inicial_sync)
         logger.info("[CRM] Bloques CRM listos")
     except Exception as e:
