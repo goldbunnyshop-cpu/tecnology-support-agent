@@ -167,7 +167,7 @@ _INTERVALOS_SEGUIMIENTO = {
     0: timedelta(hours=2),    # Seg 1: 2h desde el último mensaje del cliente
     1: timedelta(hours=24),   # Seg 2: 24h desde que se envió el seguimiento 1
     2: timedelta(hours=36),   # Seg 3: 36h desde que se envió el seguimiento 2
-    3: timedelta(days=10),    # Seg 4: 10 días desde que se envió el seguimiento 3
+    3: timedelta(days=7),     # Seg 4: 7 días desde que se envió el seguimiento 3
 }
 MAX_SEGUIMIENTOS = 4
 
@@ -180,7 +180,7 @@ async def obtener_leads_para_seguimiento() -> list[Lead]:
       0 enviados → esperar 2h  desde Lead.ultimo_mensaje
       1 enviado  → esperar 24h desde Lead.seguimiento_enviado_en
       2 enviados → esperar 36h desde Lead.seguimiento_enviado_en
-      3 enviados → esperar 10d desde Lead.seguimiento_enviado_en
+      3 enviados → esperar 7d  desde Lead.seguimiento_enviado_en
     """
     ahora = datetime.utcnow()
     async with async_session() as session:
@@ -326,6 +326,20 @@ async def obtener_todos_los_leads_detalle() -> list[Lead]:
             select(Lead).order_by(orden_prioridad, desc(Lead.ultimo_mensaje))
         )
         return list(result.scalars().all())
+
+
+async def detener_seguimiento(telefono: str):
+    """Detiene todos los seguimientos futuros para este lead."""
+    async with async_session() as session:
+        await session.execute(
+            update(Lead).where(Lead.telefono == telefono).values(
+                estado="perdido",
+                seguimientos_enviados=MAX_SEGUIMIENTOS,
+                seguimiento_realizado=True,
+            )
+        )
+        await session.commit()
+        return True
 
 
 async def obtener_resumen_leads() -> dict:

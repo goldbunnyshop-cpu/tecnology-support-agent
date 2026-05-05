@@ -200,11 +200,17 @@ def parsear_hora_en_texto(texto: str) -> time | None:
 # ─── Google Calendar API (sync interno, async público) ───────────────────────
 
 def _build_service():
-    raw = os.getenv("GOOGLE_CREDENTIALS")
+    raw = os.getenv("GOOGLE_CREDENTIALS") or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     if not raw:
         raise RuntimeError("GOOGLE_CREDENTIALS no configurado en Railway")
-    json_str = base64.b64decode(raw.encode()).decode("utf-8")
-    info = json.loads(json_str)
+    raw = raw.strip()
+    # Intentar base64 primero, luego JSON crudo
+    try:
+        decoded = base64.b64decode(raw.encode()).decode("utf-8")
+        info = json.loads(decoded)
+    except Exception:
+        # Si falla base64, asumir que es JSON crudo con \n literales
+        info = json.loads(raw.replace("\\n", "\n"))
     creds = Credentials.from_service_account_info(info, scopes=SCOPES)
     return build("calendar", "v3", credentials=creds)
 

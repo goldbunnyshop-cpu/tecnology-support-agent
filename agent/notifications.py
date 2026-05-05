@@ -38,7 +38,7 @@ KEYWORDS_CITA = [
 # Parsers de comandos
 # ──────────────────────────────────────────────
 
-COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "pausa", "reanudar", "clabe", "pago", "nota", "orden", "estatus", "consultar", "marcar seguimiento")
+COMANDOS_VALIDOS = ("listo", "demora", "presupuesto", "diagnostico", "password", "llamar", "cita", "pausa", "reanudar", "clabe", "pago", "nota", "orden", "estatus", "consultar", "marcar seguimiento", "detener seguimiento")
 
 TEXTO_MENU = (
     "🛠️ *Comandos — Taller Interno TS*\n\n"
@@ -848,6 +848,23 @@ async def procesar_comando_grupo(
             logger.error(f"[CRM] Error actualizando estatus: {e}")
             await _responder_grupo(f"❌ Error: {e}")
 
+    # ── detener seguimiento ──
+    elif cmd == "detener seguimiento":
+        identificador = payload.strip()
+        if not identificador:
+            await _responder_grupo("⚠️ Formato: detener seguimiento: NÚMERO  — Ej: detener seguimiento: 5541576331")
+            return True
+        try:
+            from agent.leads import detener_seguimiento, marcar_seguimiento_manual
+            tel = await marcar_seguimiento_manual(identificador)
+            if tel:
+                await detener_seguimiento(tel)
+                await _responder_grupo(f"🛑 Seguimiento detenido para {tel} — no recibirá más mensajes automáticos")
+            else:
+                await _responder_grupo(f"❌ No se encontró cliente con '{identificador}'")
+        except Exception as e:
+            await _responder_grupo(f"❌ Error: {e}")
+
     # ── marcar seguimiento ──
     elif cmd == "marcar seguimiento":
         identificador = payload.strip()
@@ -1177,24 +1194,6 @@ async def notificar_cita_agendada(
     evento_id: str = "",
 ) -> None:
     """Notifica a Christian, Ulises y al grupo interno cuando se agenda una cita."""
-    linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
-    mensaje_individual = (
-        f"📅 *NUEVA CITA AGENDADA*\n"
-        f"👤 Cliente: {nombre}\n"
-        f"📱 Dispositivo: {dispositivo}\n"
-        f"🔧 Problema: {problema}\n"
-        f"📆 Fecha: {fecha_texto.capitalize()}\n"
-        f"🕐 Hora: {hora_texto}\n"
-        f"📞 Teléfono: {telefono}\n"
-        f"{linea_asesor}"
-    )
-    for numero in [CHRISTIAN_NUMERO, ULISES_NUMERO]:
-        try:
-            await proveedor.enviar_mensaje(numero, mensaje_individual)
-            logger.info(f"[CALENDAR] Notificación cita → {numero}")
-        except Exception as e:
-            logger.error(f"[CALENDAR] Error notificando a {numero}: {e}")
-
     # Email + grupo via appointment_notifications (maneja dedup, email SMTP y búsqueda de grupo)
     try:
         from agent.appointment_notifications import notificar_nueva_cita
