@@ -468,6 +468,9 @@ def _subir_reporte_a_drive_sync(ruta_local: str) -> str:
 
 async def inicializar_crm():
     try:
+        raw1 = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+        raw2 = os.getenv("GOOGLE_CREDENTIALS", "")
+        logger.info(f"[CRM DEBUG] GOOGLE_SERVICE_ACCOUNT_JSON len={len(raw1)} GOOGLE_CREDENTIALS len={len(raw2)}")
         await asyncio.to_thread(_asegurar_bloque_inicial_sync)
         logger.info("[CRM] Bloques CRM listos")
     except Exception as e:
