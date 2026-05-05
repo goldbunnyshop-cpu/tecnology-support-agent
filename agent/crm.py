@@ -53,10 +53,17 @@ HEADER = [
 # ─── Autenticación ────────────────────────────────────────────────────────────
 
 def _creds():
-    raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    import base64
+    raw = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("GOOGLE_CREDENTIALS", "")
     if not raw:
         raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON no configurado")
-    return Credentials.from_service_account_info(json.loads(raw), scopes=SCOPES)
+    raw = raw.strip()
+    try:
+        decoded = base64.b64decode(raw.encode()).decode("utf-8")
+        info = json.loads(decoded)
+    except Exception:
+        info = json.loads(raw.replace("\\n", "\n"))
+    return Credentials.from_service_account_info(info, scopes=SCOPES)
 
 def _sheets_svc():
     return build("sheets", "v4", credentials=_creds())
