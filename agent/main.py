@@ -649,30 +649,36 @@ async def webhook_handler(request: Request):
                             mes  = MESES_ES.get(fh.month, "")
                             fecha_txt = f"{dia} {fh.day} de {mes}"
                             hora_txt  = fh.strftime("%I:%M %p").lstrip("0").replace("AM", "a.m.").replace("PM", "p.m.")
-                            linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
-                            respuesta = (
-                                f"✅ *¡CITA CONFIRMADA!*\n\n"
-                                f"📋 *Resumen:*\n"
-                                f"👤 {tag['nombre']}\n"
-                                f"📱 {tag['dispositivo']}\n"
-                                f"⏰ {fecha_txt.capitalize()} · {hora_txt}\n"
-                                f"{linea_asesor}"
-                                f"\n{UBICACION_MODULO}\n\n"
-                                f"📞 Si necesitas cambiar la cita, escríbenos 😊"
-                            )
-                            asyncio.create_task(
-                                notificar_cita_agendada(
-                                    proveedor=proveedor,
-                                    nombre=tag["nombre"],
-                                    telefono=msg.telefono,
-                                    dispositivo=tag["dispositivo"],
-                                    problema=tag["problema"],
-                                    fecha_texto=fecha_txt,
-                                    hora_texto=hora_txt,
-                                    asesor=asesor,
-                                    evento_id="",
+                            evento_id = f"manual_{msg.telefono}_{int(datetime.now(ZONA_CDMX).timestamp())}"
+                            if await confirmacion_cita_ya_enviada(msg.telefono, evento_id):
+                                logger.warning(f"[CALENDAR] Confirmación duplicada ignorada — {msg.telefono} / {evento_id}")
+                                respuesta = quitar_tags(respuesta)
+                            else:
+                                linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
+                                respuesta = (
+                                    f"✅ *¡CITA CONFIRMADA!*\n\n"
+                                    f"📋 *Resumen:*\n"
+                                    f"👤 {tag['nombre']}\n"
+                                    f"📱 {tag['dispositivo']}\n"
+                                    f"⏰ {fecha_txt.capitalize()} · {hora_txt}\n"
+                                    f"{linea_asesor}"
+                                    f"\n{UBICACION_MODULO}\n\n"
+                                    f"📞 Si necesitas cambiar la cita, escríbenos 😊"
                                 )
-                            )
+                                await marcar_confirmacion_cita_enviada(msg.telefono, evento_id)
+                                asyncio.create_task(
+                                    notificar_cita_agendada(
+                                        proveedor=proveedor,
+                                        nombre=tag["nombre"],
+                                        telefono=msg.telefono,
+                                        dispositivo=tag["dispositivo"],
+                                        problema=tag["problema"],
+                                        fecha_texto=fecha_txt,
+                                        hora_texto=hora_txt,
+                                        asesor=asesor,
+                                        evento_id=evento_id,
+                                    )
+                                )
                     except Exception as e:
                         logger.error(f"[CALENDAR] Error procesando tag AGENDAR: {e}")
                         respuesta = quitar_tags(respuesta)
