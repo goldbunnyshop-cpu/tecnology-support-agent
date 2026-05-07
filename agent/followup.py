@@ -221,7 +221,8 @@ async def ejecutar_seguimientos():
             else:
                 logger.warning(f"No se pudo enviar seguimiento a {lead.telefono}")
         except Exception as e:
-            logger.error(f"Error procesando seguimiento para {lead.telefono}: {e}")
+            import traceback
+            logger.error(f"Error procesando seguimiento para {lead.telefono}: {e}\n{traceback.format_exc()}")
 
 
 async def ejecutar_retomas():
