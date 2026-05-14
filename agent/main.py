@@ -8,8 +8,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from typing import Optional, List
+
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, JSONResponse
+from pydantic import BaseModel
+from sqlalchemy import select
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
@@ -732,3 +736,184 @@ async def webhook_handler(request: Request):
     except Exception as e:
         logger.error(f"Error en webhook: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================================================================================
+# API REST DE LEADS — /api/leads (sincronización con auto-crm)
+# ==================================================================================
+
+
+class LeadResponse(BaseModel):
+    """Modelo de respuesta para un lead."""
+    id: int
+    telefono: str
+    ultimo_mensaje: Optional[str] = None
+    estado: str
+    fuente: str
+    asesor_asignado: str
+    prioridad: str
+    seguimientos_enviados: int
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LeadsListResponse(BaseModel):
+    """Modelo de respuesta para lista de leads."""
+    total: int
+    leads: List[LeadResponse]
+
+
+class UpdateLeadRequest(BaseModel):
+    """Modelo para actualizar un lead."""
+    estado: Optional[str] = None
+    prioridad: Optional[str] = None
+    asesor_asignado: Optional[str] = None
+
+
+@app.get("/api/leads", response_model=LeadsListResponse)
+async def get_leads(
+    estado: Optional[str] = None,
+    fuente: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    """
+    Obtiene todos los leads, opcionalmente filtrados por estado o fuente.
+
+    Query params:
+    - estado: "activo", "en_seguimiento", "convertido", "perdido"
+    - fuente: "facebook_ad", "organico", "whatsapp", etc.
+    - skip: offset (default 0)
+    - limit: cantidad máxima (default 100)
+    """
+    try:
+        from agent.leads import (
+            obtener_todos_los_leads_detalle,
+            obtener_leads_por_fuente,
+        )
+
+        if fuente:
+            leads = await obtener_leads_por_fuente(fuente)
+        else:
+            leads = await obtener_todos_los_leads_detalle()
+
+        if estado:
+            leads = [l for l in leads if l.estado == estado]
+
+        leads_paginados = leads[skip:skip + limit]
+
+        leads_response = [
+            LeadResponse(
+                id=l.id,
+                telefono=l.telefono,
+                ultimo_mensaje=l.ultimo_mensaje.isoformat() if l.ultimo_mensaje else None,
+                estado=l.estado,
+                fuente=getattr(l, "fuente", "desconocido") or "desconocido",
+                asesor_asignado=getattr(l, "asesor_asignado", "") or "",
+                prioridad=getattr(l, "prioridad", "medio") or "medio",
+                seguimientos_enviados=getattr(l, "seguimientos_enviados", 0) or 0,
+                created_at=l.created_at.isoformat() if l.created_at else None,
+            )
+            for l in leads_paginados
+        ]
+
+        return LeadsListResponse(total=len(leads), leads=leads_response)
+
+    except Exception as e:
+        logger.error(f"[API] Error en GET /api/leads: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "total": 0, "leads": []},
+        )
+
+
+@app.get("/api/leads/stats/resumen")
+async def get_leads_stats():
+    """
+    Estadísticas de leads: conteo por estado y fuente.
+    """
+    try:
+        from agent.leads import obtener_resumen_leads
+        return await obtener_resumen_leads()
+    except Exception as e:
+        logger.error(f"[API] Error en GET /api/leads/stats/resumen: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/api/leads/{telefono}")
+async def get_lead(telefono: str):
+    """Obtiene un lead específico por teléfono."""
+    try:
+        from agent.leads import obtener_todos_los_leads_detalle
+
+        leads = await obtener_todos_los_leads_detalle()
+        lead = next((l for l in leads if l.telefono == telefono), None)
+
+        if not lead:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Lead {telefono} no encontrado"},
+            )
+
+        return LeadResponse(
+            id=lead.id,
+            telefono=lead.telefono,
+            ultimo_mensaje=lead.ultimo_mensaje.isoformat() if lead.ultimo_mensaje else None,
+            estado=lead.estado,
+            fuente=getattr(lead, "fuente", "desconocido") or "desconocido",
+            asesor_asignado=getattr(lead, "asesor_asignado", "") or "",
+            prioridad=getattr(lead, "prioridad", "medio") or "medio",
+            seguimientos_enviados=getattr(lead, "seguimientos_enviados", 0) or 0,
+            created_at=lead.created_at.isoformat() if lead.created_at else None,
+        )
+
+    except Exception as e:
+        logger.error(f"[API] Error en GET /api/leads/{telefono}: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.put("/api/leads/{telefono}")
+async def update_lead(telefono: str, data: UpdateLeadRequest):
+    """
+    Actualiza estado / prioridad / asesor de un lead.
+
+    Body (JSON):
+        {"estado": "convertido", "prioridad": "urgente", "asesor_asignado": "Sofia"}
+    """
+    try:
+        from agent.leads import Lead
+        from agent.memory import async_session
+
+        async with async_session() as session:
+            result = await session.execute(
+                select(Lead).where(Lead.telefono == telefono)
+            )
+            lead_obj = result.scalar_one_or_none()
+
+            if not lead_obj:
+                return JSONResponse(
+                    status_code=404,
+                    content={"error": f"Lead {telefono} no encontrado"},
+                )
+
+            if data.estado:
+                lead_obj.estado = data.estado
+            if data.prioridad:
+                lead_obj.prioridad = data.prioridad
+            if data.asesor_asignado:
+                lead_obj.asesor_asignado = data.asesor_asignado
+
+            await session.commit()
+
+            logger.info(f"[API] Lead {telefono} actualizado: {data}")
+            return {
+                "ok": True,
+                "telefono": telefono,
+                "cambios": data.dict(exclude_none=True),
+            }
+
+    except Exception as e:
+        logger.error(f"[API] Error en PUT /api/leads/{telefono}: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
