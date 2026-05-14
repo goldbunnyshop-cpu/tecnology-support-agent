@@ -240,14 +240,36 @@ async def _analizar_y_responder_video(msg, historial: list, asesor: str) -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from agent.leads import Lead  # noqa: F401
+    # Importar y crear tablas
+    from agent.leads import Lead, _migrar_columnas  # noqa: F401
+
+    # 1. Inicializar BD general (conversaciones, perfiles)
     await inicializar_db()
+    logger.info("[INIT] Base de datos de conversaciones lista")
+
+    # 2. Crear tabla `leads` si no existe + agregar columnas
+    try:
+        await _migrar_columnas()
+        logger.info("[INIT] Tabla 'leads' creada/actualizada en PostgreSQL")
+    except Exception as e:
+        logger.warning(f"[INIT] Error en migración de leads: {e}")
+
+    # 3. Inicializar CRM (Google Sheets)
     from agent.crm import inicializar_crm
     await inicializar_crm()
-    logger.info(f"Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
+    logger.info("[INIT] CRM (Google Sheets) listo")
+
+    # 4. Mensaje de inicio
+    logger.info(f"[INIT] Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
+
+    # 5. Iniciar scheduler de seguimientos
     scheduler_task = asyncio.create_task(iniciar_scheduler())
+
     yield
+
+    # Cleanup
     scheduler_task.cancel()
+    logger.info("[SHUTDOWN] Servidor detenido")
 
 
 app = FastAPI(
