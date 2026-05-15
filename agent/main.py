@@ -66,6 +66,8 @@ from agent.google_calendar import (
     DIAS_ES,
     MESES_ES,
 )
+
+import httpx
 from agent.vision import (
     descargar_media,
     descargar_media_por_id,
@@ -1097,11 +1099,73 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
         return None
 
 
+async def _obtener_grupo_id_whapi() -> str | None:
+    """Obtiene el ID del grupo 'Taller Interno TS' desde Whapi.cloud."""
+    token = os.getenv("WHAPI_TOKEN", "")
+    if not token:
+        logger.warning("[IMPORT] WHAPI_TOKEN no configurado")
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            # Obtener lista de chats
+            response = await http.get(
+                "https://gate.whapi.cloud/chats",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"count": 100},
+            )
+            if response.status_code != 200:
+                logger.error(f"[IMPORT] Error obteniendo chats: {response.status_code}")
+                return None
+
+            chats = response.json().get("chats", [])
+            for chat in chats:
+                chat_name = chat.get("name", "").lower()
+                if "taller" in chat_name and "interno" in chat_name:
+                    grupo_id = chat.get("id")
+                    logger.info(f"[IMPORT] ✅ Encontrado grupo: {chat.get('name')} (ID: {grupo_id})")
+                    return grupo_id
+
+            logger.warning("[IMPORT] No se encontró el grupo 'Taller Interno TS'")
+            return None
+
+    except Exception as e:
+        logger.error(f"[IMPORT] Error buscando grupo en Whapi: {e}")
+        return None
+
+
+async def _obtener_mensajes_grupo_whapi(grupo_id: str, limite: int = 100) -> list[dict]:
+    """Obtiene mensajes del grupo desde Whapi.cloud."""
+    token = os.getenv("WHAPI_TOKEN", "")
+    if not token or not grupo_id:
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            response = await http.get(
+                f"https://gate.whapi.cloud/messages",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"chat_id": grupo_id, "count": limite},
+            )
+            if response.status_code != 200:
+                logger.error(f"[IMPORT] Error obteniendo mensajes: {response.status_code}")
+                return []
+
+            data = response.json()
+            mensajes = data.get("messages", [])
+            logger.info(f"[IMPORT] Obtenidos {len(mensajes)} mensajes del grupo")
+            return mensajes
+
+    except Exception as e:
+        logger.error(f"[IMPORT] Error obteniendo mensajes del grupo: {e}")
+        return []
+
+
 @app.post("/api/calendar/importar-historico")
 async def importar_citas_historicas():
     """
     Importa citas del grupo WhatsApp a Google Calendar.
-    Busca mensajes con "NUEVA CITA AGENDADA" desde los últimos 12 días.
+    Lee mensajes del grupo "Taller Interno TS" desde Whapi.cloud.
 
     POST /api/calendar/importar-historico
 
@@ -1121,38 +1185,60 @@ async def importar_citas_historicas():
 
         logger.info(f"[IMPORT] Buscando citas desde {hace_12_dias.date()} hasta {ahora.date()}")
 
-        # Buscar mensajes del asistente que contengan "NUEVA CITA AGENDADA"
-        async with async_session() as session:
-            query = (
-                select(Mensaje)
-                .where(
-                    Mensaje.role == "assistant",
-                    Mensaje.timestamp >= hace_12_dias,
-                    Mensaje.content.contains("NUEVA CITA AGENDADA"),  # type: ignore
-                )
-                .order_by(Mensaje.timestamp.asc())
+        # 1. Obtener el ID del grupo
+        grupo_id = await _obtener_grupo_id_whapi()
+        if not grupo_id:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "No se encontró el grupo 'Taller Interno TS'"}
             )
-            result = await session.execute(query)
-            mensajes = result.scalars().all()
 
-        logger.info(f"[IMPORT] Se encontraron {len(mensajes)} mensajes con citas")
+        # 2. Obtener mensajes del grupo desde Whapi
+        mensajes_whapi = await _obtener_mensajes_grupo_whapi(grupo_id, limite=200)
 
-        total_encontradas = len(mensajes)
+        # 3. Filtrar solo los que contienen "NUEVA CITA AGENDADA" y son de los últimos 12 días
+        mensajes_validos = []
+        for msg in mensajes_whapi:
+            # Whapi retorna timestamp en segundos o milisegundos
+            timestamp_ms = msg.get("timestamp", 0)
+            if timestamp_ms > 1e10:  # milisegundos
+                msg_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=ZONA_CDMX)
+            else:  # segundos
+                msg_time = datetime.fromtimestamp(timestamp_ms, tz=ZONA_CDMX)
+
+            # Filtrar por fecha
+            if msg_time < hace_12_dias:
+                continue
+
+            # Filtrar por contenido
+            texto = msg.get("text", {}).get("body", "").strip()
+            if "NUEVA CITA AGENDADA" not in texto:
+                continue
+
+            mensajes_validos.append({
+                "timestamp": msg_time,
+                "content": texto,
+                "message_id": msg.get("id", ""),
+            })
+
+        logger.info(f"[IMPORT] Encontrados {len(mensajes_validos)} mensajes con citas")
+
+        total_encontradas = len(mensajes_validos)
         importadas = 0
         ya_existentes = 0
         errores = 0
         detalles = []
 
-        # Procesar cada mensaje
-        for msg in mensajes:
+        # 4. Procesar cada mensaje
+        for msg in mensajes_validos:
             try:
                 # Extraer campos de la cita
-                campos = _extraer_campos_cita(msg.content)
+                campos = _extraer_campos_cita(msg["content"])
                 if not campos:
-                    logger.warning(f"[IMPORT] No se extrajeron campos de cita del mensaje ID {msg.id}")
+                    logger.warning(f"[IMPORT] No se extrajeron campos de cita del mensaje ID {msg['message_id']}")
                     errores += 1
                     detalles.append({
-                        "timestamp": msg.timestamp.isoformat(),
+                        "timestamp": msg["timestamp"].isoformat(),
                         "estado": "error",
                         "razon": "No se extrajeron los campos correctamente",
                     })
@@ -1164,7 +1250,7 @@ async def importar_citas_historicas():
                     logger.warning(f"[IMPORT] No se pudo parsear fecha/hora: {campos['cuando']}")
                     errores += 1
                     detalles.append({
-                        "timestamp": msg.timestamp.isoformat(),
+                        "timestamp": msg["timestamp"].isoformat(),
                         "nombre": campos.get("nombre", "?"),
                         "estado": "error",
                         "razon": f"No se pudo parsear fecha: {campos['cuando']}",
@@ -1184,7 +1270,7 @@ async def importar_citas_historicas():
                 if resultado.get("ok"):
                     importadas += 1
                     detalles.append({
-                        "timestamp": msg.timestamp.isoformat(),
+                        "timestamp": msg["timestamp"].isoformat(),
                         "nombre": campos["nombre"],
                         "dispositivo": campos["dispositivo"],
                         "problema": campos["problema"],
@@ -1200,7 +1286,7 @@ async def importar_citas_historicas():
                     if "ya existe" in error_msg or "duplicate" in error_msg:
                         ya_existentes += 1
                         detalles.append({
-                            "timestamp": msg.timestamp.isoformat(),
+                            "timestamp": msg["timestamp"].isoformat(),
                             "nombre": campos["nombre"],
                             "estado": "ya_existente",
                             "razon": resultado.get("error", "Ya existe en calendario"),
@@ -1209,7 +1295,7 @@ async def importar_citas_historicas():
                     else:
                         errores += 1
                         detalles.append({
-                            "timestamp": msg.timestamp.isoformat(),
+                            "timestamp": msg["timestamp"].isoformat(),
                             "nombre": campos["nombre"],
                             "estado": "error",
                             "razon": resultado.get("error", "Error desconocido"),
@@ -1220,7 +1306,7 @@ async def importar_citas_historicas():
                 errores += 1
                 logger.error(f"[IMPORT] Excepción procesando cita: {e}")
                 detalles.append({
-                    "timestamp": msg.timestamp.isoformat(),
+                    "timestamp": msg["timestamp"].isoformat(),
                     "estado": "error",
                     "razon": str(e),
                 })
