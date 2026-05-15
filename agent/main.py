@@ -48,6 +48,7 @@ from agent.leads import (
 from agent.followup import iniciar_scheduler
 from agent.reports import generar_reporte_excel
 from agent.import_chats import importar_todos_los_chats
+from agent.cita_detector import guardar_cita_automatica
 from agent.notifications import (
     procesar_comando_grupo,
     detectar_y_notificar_christian,
@@ -296,6 +297,65 @@ app = FastAPI(
 @app.get("/")
 async def health_check():
     return {"status": "ok", "service": "Tecnology Support AgentKit v2.1"}
+
+
+@app.get("/diagnostico/grupos")
+async def diagnostico_grupos():
+    """
+    Lista los grupos de WhatsApp que Whapi puede ver para este bot.
+    Sirve para encontrar el chat_id de "Taller Interno TS" y ponerlo en GRUPO_CHRISTIAN_INTERNO.
+    """
+    import httpx as _httpx
+    token = os.getenv("WHAPI_TOKEN", "")
+    if not token:
+        return {"error": "WHAPI_TOKEN no configurado"}
+    try:
+        async with _httpx.AsyncClient(timeout=15) as http:
+            r = await http.get(
+                "https://gate.whapi.cloud/chats",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"count": 100},
+            )
+            if r.status_code != 200:
+                return {"error": f"Whapi HTTP {r.status_code}", "respuesta": r.text[:300]}
+            grupos = []
+            for chat in r.json().get("chats", []):
+                chat_id = chat.get("id", "")
+                if chat_id.endswith("@g.us"):
+                    grupos.append({
+                        "id": chat_id,
+                        "nombre": chat.get("name", "") or chat.get("subject", "") or "(sin nombre)",
+                    })
+            return {
+                "total_grupos_visibles": len(grupos),
+                "grupos": grupos,
+                "config_actual": {
+                    "GRUPO_CHRISTIAN_INTERNO": os.getenv("GRUPO_CHRISTIAN_INTERNO", "").strip() or "(no configurado)",
+                    "GRUPO_INTERNO_NOMBRE": os.getenv("GRUPO_INTERNO_NOMBRE", "Taller Interno TS"),
+                },
+                "siguiente_paso": (
+                    "Copia el 'id' del grupo correcto y ponlo como GRUPO_CHRISTIAN_INTERNO "
+                    "en Railway → Variables."
+                ),
+            }
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+@app.post("/diagnostico/probar-grupo")
+async def diagnostico_probar_grupo():
+    """Envía mensaje de prueba al grupo configurado para verificar la conexión."""
+    from agent.appointment_notifications import _enviar_grupo
+    mensaje_test = (
+        "🧪 *PRUEBA DE NOTIFICACIÓN*\n"
+        f"Si recibes este mensaje, el grupo está bien configurado.\n"
+        f"Timestamp: {datetime.now(ZONA_CDMX).isoformat()}"
+    )
+    try:
+        ok = await _enviar_grupo(mensaje_test)
+        return {"enviado": ok, "mensaje": "Revisa el grupo de WhatsApp. Si no llegó, revisa logs de Railway."}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 @app.get("/leads")
@@ -678,6 +738,18 @@ async def webhook_handler(request: Request):
                                         evento_id=evento_id,
                                     )
                                 )
+                                # Persistir en PostgreSQL para SELECT * FROM citas
+                                logger.info(f"[CITAS DB] Persistiendo cita en PostgreSQL — {tag['nombre']} ({msg.telefono})")
+                                asyncio.create_task(
+                                    guardar_cita_automatica(
+                                        nombre=resultado["nombre"],
+                                        dispositivo=resultado["dispositivo"],
+                                        problema=tag["problema"],
+                                        fecha_hora=fh,
+                                        asesor=asesor or "ASIGNADO",
+                                        telefono=msg.telefono,
+                                    )
+                                )
                                 logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} — {resultado['fecha_texto']} {resultado['hora_texto']}")
                         else:
                             # Calendar falló → igual confirmar al cliente con datos del tag
@@ -716,8 +788,26 @@ async def webhook_handler(request: Request):
                                         evento_id=evento_id,
                                     )
                                 )
+                                # ─── Fallback path: Calendar falló pero igual GUARDAR en PostgreSQL ───
+                                # Antes este path NO guardaba la cita → "Goyo" se perdió. Ya no.
+                                logger.info(
+                                    f"[CITAS DB] Calendar falló — persistiendo en PostgreSQL "
+                                    f"({tag['nombre']} / {msg.telefono} / {fecha_txt} {hora_txt})"
+                                )
+                                asyncio.create_task(
+                                    guardar_cita_automatica(
+                                        nombre=tag["nombre"],
+                                        dispositivo=tag["dispositivo"],
+                                        problema=tag["problema"],
+                                        fecha_hora=fh,
+                                        asesor=asesor or "ASIGNADO",
+                                        telefono=msg.telefono,
+                                    )
+                                )
                     except Exception as e:
                         logger.error(f"[CALENDAR] Error procesando tag AGENDAR: {e}")
+                        import traceback
+                        logger.error(f"[CALENDAR] Traceback: {traceback.format_exc()}")
                         respuesta = quitar_tags(respuesta)
 
                 await guardar_mensaje(msg.telefono, "user", msg.texto)
