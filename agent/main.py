@@ -258,10 +258,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[INIT] Error en migración de leads: {e}")
 
-    # 3. Inicializar CRM (Google Sheets)
-    from agent.crm import inicializar_crm
-    await inicializar_crm()
-    logger.info("[INIT] CRM (Google Sheets) listo")
+    # 3. Inicializar CRM (Google Sheets) — DESACTIVADO TEMPORALMENTE
+    # TODO: Configurar credenciales de Google Sheets antes de activar
+    # from agent.crm import inicializar_crm
+    # await inicializar_crm()
+    # logger.info("[INIT] CRM (Google Sheets) listo")
 
     # 4. Mensaje de inicio
     logger.info(f"[INIT] Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
