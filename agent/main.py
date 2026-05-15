@@ -1195,6 +1195,14 @@ async def importar_citas_de_texto(request: Request):
         # Procesar cada mensaje de texto
         for idx, texto_msg in enumerate(mensajes_texto, 1):
             try:
+                # Asegurar que texto_msg es un string (PowerShell puede crear estructuras anidadas)
+                if isinstance(texto_msg, dict):
+                    texto_msg = str(texto_msg)
+                elif isinstance(texto_msg, list):
+                    texto_msg = " ".join(str(x) for x in texto_msg)
+                else:
+                    texto_msg = str(texto_msg)
+
                 # Extraer campos de la cita
                 campos = _extraer_campos_cita(texto_msg)
                 if not campos:
