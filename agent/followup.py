@@ -489,10 +489,19 @@ async def ejecutar_notificaciones_citas_ulises():
     desde = datetime.now(_ZONA_MX).date()
     hasta = desde + _td(days=7)
     todos = await obtener_eventos_rango(desde, hasta)
+    # Dedup robusto: evita duplicados por ID y por combinación (nombre + fecha)
+    notificadas_esta_sesion = set()
+
     for ev in todos:
         if not ev.get("telefono"):
             continue
-        if not await cita_notificada_ya_enviada(ev["id"], "inmediata"):
+
+        # Clave de dedup: nombre + fecha (para evitar duplicados por cambios de ID)
+        dedup_key = f"{ev.get('nombre', '')}_{ev.get('fecha_txt', '')}"
+
+        # Chequea: 1) Ya notificada en BD, 2) Ya notificada en esta sesión
+        if not await cita_notificada_ya_enviada(ev["id"], "inmediata") and dedup_key not in notificadas_esta_sesion:
+            notificadas_esta_sesion.add(dedup_key)
             await notificar_nueva_cita(
                 nombre=ev["nombre"],
                 telefono=ev["telefono"],
