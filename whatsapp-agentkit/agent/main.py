@@ -996,7 +996,9 @@ def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
     """
     Parsea una cadena como "Jueves 15 de mayo, 3:30 PM" a datetime.
     VERSIÓN ULTRA-ROBUSTA: Sin regex complicado, solo string splitting.
+    [2026-05-15 VERSIÓN 4: String splitting robusto]
     """
+    logger.info(f"[IMPORT] _parsear_fecha_hora_del_mensaje() INICIADA - fecha_str='{fecha_str}'")
     if not fecha_str:
         return None
 
@@ -1621,3 +1623,5 @@ async def scheduler_citas_diarias():
         # Revisar cada 30 segundos
         await asyncio.sleep(30)
 
+#   F o r c e   r e d e p l o y  
+ 
