@@ -1008,8 +1008,9 @@ def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
         meses_inversos = {v: k for k, v in MESES_ES.items()}
 
         # Regex para extraer: "DIA DD de MES, HH:MM AM/PM"
-        # Ej: "Jueves 15 de mayo, 3:30 PM" (incluyendo caracteres con tildes como Sábado)
-        patron = r"([a-záéíóúñ]+)\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+),\s+(\d{1,2}):(\d{2})\s*(a\.m\.|p\.m\.|am|pm|AM|PM)"
+        # Ej: "Jueves 15 de mayo, 3:30 PM" o "Sábado 9 de mayo, 11:30 a.m."
+        # Usar patrón flexible que captura cualquier texto (incluyendo tildes)
+        patron = r"([^\d]+?)\s+(\d{1,2})\s+de\s+([^\d,]+?),\s+(\d{1,2}):(\d{2})\s*(a\.m\.|p\.m\.|am|pm|AM|PM)"
         match = re.search(patron, fecha_str)
 
         if not match:
