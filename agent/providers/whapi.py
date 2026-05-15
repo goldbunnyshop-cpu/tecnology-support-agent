@@ -2,6 +2,7 @@
 # Generado por AgentKit
 
 import os
+import json
 import logging
 import httpx
 from dataclasses import dataclass
@@ -29,7 +30,9 @@ class ProveedorWhapi(ProveedorWhatsApp):
     def _headers(self) -> dict:
         return {
             "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json",
+            # charset=utf-8 explícito: evita que Whapi interprete el body como Latin-1
+            # (causa de mojibake en emojis: ✅ → âœ…, 📋 → ðŸ"‹, etc.)
+            "Content-Type": "application/json; charset=utf-8",
         }
 
     async def _obtener_nombre_grupo(self, chat_id: str) -> str:
@@ -160,12 +163,39 @@ class ProveedorWhapi(ProveedorWhatsApp):
         if not self.token:
             logger.warning("WHAPI_TOKEN no configurado")
             return False
+
+        # ⚠️ CRÍTICO: Asegurar que el mensaje es UTF-8 válido
+        # Evitar mojibake (corrupción de caracteres especiales como ¡ → Â¡)
+        try:
+            # Verificar que el mensaje es UTF-8 válido
+            if isinstance(mensaje, str):
+                # Codificar a UTF-8 explícitamente y decodificar para validar
+                mensaje_limpio = mensaje.encode('utf-8', errors='replace').decode('utf-8')
+                logger.debug(f"[WHAPI ENCODING] Mensaje validado como UTF-8: {mensaje_limpio[:80]}")
+            else:
+                mensaje_limpio = str(mensaje)
+        except Exception as e:
+            logger.error(f"[WHAPI ENCODING] Error validando UTF-8: {e}")
+            mensaje_limpio = mensaje
+
         async with httpx.AsyncClient() as client:
+            payload = {
+                "to": destino,
+                "body": mensaje_limpio,
+            }
+            # ⚠️ Forzar serialización JSON ASCII-safe: cada emoji se convierte
+            # a \uXXXX escapes. Esto elimina cualquier ambigüedad de encoding
+            # entre nuestro servidor y la API de Whapi (causa probada de mojibake).
+            body_bytes = json.dumps(payload, ensure_ascii=True).encode("ascii")
+
             r = await client.post(
                 self.url_envio,
-                json={"to": destino, "body": mensaje},
+                content=body_bytes,
                 headers=self._headers(),
             )
             if r.status_code != 200:
                 logger.error(f"Error Whapi: {r.status_code} — {r.text}")
+                logger.error(f"[WHAPI] Mensaje fallido: {mensaje_limpio[:100]}")
+            else:
+                logger.info(f"[WHAPI] ✅ Mensaje enviado a {destino}")
             return r.status_code == 200
