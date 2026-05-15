@@ -351,6 +351,13 @@ async def detener_seguimiento(telefono: str):
         return True
 
 
+async def obtener_lead_por_telefono(telefono: str) -> "Lead | None":
+    """Obtiene un lead por su número de teléfono."""
+    async with async_session() as session:
+        result = await session.execute(select(Lead).where(Lead.telefono == telefono))
+        return result.scalar_one_or_none()
+
+
 async def obtener_resumen_leads() -> dict:
     """Retorna un conteo de leads por estado y fuente."""
     async with async_session() as session:
