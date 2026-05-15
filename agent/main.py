@@ -4,6 +4,7 @@
 import os
 import asyncio
 import logging
+import pytz
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -60,6 +61,7 @@ from agent.google_calendar import (
     parsear_tag_agendar,
     agendar_cita,
     quitar_tags,
+    obtener_citas_hoy_formateadas,
     UBICACION_MODULO,
     DIAS_ES,
     MESES_ES,
@@ -269,10 +271,15 @@ async def lifespan(app: FastAPI):
     # 5. Iniciar scheduler de seguimientos
     scheduler_task = asyncio.create_task(iniciar_scheduler())
 
+    # 6. Iniciar scheduler de citas diarias (9:00 AM)
+    scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
+    logger.info("[INIT] Scheduler de citas diarias (9:00 AM) iniciado ✓")
+
     yield
 
     # Cleanup
     scheduler_task.cancel()
+    scheduler_citas_task.cancel()
     logger.info("[SHUTDOWN] Servidor detenido")
 
 
@@ -917,3 +924,97 @@ async def update_lead(telefono: str, data: UpdateLeadRequest):
     except Exception as e:
         logger.error(f"[API] Error en PUT /api/leads/{telefono}: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ==================================================================================
+# ENDPOINTS PARA GOOGLE CALENDAR - REPORTE DIARIO (FASE 1)
+# ==================================================================================
+
+@app.get("/api/calendar/today")
+async def get_calendar_today():
+    """
+    Retorna el reporte formateado de citas de hoy.
+    Usado por: Auto-CRM UI + Scheduler de WhatsApp
+    """
+    try:
+        reporte = await obtener_citas_hoy_formateadas()
+
+        return {
+            "ok": True,
+            "fecha": datetime.now(ZONA_CDMX).strftime('%Y-%m-%d'),
+            "reporte": reporte
+        }
+    except Exception as e:
+        logger.error(f"[API] Error en GET /api/calendar/today: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e), "reporte": ""}
+        )
+
+
+@app.post("/api/calendar/enviar-reporte")
+async def enviar_reporte_citas():
+    """
+    Endpoint para dispara el envío de citas a WhatsApp.
+    POST /api/calendar/enviar-reporte
+    """
+    try:
+        reporte = await obtener_citas_hoy_formateadas()
+
+        logger.info(f"[CALENDAR] Reporte listo para enviar al grupo WhatsApp")
+
+        return {
+            "ok": True,
+            "reporte": reporte,
+            "timestamp": datetime.now(ZONA_CDMX).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[API] Error en POST /api/calendar/enviar-reporte: {e}")
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
+# ==================================================================================
+# SCHEDULER PARA CITAS - ENVÍO DIARIO A LAS 9:00 AM
+# ==================================================================================
+
+async def scheduler_citas_diarias():
+    """
+    Scheduler que envía reporte de citas a las 9:00 AM México (CDMX).
+    Se ejecuta cada 30 segundos para revisar si es hora de enviar.
+    """
+    tz_mexico = pytz.timezone('America/Mexico_City')
+
+    while True:
+        try:
+            ahora = datetime.now(tz_mexico)
+
+            # Si es 9:00 AM (entre 9:00:00 y 9:00:59)
+            if ahora.hour == 9 and ahora.minute == 0:
+                logger.info("[SCHEDULER-CITAS] ⏰ Es las 9:00 AM - Enviando reporte de citas...")
+
+                try:
+                    reporte = await obtener_citas_hoy_formateadas()
+
+                    # Aquí iría el código para enviar a WhatsApp
+                    # Uso el proveedor existente: proveedor.enviar_mensaje()
+                    try:
+                        await proveedor.enviar_mensaje(
+                            numero=_NUMERO_NEGOCIO,  # Enviar al número del negocio
+                            texto=reporte,
+                            grupo_id=GRUPO_INTERNO  # Enviar al grupo interno
+                        )
+                        logger.info("[SCHEDULER-CITAS] ✅ Reporte de citas enviado al grupo")
+                    except Exception as e:
+                        logger.warning(f"[SCHEDULER-CITAS] No se pudo enviar a WhatsApp: {e}")
+
+                    # Esperar 2 minutos para no dispararse múltiples veces
+                    await asyncio.sleep(120)
+
+                except Exception as e:
+                    logger.error(f"[SCHEDULER-CITAS] Error obteniendo reporte: {e}")
+
+        except Exception as e:
+            logger.error(f"[SCHEDULER-CITAS] Error general en scheduler: {e}")
+
+        # Revisar cada 30 segundos
+        await asyncio.sleep(30)
