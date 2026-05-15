@@ -45,6 +45,7 @@ from agent.leads import (
     programar_retoma,
     cancelar_retoma,
     marcar_presupuesto_enviado,
+    obtener_lead_por_telefono,
 )
 from agent.followup import iniciar_scheduler
 from agent.reports import generar_reporte_excel
@@ -625,6 +626,15 @@ async def webhook_handler(request: Request):
 
                 historial = await obtener_historial(msg.telefono)
 
+                # ════ CHEQUEAR SI CLIENTE YA ESTÁ CONVERTIDO ════
+                # Si estado="convertido", no generamos respuesta automática
+                lead = await obtener_lead_por_telefono(msg.telefono)
+                if lead and lead.estado == "convertido":
+                    logger.info(f"[CONVERTIDO] {msg.telefono} — No genera respuesta automática (NS: {lead.numero_nota_servicio})")
+                    # Guardar el mensaje en historial pero NO enviar respuesta
+                    await guardar_mensaje(msg.telefono, "user", msg.texto)
+                    continue
+
                 # Si la Ãºltima respuesta del agente fue una confirmaciÃ³n de cita,
                 # indicarle a Claude que ya estÃ¡ agendada y responda preguntas normalmente
                 if historial and historial[-1]["role"] == "assistant" and "CITA CONFIRMADA" in historial[-1]["content"].upper():
@@ -1198,6 +1208,17 @@ async def importar_citas_de_texto(request: Request):
             return JSONResponse(
                 status_code=400,
                 content={"ok": False, "error": "Se requiere 'mensajes' (lista de strings)"}
+            )
+
+        # IMPORTANTE: Asegurar que mensajes_texto es una LISTA (no un string)
+        if isinstance(mensajes_texto, str):
+            logger.warning(f"[IMPORT] mensajes_texto es un string, convirtiéndolo a lista de 1 elemento")
+            mensajes_texto = [mensajes_texto]
+        elif not isinstance(mensajes_texto, list):
+            logger.error(f"[IMPORT] mensajes_texto no es lista ni string: {type(mensajes_texto)}")
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": f"'mensajes' debe ser una lista de strings, recibí {type(mensajes_texto).__name__}"}
             )
 
         logger.info(f"[IMPORT] Procesando {len(mensajes_texto)} mensajes de texto")
