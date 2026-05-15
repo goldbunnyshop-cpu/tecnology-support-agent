@@ -1,4 +1,5 @@
-# agent/main.py — Servidor FastAPI + Webhook de WhatsApp
+﻿# Hot reload trigger - 2026-05-15 08:15
+# agent/main.py â€” Servidor FastAPI + Webhook de WhatsApp
 # Generado por AgentKit
 
 import os
@@ -87,16 +88,16 @@ ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
 
-# Números internos — la pausa NO debe activarse si el destinatario es uno de estos
+# NÃºmeros internos â€” la pausa NO debe activarse si el destinatario es uno de estos
 _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
 _NUMERO_CHRISTIAN = os.getenv("NUMERO_CHRISTIAN",  "5541576331")
 _NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
 
-# PAUSA_ACTIVA = False: el bot se pausaba a sí mismo al enviar respuestas.
-# La pausa manual se activa con el comando "pausa: NÚMERO" desde el grupo.
+# PAUSA_ACTIVA = False: el bot se pausaba a sÃ­ mismo al enviar respuestas.
+# La pausa manual se activa con el comando "pausa: NÃšMERO" desde el grupo.
 PAUSA_ACTIVA = False
 
-# Locks por número de teléfono — evita procesar dos mensajes del mismo cliente en paralelo
+# Locks por nÃºmero de telÃ©fono â€” evita procesar dos mensajes del mismo cliente en paralelo
 _locks: dict[str, asyncio.Lock] = {}
 
 
@@ -107,10 +108,10 @@ def _obtener_lock(telefono: str) -> asyncio.Lock:
 
 
 def _es_numero_interno(telefono: str) -> bool:
-    """True si el teléfono pertenece a la empresa/equipo, no a un cliente."""
+    """True si el telÃ©fono pertenece a la empresa/equipo, no a un cliente."""
     return any(telefono.endswith(n) or n.endswith(telefono) for n in _NUMEROS_INTERNOS)
 
-_DIAS_ES = {0: "lunes", 1: "martes", 2: "miércoles", 3: "jueves", 4: "viernes", 5: "sábado", 6: "domingo"}
+_DIAS_ES = {0: "lunes", 1: "martes", 2: "miÃ©rcoles", 3: "jueves", 4: "viernes", 5: "sÃ¡bado", 6: "domingo"}
 _MESES_ES = {
     1: "enero", 2: "febrero", 3: "marzo", 4: "abril", 5: "mayo", 6: "junio",
     7: "julio", 8: "agosto", 9: "septiembre", 10: "octubre", 11: "noviembre", 12: "diciembre",
@@ -123,21 +124,21 @@ def _ctx_fecha_cdmx() -> str:
     man = hoy + timedelta(days=1)
     pas = hoy + timedelta(days=2)
     return (
-        f"══ FECHA Y HORA ACTUAL — CDMX ══\n"
-        f"Hoy: {_DIAS_ES[hoy.weekday()]} {hoy.day} de {_MESES_ES[hoy.month]} {hoy.year} · {hoy.strftime('%H:%M')}\n"
-        f"Mañana: {_DIAS_ES[man.weekday()]} {man.day} de {_MESES_ES[man.month]}\n"
-        f"Pasado mañana: {_DIAS_ES[pas.weekday()]} {pas.day} de {_MESES_ES[pas.month]}\n"
-        f"NUNCA le preguntes al cliente qué día o fecha es — ya la tienes.\n"
-        f"════════════════════════════════════════════════════"
+        f"â•â• FECHA Y HORA ACTUAL â€” CDMX â•â•\n"
+        f"Hoy: {_DIAS_ES[hoy.weekday()]} {hoy.day} de {_MESES_ES[hoy.month]} {hoy.year} Â· {hoy.strftime('%H:%M')}\n"
+        f"MaÃ±ana: {_DIAS_ES[man.weekday()]} {man.day} de {_MESES_ES[man.month]}\n"
+        f"Pasado maÃ±ana: {_DIAS_ES[pas.weekday()]} {pas.day} de {_MESES_ES[pas.month]}\n"
+        f"NUNCA le preguntes al cliente quÃ© dÃ­a o fecha es â€” ya la tienes.\n"
+        f"â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•"
     )
 
 RESPUESTA_IMAGEN_FALLBACK = (
-    "Recibí tu imagen \U0001f4f8 En cuanto un especialista la revise te contactamos. "
-    "Mientras tanto, ¿puedes describirme qué le pasa a tu equipo?"
+    "RecibÃ­ tu imagen \U0001f4f8 En cuanto un especialista la revise te contactamos. "
+    "Mientras tanto, Â¿puedes describirme quÃ© le pasa a tu equipo?"
 )
 RESPUESTA_VIDEO_FALLBACK = (
-    "Recibí tu video \U0001f3a5 Lo revisaremos con atención. "
-    "¿Puedes contarme brevemente qué falla presenta tu equipo mientras lo analizamos?"
+    "RecibÃ­ tu video \U0001f3a5 Lo revisaremos con atenciÃ³n. "
+    "Â¿Puedes contarme brevemente quÃ© falla presenta tu equipo mientras lo analizamos?"
 )
 
 
@@ -167,10 +168,10 @@ def calcular_hora_retoma_utc() -> datetime:
 async def manejar_mensaje_nocturno(telefono: str, contenido: str, asesor: str) -> None:
     respuesta = (
         f"Hola, soy {asesor} de Tecnology Support \U0001f60a "
-        f"Recibí tu mensaje y con mucho gusto te ayudaré. "
-        f"Nuestro equipo retoma atención a partir de las 6:00 AM. "
-        f"En cuanto iniciemos operaciones serás atendido con prioridad. "
-        f"¡Que descanses!"
+        f"RecibÃ­ tu mensaje y con mucho gusto te ayudarÃ©. "
+        f"Nuestro equipo retoma atenciÃ³n a partir de las 6:00 AM. "
+        f"En cuanto iniciemos operaciones serÃ¡s atendido con prioridad. "
+        f"Â¡Que descanses!"
     )
     await guardar_mensaje(telefono, "user", contenido)
     await guardar_mensaje(telefono, "assistant", respuesta)
@@ -202,7 +203,7 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
     if msg.media_url and whapi_token:
         resultado = await descargar_media(msg.media_url, whapi_token)
 
-    # Intento 2: fallback por media_id si URL falla o está vacía
+    # Intento 2: fallback por media_id si URL falla o estÃ¡ vacÃ­a
     if resultado is None:
         media_id = getattr(msg, "media_id", "")
         mime = getattr(msg, "media_mime_type", "image/jpeg") or "image/jpeg"
@@ -234,7 +235,7 @@ async def _analizar_y_responder_video(msg, historial: list, asesor: str) -> str:
     if msg.media_thumbnail_b64:
         analisis = await analizar_thumbnail_b64(msg.media_thumbnail_b64)
     else:
-        logger.info(f"Sin thumbnail para video de {msg.telefono} — usando fallback")
+        logger.info(f"Sin thumbnail para video de {msg.telefono} â€” usando fallback")
 
     if not analisis:
         return RESPUESTA_VIDEO_FALLBACK
@@ -260,23 +261,23 @@ async def lifespan(app: FastAPI):
         await _migrar_columnas()
         logger.info("[INIT] Tabla 'leads' creada/actualizada en PostgreSQL")
     except Exception as e:
-        logger.warning(f"[INIT] Error en migración de leads: {e}")
+        logger.warning(f"[INIT] Error en migraciÃ³n de leads: {e}")
 
-    # 3. Inicializar CRM (Google Sheets) — DESACTIVADO TEMPORALMENTE
+    # 3. Inicializar CRM (Google Sheets) â€” DESACTIVADO TEMPORALMENTE
     # TODO: Configurar credenciales de Google Sheets antes de activar
     # from agent.crm import inicializar_crm
     # await inicializar_crm()
     # logger.info("[INIT] CRM (Google Sheets) listo")
 
     # 4. Mensaje de inicio
-    logger.info(f"[INIT] Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
+    logger.info(f"[INIT] Servidor listo â€” Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
 
     # 5. Iniciar scheduler de seguimientos
     scheduler_task = asyncio.create_task(iniciar_scheduler())
 
     # 6. Iniciar scheduler de citas diarias (9:00 AM)
     scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
-    logger.info("[INIT] Scheduler de citas diarias (9:00 AM) iniciado ✓")
+    logger.info("[INIT] Scheduler de citas diarias (9:00 AM) iniciado âœ“")
 
     yield
 
@@ -287,7 +288,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Tecnology Support — WhatsApp AI Agent",
+    title="Tecnology Support â€” WhatsApp AI Agent",
     version="2.1.0",
     lifespan=lifespan,
 )
@@ -301,8 +302,8 @@ async def health_check():
 @app.get("/leads")
 async def ver_leads(detalle: bool = False, estados: str = "todos"):
     """
-    GET /leads              — resumen de conteos por estado y fuente
-    GET /leads?detalle=true — lista completa con nombre, dispositivo, estado y último mensaje
+    GET /leads              â€” resumen de conteos por estado y fuente
+    GET /leads?detalle=true â€” lista completa con nombre, dispositivo, estado y Ãºltimo mensaje
     """
     import json as _json
     if not detalle:
@@ -363,9 +364,9 @@ async def importar_chats_endpoint(
     Importa y clasifica chats de Whapi.
 
     Params:
-        desde      — Fecha de corte ISO (YYYY-MM-DD). Solo procesa mensajes >= esa fecha.
-        mensajes   — Mensajes a traer por chat (default 200, max recomendado 500).
-        reimportar — Si True, fuerza reimportación de chats ya en DB.
+        desde      â€” Fecha de corte ISO (YYYY-MM-DD). Solo procesa mensajes >= esa fecha.
+        mensajes   â€” Mensajes a traer por chat (default 200, max recomendado 500).
+        reimportar â€” Si True, fuerza reimportaciÃ³n de chats ya en DB.
 
     Ejemplo: POST /importar-chats?desde=2026-03-19&mensajes=200&reimportar=true
     """
@@ -375,12 +376,12 @@ async def importar_chats_endpoint(
         try:
             fecha_desde = date_type.fromisoformat(desde)
         except ValueError:
-            return {"status": "error", "detalle": f"Fecha inválida: '{desde}'. Usa formato YYYY-MM-DD."}
+            return {"status": "error", "detalle": f"Fecha invÃ¡lida: '{desde}'. Usa formato YYYY-MM-DD."}
 
     asyncio.create_task(_importar_y_reportar(fecha_desde, mensajes, reimportar))
     return {
         "status": "ok",
-        "mensaje": "Importación iniciada en segundo plano.",
+        "mensaje": "ImportaciÃ³n iniciada en segundo plano.",
         "parametros": {
             "desde":      str(fecha_desde) if fecha_desde else "sin filtro",
             "mensajes":   mensajes,
@@ -414,7 +415,7 @@ async def webhook_verificacion(request: Request):
     return {"status": "ok"}
 
 
-# ── Messenger ────────────────────────────────────────────────────────────────
+# â”€â”€ Messenger â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.get("/messenger")
 async def messenger_verificacion(request: Request):
@@ -456,7 +457,7 @@ async def messenger_handler(request: Request):
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
             await messenger.enviar_mensaje(msg.telefono, respuesta)
 
-            logger.info(f"[MESSENGER] {msg.telefono} → {respuesta[:60]}")
+            logger.info(f"[MESSENGER] {msg.telefono} â†’ {respuesta[:60]}")
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"[MESSENGER] Error: {e}")
@@ -475,12 +476,12 @@ async def webhook_handler(request: Request):
         mensajes = await proveedor.parsear_webhook(request)
 
         for msg in mensajes:
-            # ── Deduplicación rápida: Whapi puede reenviar el mismo webhook varias veces ──
+            # â”€â”€ DeduplicaciÃ³n rÃ¡pida: Whapi puede reenviar el mismo webhook varias veces â”€â”€
             if msg.mensaje_id and await mensaje_ya_procesado(msg.mensaje_id):
-                logger.info(f"[DEDUP] {msg.mensaje_id} ({msg.telefono}) ya procesado — ignorando")
+                logger.info(f"[DEDUP] {msg.mensaje_id} ({msg.telefono}) ya procesado â€” ignorando")
                 continue
 
-            # ── Mensaje propio: el número de negocio envió a un cliente → pausar ──
+            # â”€â”€ Mensaje propio: el nÃºmero de negocio enviÃ³ a un cliente â†’ pausar â”€â”€
             if msg.es_propio and not msg.es_grupo:
                 if PAUSA_ACTIVA and not _es_numero_interno(msg.telefono):
                     await pausar_conversacion(msg.telefono, horas=2)
@@ -489,12 +490,12 @@ async def webhook_handler(request: Request):
             if msg.es_propio:
                 continue
 
-            # ── Grupo interno: procesar comandos de Ulises ──
+            # â”€â”€ Grupo interno: procesar comandos de Ulises â”€â”€
             if msg.es_grupo:
                 nombre_g = getattr(msg, "nombre_grupo", "")
                 remitente_g = getattr(msg, "remitente", "")
                 logger.info(
-                    f"[WEBHOOK] Mensaje de grupo — nombre='{nombre_g}' "
+                    f"[WEBHOOK] Mensaje de grupo â€” nombre='{nombre_g}' "
                     f"remitente='{remitente_g}' texto='{(msg.texto or '')[:60]}' "
                     f"es_propio={msg.es_propio}"
                 )
@@ -509,34 +510,34 @@ async def webhook_handler(request: Request):
                     )
                 else:
                     logger.info(
-                        f"[WEBHOOK] Grupo ignorado — '{nombre_g}' no coincide con '{GRUPO_INTERNO}'"
+                        f"[WEBHOOK] Grupo ignorado â€” '{nombre_g}' no coincide con '{GRUPO_INTERNO}'"
                     )
-                # Todos los demás grupos se ignoran
+                # Todos los demÃ¡s grupos se ignoran
                 continue
 
-            # ── Blacklist ──
+            # â”€â”€ Blacklist â”€â”€
             if msg.telefono in BLACKLIST:
                 logger.info(f"Blacklist: {msg.telefono}")
                 continue
 
-            # ── Modo pausa (intervención humana activa) ──
+            # â”€â”€ Modo pausa (intervenciÃ³n humana activa) â”€â”€
             # Siempre revisa la pausa manual (independiente de PAUSA_ACTIVA)
             if await esta_pausada(msg.telefono):
-                logger.info(f"[PAUSA ACTIVA] {msg.telefono} — mensaje ignorado, Christian está atendiendo")
+                logger.info(f"[PAUSA ACTIVA] {msg.telefono} â€” mensaje ignorado, Christian estÃ¡ atendiendo")
                 continue
 
             async with _obtener_lock(msg.telefono):
-                # ── Double-check dedup dentro del lock (maneja carrera entre requests) ──
+                # â”€â”€ Double-check dedup dentro del lock (maneja carrera entre requests) â”€â”€
                 if msg.mensaje_id and await mensaje_ya_procesado(msg.mensaje_id):
-                    logger.info(f"[DEDUP] {msg.mensaje_id} ({msg.telefono}) — skip (lock)")
+                    logger.info(f"[DEDUP] {msg.mensaje_id} ({msg.telefono}) â€” skip (lock)")
                     continue
                 if msg.mensaje_id:
                     await marcar_mensaje_procesado(msg.mensaje_id, msg.telefono)
 
-                # ── Obtener asesor ANTES de actualizar ultimo_mensaje ──
+                # â”€â”€ Obtener asesor ANTES de actualizar ultimo_mensaje â”€â”€
                 asesor = await obtener_o_asignar_asesor(msg.telefono)
 
-                # ── Registrar lead ──
+                # â”€â”€ Registrar lead â”€â”€
                 fuente        = getattr(msg, "fuente", "desconocido")
                 fuente_detalle = getattr(msg, "fuente_detalle", "")
                 await crear_o_actualizar_lead(
@@ -546,20 +547,20 @@ async def webhook_handler(request: Request):
                     asesor_asignado=asesor,
                 )
 
-                # ── Sincronizar perfil (SÍNCRONO) — crea clientes_perfil si no existe ──
-                # Esto garantiza que obtener_perfil() más abajo siempre encuentre el registro.
+                # â”€â”€ Sincronizar perfil (SÃNCRONO) â€” crea clientes_perfil si no existe â”€â”€
+                # Esto garantiza que obtener_perfil() mÃ¡s abajo siempre encuentre el registro.
                 await actualizar_visita_cliente(msg.telefono, asesor)
 
-                # ── Cancelar retoma si el cliente ya respondió ──
+                # â”€â”€ Cancelar retoma si el cliente ya respondiÃ³ â”€â”€
                 await cancelar_retoma(msg.telefono)
 
-                # ── Modo nocturno ──
+                # â”€â”€ Modo nocturno â”€â”€
                 if es_horario_nocturno():
                     contenido = msg.texto or f"[{msg.tipo}]"
                     await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
                     continue
 
-                # ── Imagen ──
+                # â”€â”€ Imagen â”€â”€
                 if msg.tipo == "image":
                     await guardar_mensaje(msg.telefono, "user", "[imagen recibida]")
                     await proveedor.enviar_typing(msg.telefono)
@@ -571,7 +572,7 @@ async def webhook_handler(request: Request):
                     await proveedor.enviar_mensaje(msg.telefono, respuesta_img)
                     continue
 
-                # ── Video ──
+                # â”€â”€ Video â”€â”€
                 if msg.tipo == "video":
                     await guardar_mensaje(msg.telefono, "user", "[video recibido]")
                     await proveedor.enviar_typing(msg.telefono)
@@ -588,12 +589,12 @@ async def webhook_handler(request: Request):
 
                 logger.info(f"[{asesor}] {msg.telefono}: {msg.texto[:60]}")
 
-                # ── Cargar perfil del cliente ──
+                # â”€â”€ Cargar perfil del cliente â”€â”€
                 perfil = await obtener_perfil(msg.telefono)
                 log_estado_memoria(msg.telefono, perfil)
                 contexto_cliente = construir_contexto_cliente(perfil)
 
-                # ── Detectar nombre si aún no está guardado ──
+                # â”€â”€ Detectar nombre si aÃºn no estÃ¡ guardado â”€â”€
                 if not (perfil and perfil.nombre):
                     nombre_detectado = extraer_nombre_de_mensaje(msg.texto)
                     if not nombre_detectado:
@@ -603,13 +604,13 @@ async def webhook_handler(request: Request):
                         await guardar_nombre_cliente(msg.telefono, nombre_detectado)
                         logger.info(f"Nombre detectado y guardado: {nombre_detectado} ({msg.telefono})")
 
-                # ── Contexto base: fecha CDMX + perfil cliente + teléfono ──
+                # â”€â”€ Contexto base: fecha CDMX + perfil cliente + telÃ©fono â”€â”€
                 partes_ctx: list[str] = [_ctx_fecha_cdmx()]
                 if contexto_cliente:
                     partes_ctx.append(contexto_cliente)
-                partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
+                partes_ctx.append(f"TelÃ©fono del cliente en sistema: {msg.telefono}")
 
-                # ── Disponibilidad real si menciona fecha con intención de visita ──
+                # â”€â”€ Disponibilidad real si menciona fecha con intenciÃ³n de visita â”€â”€
                 if detectar_intencion_agendar(msg.texto):
                     fechas_cita = parsear_fechas_en_texto(msg.texto)
                     if fechas_cita:
@@ -624,14 +625,14 @@ async def webhook_handler(request: Request):
 
                 historial = await obtener_historial(msg.telefono)
 
-                # Si la última respuesta del agente fue una confirmación de cita,
-                # indicarle a Claude que ya está agendada y responda preguntas normalmente
+                # Si la Ãºltima respuesta del agente fue una confirmaciÃ³n de cita,
+                # indicarle a Claude que ya estÃ¡ agendada y responda preguntas normalmente
                 if historial and historial[-1]["role"] == "assistant" and "CITA CONFIRMADA" in historial[-1]["content"].upper():
                     contexto_cliente += (
-                        "\n\n⚠️ NOTA SISTEMA: Esta conversación ya tiene una cita confirmada. "
+                        "\n\nâš ï¸ NOTA SISTEMA: Esta conversaciÃ³n ya tiene una cita confirmada. "
                         "Responde NORMALMENTE a cualquier pregunta adicional del cliente "
-                        "(ubicación, cambios, precios, etc.). "
-                        "NO repitas la confirmación. NO incluyas [[AGENDAR:...]] de nuevo."
+                        "(ubicaciÃ³n, cambios, precios, etc.). "
+                        "NO repitas la confirmaciÃ³n. NO incluyas [[AGENDAR:...]] de nuevo."
                     )
 
                 await proveedor.enviar_typing(msg.telefono)
@@ -639,9 +640,9 @@ async def webhook_handler(request: Request):
                     msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
                 )
 
-                # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
+                # â”€â”€ Ejecutar cita si Claude incluyÃ³ el tag [[AGENDAR:...]] â”€â”€
                 # TODO: Implementar parsear_tag_agendar basado en _RE_TAG de google_calendar.py
-                tag = None  # parsear_tag_agendar(respuesta) — función no implementada aún
+                tag = None  # parsear_tag_agendar(respuesta) â€” funciÃ³n no implementada aÃºn
                 if tag and False:  # Desactivado hasta implementar parsear_tag_agendar
                     try:
                         fh = datetime.strptime(
@@ -657,9 +658,9 @@ async def webhook_handler(request: Request):
                         )
                         if resultado["ok"]:
                             evento_id = resultado.get("evento_id", "")
-                            # Dedup: ignorar si ya se envió esta confirmación al cliente
+                            # Dedup: ignorar si ya se enviÃ³ esta confirmaciÃ³n al cliente
                             if evento_id and await confirmacion_cita_ya_enviada(msg.telefono, evento_id):
-                                logger.warning(f"[CALENDAR] Confirmación duplicada ignorada — {msg.telefono} / {evento_id}")
+                                logger.warning(f"[CALENDAR] ConfirmaciÃ³n duplicada ignorada â€” {msg.telefono} / {evento_id}")
                                 # respuesta = quitar_tags(respuesta)  # TODO: Implementar quitar_tags
                             else:
                                 respuesta = resultado["confirmacion"]
@@ -678,29 +679,29 @@ async def webhook_handler(request: Request):
                                         evento_id=evento_id,
                                     )
                                 )
-                                logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} — {resultado['fecha_texto']} {resultado['hora_texto']}")
+                                logger.info(f"[CALENDAR] Cita ejecutada para {msg.telefono} â€” {resultado['fecha_texto']} {resultado['hora_texto']}")
                         else:
-                            # Calendar falló → igual confirmar al cliente con datos del tag
-                            logger.warning(f"[CALENDAR] Fallo al agendar: {resultado.get('error')} — enviando confirmación manual")
+                            # Calendar fallÃ³ â†’ igual confirmar al cliente con datos del tag
+                            logger.warning(f"[CALENDAR] Fallo al agendar: {resultado.get('error')} â€” enviando confirmaciÃ³n manual")
                             dia  = DIAS_ES.get(fh.weekday(), "")
                             mes  = MESES_ES.get(fh.month, "")
                             fecha_txt = f"{dia} {fh.day} de {mes}"
                             hora_txt  = fh.strftime("%I:%M %p").lstrip("0").replace("AM", "a.m.").replace("PM", "p.m.")
                             evento_id = f"manual_{msg.telefono}_{int(datetime.now(ZONA_CDMX).timestamp())}"
                             if await confirmacion_cita_ya_enviada(msg.telefono, evento_id):
-                                logger.warning(f"[CALENDAR] Confirmación duplicada ignorada — {msg.telefono} / {evento_id}")
+                                logger.warning(f"[CALENDAR] ConfirmaciÃ³n duplicada ignorada â€” {msg.telefono} / {evento_id}")
                                 # respuesta = quitar_tags(respuesta)  # TODO: Implementar quitar_tags
                             else:
-                                linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
+                                linea_asesor = f"ðŸ‘¨â€ðŸ’¼ Asesor: {asesor}\n" if asesor else ""
                                 respuesta = (
-                                    f"✅ *¡CITA CONFIRMADA!*\n\n"
-                                    f"📋 *Resumen:*\n"
-                                    f"👤 {tag['nombre']}\n"
-                                    f"📱 {tag['dispositivo']}\n"
-                                    f"⏰ {fecha_txt.capitalize()} · {hora_txt}\n"
+                                    f"âœ… *Â¡CITA CONFIRMADA!*\n\n"
+                                    f"ðŸ“‹ *Resumen:*\n"
+                                    f"ðŸ‘¤ {tag['nombre']}\n"
+                                    f"ðŸ“± {tag['dispositivo']}\n"
+                                    f"â° {fecha_txt.capitalize()} Â· {hora_txt}\n"
                                     f"{linea_asesor}"
                                     f"\n{UBICACION_MODULO}\n\n"
-                                    f"📞 Si necesitas cambiar la cita, escríbenos 😊"
+                                    f"ðŸ“ž Si necesitas cambiar la cita, escrÃ­benos ðŸ˜Š"
                                 )
                                 await marcar_confirmacion_cita_enviada(msg.telefono, evento_id)
                                 asyncio.create_task(
@@ -724,12 +725,12 @@ async def webhook_handler(request: Request):
                 await guardar_mensaje(msg.telefono, "assistant", respuesta)
                 await proveedor.enviar_mensaje(msg.telefono, respuesta)
 
-                # ── Detectar dispositivo en background (no bloquea) ──
+                # â”€â”€ Detectar dispositivo en background (no bloquea) â”€â”€
                 dispositivo_detectado = detectar_dispositivo_en_texto(msg.texto)
                 if dispositivo_detectado:
                     asyncio.create_task(agregar_dispositivo_cliente(msg.telefono, dispositivo_detectado))
 
-                # ── Alertas a Christian (en background, sin bloquear) ──
+                # â”€â”€ Alertas a Christian (en background, sin bloquear) â”€â”€
                 asyncio.create_task(
                     detectar_y_notificar_christian(
                         msg.texto,
@@ -740,7 +741,7 @@ async def webhook_handler(request: Request):
                     )
                 )
 
-                logger.info(f"[{asesor}] → {msg.telefono}: {respuesta[:80]}...")
+                logger.info(f"[{asesor}] â†’ {msg.telefono}: {respuesta[:80]}...")
 
         return {"status": "ok"}
 
@@ -750,7 +751,7 @@ async def webhook_handler(request: Request):
 
 
 # ==================================================================================
-# API REST DE LEADS — /api/leads (sincronización con auto-crm)
+# API REST DE LEADS â€” /api/leads (sincronizaciÃ³n con auto-crm)
 # ==================================================================================
 
 
@@ -797,7 +798,7 @@ async def get_leads(
     - estado: "activo", "en_seguimiento", "convertido", "perdido"
     - fuente: "facebook_ad", "organico", "whatsapp", etc.
     - skip: offset (default 0)
-    - limit: cantidad máxima (default 100)
+    - limit: cantidad mÃ¡xima (default 100)
     """
     try:
         from agent.leads import (
@@ -843,7 +844,7 @@ async def get_leads(
 @app.get("/api/leads/stats/resumen")
 async def get_leads_stats():
     """
-    Estadísticas de leads: conteo por estado y fuente.
+    EstadÃ­sticas de leads: conteo por estado y fuente.
     """
     try:
         from agent.leads import obtener_resumen_leads
@@ -855,7 +856,7 @@ async def get_leads_stats():
 
 @app.get("/api/leads/{telefono}")
 async def get_lead(telefono: str):
-    """Obtiene un lead específico por teléfono."""
+    """Obtiene un lead especÃ­fico por telÃ©fono."""
     try:
         from agent.leads import obtener_todos_los_leads_detalle
 
@@ -959,7 +960,7 @@ async def get_calendar_today():
 @app.post("/api/calendar/enviar-reporte")
 async def enviar_reporte_citas():
     """
-    Endpoint para dispara el envío de citas a WhatsApp.
+    Endpoint para dispara el envÃ­o de citas a WhatsApp.
     POST /api/calendar/enviar-reporte
     """
     try:
@@ -978,7 +979,7 @@ async def enviar_reporte_citas():
 
 
 # ==================================================================================
-# IMPORTAR CITAS HISTÓRICAS DEL GRUPO WHATSAPP
+# IMPORTAR CITAS HISTÃ“RICAS DEL GRUPO WHATSAPP
 # ==================================================================================
 
 def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
@@ -1007,7 +1008,7 @@ def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
 
         dia_nombre, dia_num, mes_nombre, hora_str, min_str, ampm = match.groups()
 
-        # Obtener el número de mes
+        # Obtener el nÃºmero de mes
         mes_num = meses_inversos.get(mes_nombre.lower())
         if not mes_num:
             logger.warning(f"[IMPORT] Mes no reconocido: {mes_nombre}")
@@ -1021,20 +1022,20 @@ def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
         elif ampm.lower() == "am" and hora == 12:
             hora = 0
 
-        # Obtener el año (usar año actual, o año siguiente si la fecha es en el pasado)
+        # Obtener el aÃ±o (usar aÃ±o actual, o aÃ±o siguiente si la fecha es en el pasado)
         ahora = datetime.now(ZONA_CDMX)
-        año = ahora.year
+        aÃ±o = ahora.year
 
         try:
-            fecha = datetime(año, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
+            fecha = datetime(aÃ±o, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
 
-            # Si la fecha es en el pasado, asumir que es del año anterior
+            # Si la fecha es en el pasado, asumir que es del aÃ±o anterior
             if fecha < ahora:
-                fecha = datetime(año - 1, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
+                fecha = datetime(aÃ±o - 1, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
 
             return fecha
         except ValueError as e:
-            logger.warning(f"[IMPORT] Error creando datetime: {e} (año={año}, mes={mes_num}, día={dia_num})")
+            logger.warning(f"[IMPORT] Error creando datetime: {e} (aÃ±o={aÃ±o}, mes={mes_num}, dÃ­a={dia_num})")
             return None
 
     except Exception as e:
@@ -1049,20 +1050,20 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
     O None si falla el parseo.
 
     Formato esperado:
-    🔔 *NUEVA CITA AGENDADA*
-    👤 {nombre} | 📱 {dispositivo}
-    ⏰ {cuando} | ⚠️ {problema}
-    👨‍💼 Asesor: {asesor}
+    ðŸ”” *NUEVA CITA AGENDADA*
+    ðŸ‘¤ {nombre} | ðŸ“± {dispositivo}
+    â° {cuando} | âš ï¸ {problema}
+    ðŸ‘¨â€ðŸ’¼ Asesor: {asesor}
     """
     try:
-        # Líneas del mensaje
+        # LÃ­neas del mensaje
         lineas = mensaje.strip().split('\n')
         if len(lineas) < 4:
             return None
 
-        # Línea 2: nombre y dispositivo
-        # Patrón: "👤 {nombre} | 📱 {dispositivo}"
-        patron_linea2 = r"👤\s+(.+?)\s*\|\s*📱\s+(.+?)(?:\s|$)"
+        # LÃ­nea 2: nombre y dispositivo
+        # PatrÃ³n: "ðŸ‘¤ {nombre} | ðŸ“± {dispositivo}"
+        patron_linea2 = r"ðŸ‘¤\s+(.+?)\s*\|\s*ðŸ“±\s+(.+?)(?:\s|$)"
         match_linea2 = re.search(patron_linea2, lineas[1])
         if not match_linea2:
             logger.warning(f"[IMPORT] No se extrajo nombre/dispositivo de: {lineas[1]}")
@@ -1070,9 +1071,9 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
         nombre = match_linea2.group(1).strip()
         dispositivo = match_linea2.group(2).strip()
 
-        # Línea 3: cuando y problema
-        # Patrón: "⏰ {cuando} | ⚠️ {problema}"
-        patron_linea3 = r"⏰\s+(.+?)\s*\|\s*⚠️\s+(.+?)(?:\s|$)"
+        # LÃ­nea 3: cuando y problema
+        # PatrÃ³n: "â° {cuando} | âš ï¸ {problema}"
+        patron_linea3 = r"â°\s+(.+?)\s*\|\s*âš ï¸\s+(.+?)(?:\s|$)"
         match_linea3 = re.search(patron_linea3, lineas[2])
         if not match_linea3:
             logger.warning(f"[IMPORT] No se extrajo cuando/problema de: {lineas[2]}")
@@ -1080,9 +1081,9 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
         cuando = match_linea3.group(1).strip()
         problema = match_linea3.group(2).strip()
 
-        # Línea 4: asesor
-        # Patrón: "👨‍💼 Asesor: {asesor}"
-        patron_linea4 = r"👨‍💼\s+Asesor:\s*(.+?)(?:\s|$)"
+        # LÃ­nea 4: asesor
+        # PatrÃ³n: "ðŸ‘¨â€ðŸ’¼ Asesor: {asesor}"
+        patron_linea4 = r"ðŸ‘¨â€ðŸ’¼\s+Asesor:\s*(.+?)(?:\s|$)"
         match_linea4 = re.search(patron_linea4, lineas[3])
         asesor = match_linea4.group(1).strip() if match_linea4 else ""
 
@@ -1123,10 +1124,10 @@ async def _obtener_grupo_id_whapi() -> str | None:
                 chat_name = chat.get("name", "").lower()
                 if "taller" in chat_name and "interno" in chat_name:
                     grupo_id = chat.get("id")
-                    logger.info(f"[IMPORT] ✅ Encontrado grupo: {chat.get('name')} (ID: {grupo_id})")
+                    logger.info(f"[IMPORT] âœ… Encontrado grupo: {chat.get('name')} (ID: {grupo_id})")
                     return grupo_id
 
-            logger.warning("[IMPORT] No se encontró el grupo 'Taller Interno TS'")
+            logger.warning("[IMPORT] No se encontrÃ³ el grupo 'Taller Interno TS'")
             return None
 
     except Exception as e:
@@ -1168,7 +1169,7 @@ async def importar_citas_de_texto(request: Request):
     Acepta POST con JSON:
     {
         "mensajes": [
-            "🔔 *NUEVA CITA AGENDADA*\n👤 Juan | 📱 iPhone\n⏰ Jueves 15 de mayo, 3:30 PM | ⚠️ Pantalla rota\n👨‍💼 Asesor: Sofia"
+            "ðŸ”” *NUEVA CITA AGENDADA*\nðŸ‘¤ Juan | ðŸ“± iPhone\nâ° Jueves 15 de mayo, 3:30 PM | âš ï¸ Pantalla rota\nðŸ‘¨â€ðŸ’¼ Asesor: Sofia"
         ]
     }
 
@@ -1210,7 +1211,7 @@ async def importar_citas_de_texto(request: Request):
         # Procesar cada mensaje de texto
         for idx, texto_msg in enumerate(mensajes_texto, 1):
             try:
-                logger.info(f"[IMPORT] ═══ Procesando mensaje #{idx} ═══")
+                logger.info(f"[IMPORT] â•â•â• Procesando mensaje #{idx} â•â•â•")
                 logger.info(f"[IMPORT] Tipo de texto_msg: {type(texto_msg)}")
                 logger.info(f"[IMPORT] Contenido (primeros 200 chars): {repr(str(texto_msg)[:200])}")
 
@@ -1225,12 +1226,12 @@ async def importar_citas_de_texto(request: Request):
                     logger.info(f"[IMPORT] Ya es string, converso por si acaso")
                     texto_msg = str(texto_msg)
 
-                logger.info(f"[IMPORT] Después conversión: {type(texto_msg)}, len={len(texto_msg)}")
+                logger.info(f"[IMPORT] DespuÃ©s conversiÃ³n: {type(texto_msg)}, len={len(texto_msg)}")
 
                 # Extraer campos de la cita
                 logger.info(f"[IMPORT] Llamando _extraer_campos_cita()...")
                 campos = _extraer_campos_cita(texto_msg)
-                logger.info(f"[IMPORT] _extraer_campos_cita() retornó: {type(campos)}")
+                logger.info(f"[IMPORT] _extraer_campos_cita() retornÃ³: {type(campos)}")
                 if not campos:
                     logger.warning(f"[IMPORT] No se extrajeron campos del mensaje #{idx}")
                     errores += 1
@@ -1265,17 +1266,17 @@ async def importar_citas_de_texto(request: Request):
                     asesor=campos["asesor"],
                 )
 
-                logger.info(f"[IMPORT] agendar_cita() retornó tipo: {type(resultado)}, contenido: {repr(str(resultado)[:200])}")
+                logger.info(f"[IMPORT] agendar_cita() retornÃ³ tipo: {type(resultado)}, contenido: {repr(str(resultado)[:200])}")
 
                 # Asegurar que resultado es un dict
                 if isinstance(resultado, str):
-                    logger.error(f"[IMPORT] ❌ agendar_cita() retornó un string en lugar de dict: {resultado}")
+                    logger.error(f"[IMPORT] âŒ agendar_cita() retornÃ³ un string en lugar de dict: {resultado}")
                     errores += 1
                     detalles.append({
                         "numero": idx,
                         "nombre": campos["nombre"],
                         "estado": "error",
-                        "razon": f"Error interno: agendar_cita retornó string",
+                        "razon": f"Error interno: agendar_cita retornÃ³ string",
                     })
                     continue
 
@@ -1294,7 +1295,7 @@ async def importar_citas_de_texto(request: Request):
                         "estado": "importada",
                         "confirmacion": resultado.get("confirmacion", ""),
                     })
-                    logger.info(f"[IMPORT] ✅ Importada: {campos['nombre']}")
+                    logger.info(f"[IMPORT] âœ… Importada: {campos['nombre']}")
                 else:
                     error_msg = resultado.get("error", "").lower()
                     if "ya existe" in error_msg or "duplicate" in error_msg:
@@ -1305,7 +1306,7 @@ async def importar_citas_de_texto(request: Request):
                             "estado": "ya_existente",
                             "razon": resultado.get("error", "Ya existe"),
                         })
-                        logger.info(f"[IMPORT] ℹ️ Ya existe: {campos['nombre']}")
+                        logger.info(f"[IMPORT] â„¹ï¸ Ya existe: {campos['nombre']}")
                     else:
                         errores += 1
                         detalles.append({
@@ -1314,12 +1315,12 @@ async def importar_citas_de_texto(request: Request):
                             "estado": "error",
                             "razon": resultado.get("error", "Error desconocido"),
                         })
-                        logger.warning(f"[IMPORT] ❌ Error: {resultado.get('error')}")
+                        logger.warning(f"[IMPORT] âŒ Error: {resultado.get('error')}")
 
             except Exception as e:
                 errores += 1
                 import traceback
-                logger.error(f"[IMPORT] ❌ Excepción en mensaje #{idx}: {e}")
+                logger.error(f"[IMPORT] âŒ ExcepciÃ³n en mensaje #{idx}: {e}")
                 logger.error(f"[IMPORT] Traceback:\n{traceback.format_exc()}")
                 detalles.append({
                     "numero": idx,
@@ -1329,7 +1330,7 @@ async def importar_citas_de_texto(request: Request):
                 })
 
         logger.info(
-            f"[IMPORT] ✅ Resumen: {importadas} importadas, {ya_existentes} existentes, {errores} errores"
+            f"[IMPORT] âœ… Resumen: {importadas} importadas, {ya_existentes} existentes, {errores} errores"
         )
 
         return {
@@ -1379,13 +1380,13 @@ async def importar_citas_historicas():
         if not grupo_id:
             return JSONResponse(
                 status_code=400,
-                content={"ok": False, "error": "No se encontró el grupo 'Taller Interno TS'"}
+                content={"ok": False, "error": "No se encontrÃ³ el grupo 'Taller Interno TS'"}
             )
 
         # 2. Obtener mensajes del grupo desde Whapi
         mensajes_whapi = await _obtener_mensajes_grupo_whapi(grupo_id, limite=200)
 
-        # 3. Filtrar solo los que contienen "NUEVA CITA AGENDADA" y son de los últimos 12 días
+        # 3. Filtrar solo los que contienen "NUEVA CITA AGENDADA" y son de los Ãºltimos 12 dÃ­as
         mensajes_validos = []
         for msg in mensajes_whapi:
             # Whapi retorna timestamp en segundos o milisegundos
@@ -1449,7 +1450,7 @@ async def importar_citas_historicas():
                 # Agendar la cita en Google Calendar
                 resultado = await agendar_cita(
                     nombre=campos["nombre"],
-                    telefono="",  # No tenemos el teléfono del grupo
+                    telefono="",  # No tenemos el telÃ©fono del grupo
                     dispositivo=campos["dispositivo"],
                     problema=campos["problema"],
                     fecha_hora=fecha_hora,
@@ -1468,7 +1469,7 @@ async def importar_citas_historicas():
                         "estado": "importada",
                         "confirmacion": resultado.get("confirmacion", ""),
                     })
-                    logger.info(f"[IMPORT] ✅ Importada cita: {campos['nombre']} - {fecha_hora}")
+                    logger.info(f"[IMPORT] âœ… Importada cita: {campos['nombre']} - {fecha_hora}")
                 else:
                     # Revisar si es porque ya existe
                     error_msg = resultado.get("error", "").lower()
@@ -1480,7 +1481,7 @@ async def importar_citas_historicas():
                             "estado": "ya_existente",
                             "razon": resultado.get("error", "Ya existe en calendario"),
                         })
-                        logger.info(f"[IMPORT] ℹ️ Ya existe: {campos['nombre']}")
+                        logger.info(f"[IMPORT] â„¹ï¸ Ya existe: {campos['nombre']}")
                     else:
                         errores += 1
                         detalles.append({
@@ -1489,11 +1490,11 @@ async def importar_citas_historicas():
                             "estado": "error",
                             "razon": resultado.get("error", "Error desconocido"),
                         })
-                        logger.warning(f"[IMPORT] ❌ Error agendando {campos['nombre']}: {resultado.get('error')}")
+                        logger.warning(f"[IMPORT] âŒ Error agendando {campos['nombre']}: {resultado.get('error')}")
 
             except Exception as e:
                 errores += 1
-                logger.error(f"[IMPORT] Excepción procesando cita: {e}")
+                logger.error(f"[IMPORT] ExcepciÃ³n procesando cita: {e}")
                 detalles.append({
                     "timestamp": msg["timestamp"].isoformat(),
                     "estado": "error",
@@ -1501,7 +1502,7 @@ async def importar_citas_historicas():
                 })
 
         logger.info(
-            f"[IMPORT] ✅ Resumen: {importadas} importadas, {ya_existentes} ya existentes, {errores} errores"
+            f"[IMPORT] âœ… Resumen: {importadas} importadas, {ya_existentes} ya existentes, {errores} errores"
         )
 
         return {
@@ -1523,12 +1524,12 @@ async def importar_citas_historicas():
 
 
 # ==================================================================================
-# SCHEDULER PARA CITAS - ENVÍO DIARIO A LAS 9:00 AM
+# SCHEDULER PARA CITAS - ENVÃO DIARIO A LAS 9:00 AM
 # ==================================================================================
 
 async def scheduler_citas_diarias():
     """
-    Scheduler que envía reporte de citas a las 9:00 AM México (CDMX).
+    Scheduler que envÃ­a reporte de citas a las 9:00 AM MÃ©xico (CDMX).
     Se ejecuta cada 30 segundos para revisar si es hora de enviar.
     """
     tz_mexico = pytz.timezone('America/Mexico_City')
@@ -1539,24 +1540,24 @@ async def scheduler_citas_diarias():
 
             # Si es 9:00 AM (entre 9:00:00 y 9:00:59)
             if ahora.hour == 9 and ahora.minute == 0:
-                logger.info("[SCHEDULER-CITAS] ⏰ Es las 9:00 AM - Enviando reporte de citas...")
+                logger.info("[SCHEDULER-CITAS] â° Es las 9:00 AM - Enviando reporte de citas...")
 
                 try:
                     reporte = await obtener_citas_hoy_formateadas()
 
-                    # Aquí iría el código para enviar a WhatsApp
+                    # AquÃ­ irÃ­a el cÃ³digo para enviar a WhatsApp
                     # Uso el proveedor existente: proveedor.enviar_mensaje()
                     try:
                         await proveedor.enviar_mensaje(
-                            numero=_NUMERO_NEGOCIO,  # Enviar al número del negocio
+                            numero=_NUMERO_NEGOCIO,  # Enviar al nÃºmero del negocio
                             texto=reporte,
                             grupo_id=GRUPO_INTERNO  # Enviar al grupo interno
                         )
-                        logger.info("[SCHEDULER-CITAS] ✅ Reporte de citas enviado al grupo")
+                        logger.info("[SCHEDULER-CITAS] âœ… Reporte de citas enviado al grupo")
                     except Exception as e:
                         logger.warning(f"[SCHEDULER-CITAS] No se pudo enviar a WhatsApp: {e}")
 
-                    # Esperar 2 minutos para no dispararse múltiples veces
+                    # Esperar 2 minutos para no dispararse mÃºltiples veces
                     await asyncio.sleep(120)
 
                 except Exception as e:
@@ -1567,3 +1568,4 @@ async def scheduler_citas_diarias():
 
         # Revisar cada 30 segundos
         await asyncio.sleep(30)
+
