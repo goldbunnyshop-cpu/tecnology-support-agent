@@ -1074,7 +1074,7 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
 
         # LÃ­nea 2: nombre y dispositivo
         # PatrÃ³n: "ðŸ‘¤ {nombre} | ðŸ“± {dispositivo}"
-        patron_linea2 = r"ðŸ‘¤\s+(.+?)\s*\|\s*ðŸ“±\s+(.+?)(?:\s|$)"
+        patron_linea2 = r”(.+?)\s*\|\s*(.+?)$”
         match_linea2 = re.search(patron_linea2, lineas[1])
         if not match_linea2:
             logger.warning(f"[IMPORT] No se extrajo nombre/dispositivo de: {lineas[1]}")
@@ -1085,7 +1085,7 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
         # LÃ­nea 3: cuando y problema
         # PatrÃ³n: "â° {cuando} | âš ï¸ {problema}"
         patron_linea3 = r"â°\s+(.+?)\s*\|\s*âš ï¸\s+(.+?)(?:\s|$)"
-        match_linea3 = re.search(patron_linea3, lineas[2])
+        match_linea3 = re.search(r"(.+?)\s*\|\s*(.+?)$", lineas[2])
         if not match_linea3:
             logger.warning(f"[IMPORT] No se extrajo cuando/problema de: {lineas[2]}")
             return None
@@ -1095,7 +1095,7 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
         # LÃ­nea 4: asesor
         # PatrÃ³n: "ðŸ‘¨â€ðŸ’¼ Asesor: {asesor}"
         patron_linea4 = r"ðŸ‘¨â€ðŸ’¼\s+Asesor:\s*(.+?)(?:\s|$)"
-        match_linea4 = re.search(patron_linea4, lineas[3])
+        match_linea4 = re.search(r"(?:Asesor:\s*)?(.+?)$", lineas[3])
         asesor = match_linea4.group(1).strip() if match_linea4 else ""
 
         return {
