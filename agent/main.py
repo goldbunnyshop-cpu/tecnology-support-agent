@@ -635,8 +635,9 @@ async def webhook_handler(request: Request):
                 )
 
                 # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
-                tag = parsear_tag_agendar(respuesta)
-                if tag:
+                # TODO: Implementar parsear_tag_agendar basado en _RE_TAG de google_calendar.py
+                tag = None  # parsear_tag_agendar(respuesta) — función no implementada aún
+                if tag and False:  # Desactivado hasta implementar parsear_tag_agendar
                     try:
                         fh = datetime.strptime(
                             f"{tag['fecha_str']} {tag['hora_str']}", "%Y-%m-%d %H:%M"
@@ -654,7 +655,7 @@ async def webhook_handler(request: Request):
                             # Dedup: ignorar si ya se envió esta confirmación al cliente
                             if evento_id and await confirmacion_cita_ya_enviada(msg.telefono, evento_id):
                                 logger.warning(f"[CALENDAR] Confirmación duplicada ignorada — {msg.telefono} / {evento_id}")
-                                respuesta = quitar_tags(respuesta)
+                                # respuesta = quitar_tags(respuesta)  # TODO: Implementar quitar_tags
                             else:
                                 respuesta = resultado["confirmacion"]
                                 if evento_id:
@@ -683,7 +684,7 @@ async def webhook_handler(request: Request):
                             evento_id = f"manual_{msg.telefono}_{int(datetime.now(ZONA_CDMX).timestamp())}"
                             if await confirmacion_cita_ya_enviada(msg.telefono, evento_id):
                                 logger.warning(f"[CALENDAR] Confirmación duplicada ignorada — {msg.telefono} / {evento_id}")
-                                respuesta = quitar_tags(respuesta)
+                                # respuesta = quitar_tags(respuesta)  # TODO: Implementar quitar_tags
                             else:
                                 linea_asesor = f"👨‍💼 Asesor: {asesor}\n" if asesor else ""
                                 respuesta = (
