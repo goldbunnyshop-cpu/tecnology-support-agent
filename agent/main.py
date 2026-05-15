@@ -59,7 +59,6 @@ from agent.google_calendar import (
     obtener_slots_disponibles,
     formatear_slots_multiples_para_claude,
     agendar_cita,
-    quitar_tags,
     obtener_citas_hoy_formateadas,
     UBICACION_MODULO,
     DIAS_ES,
