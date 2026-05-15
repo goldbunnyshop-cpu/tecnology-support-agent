@@ -33,6 +33,8 @@ class Lead(Base):
     retoma_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     retoma_desde: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     presupuesto_enviado_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    numero_nota_servicio: Mapped[str] = mapped_column(String(50), default="", nullable=True)
+    convertido_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -49,6 +51,8 @@ async def _migrar_columnas():
             ("seguimiento_enviado_en",   "DATETIME"),
             ("seguimiento_realizado",    "BOOLEAN DEFAULT 0"),
             ("prioridad",               "VARCHAR(20) DEFAULT 'medio'"),
+            ("numero_nota_servicio",    "VARCHAR(50) DEFAULT ''"),
+            ("convertido_en",           "DATETIME"),
         ]:
             try:
                 await conn.execute(text(f"ALTER TABLE leads ADD COLUMN {columna} {definicion}"))
@@ -257,14 +261,19 @@ async def marcar_seguimiento_manual(identificador: str):
         return None
 
 
-async def marcar_como_convertido(telefono: str):
-    """Marca el lead como convertido."""
+async def marcar_como_convertido(telefono: str, numero_nota_servicio: str = ""):
+    """Marca el lead como convertido y guarda el número de nota de servicio."""
     async with async_session() as session:
         result = await session.execute(select(Lead).where(Lead.telefono == telefono))
         lead = result.scalar_one_or_none()
         if lead:
             lead.estado = "convertido"
+            lead.convertido_en = datetime.utcnow()
+            if numero_nota_servicio:
+                lead.numero_nota_servicio = numero_nota_servicio
+            logger.info(f"[CONVERTIDO] {telefono} → NS: {numero_nota_servicio}")
         await session.commit()
+        return lead is not None
 
 
 async def obtener_todos_los_leads() -> list[Lead]:
