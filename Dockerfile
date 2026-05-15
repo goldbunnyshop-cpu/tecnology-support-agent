@@ -7,4 +7,5 @@ RUN pip install --no-cache-dir "asyncpg>=0.29.0" && \
     pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE 8080
-CMD uvicorn agent.main:app --host 0.0.0.0 --port ${PORT:-8080}
+ENV PORT=8080
+CMD ["sh", "-c", "uvicorn agent.main:app --host 0

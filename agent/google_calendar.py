@@ -600,37 +600,4 @@ async def obtener_citas_hoy_formateadas() -> str:
     reporte = f"📅 *CITAS DE HOY - {fecha_str.upper()}*\n\n"
 
     for i, evento in enumerate(eventos, 1):
-        nombre = evento.get('nombre', 'Sin nombre')
-        dispositivo = evento.get('dispositivo', 'No especificado')
-        problema = evento.get('problema', 'No especificado')
-        hora = evento.get('hora', 'Hora no disponible')
-
-        reporte += f"*{i}. {nombre}*\n"
-        reporte += f"   ⏰ {hora}\n"
-        reporte += f"   📱 {dispositivo}\n"
-        reporte += f"   🔧 {problema}\n\n"
-
-    reporte += f"📊 *Total: {len(eventos)} cita(s) programada(s)*"
-
-    return reporte
-
-
-def parsear_tag_agendar(texto: str) -> dict | None:
-    """Extrae los datos del tag [[AGENDAR:...]] si existe. Retorna None si no hay."""
-    m = _RE_TAG.search(texto)
-    if not m:
-        return None
-    nombre, telefono, dispositivo, problema, fecha_str, hora_str = m.groups()
-    return {
-        "nombre": nombre.strip(),
-        "telefono": telefono.strip(),
-        "dispositivo": dispositivo.strip(),
-        "problema": problema.strip(),
-        "fecha_str": fecha_str.strip(),
-        "hora_str": hora_str.strip(),
-    }
-
-
-def quitar_tags(texto: str) -> str:
-    """Elimina el tag [[AGENDAR:...]] antes de enviar el mensaje al cliente."""
-    return _RE_TAG.sub("", texto).strip()
+        nomb
