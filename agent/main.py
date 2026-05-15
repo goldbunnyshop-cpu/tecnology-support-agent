@@ -58,7 +58,6 @@ from agent.google_calendar import (
     parsear_fechas_en_texto,
     obtener_slots_disponibles,
     formatear_slots_multiples_para_claude,
-    parsear_tag_agendar,
     agendar_cita,
     quitar_tags,
     obtener_citas_hoy_formateadas,
