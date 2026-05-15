@@ -1255,6 +1255,7 @@ async def importar_citas_de_texto(request: Request):
                     continue
 
                 # Agendar la cita en Google Calendar
+                logger.info(f"[IMPORT] Llamando agendar_cita()...")
                 resultado = await agendar_cita(
                     nombre=campos["nombre"],
                     telefono="",
@@ -1263,6 +1264,23 @@ async def importar_citas_de_texto(request: Request):
                     fecha_hora=fecha_hora,
                     asesor=campos["asesor"],
                 )
+
+                logger.info(f"[IMPORT] agendar_cita() retornó tipo: {type(resultado)}, contenido: {repr(str(resultado)[:200])}")
+
+                # Asegurar que resultado es un dict
+                if isinstance(resultado, str):
+                    logger.error(f"[IMPORT] ❌ agendar_cita() retornó un string en lugar de dict: {resultado}")
+                    errores += 1
+                    detalles.append({
+                        "numero": idx,
+                        "nombre": campos["nombre"],
+                        "estado": "error",
+                        "razon": f"Error interno: agendar_cita retornó string",
+                    })
+                    continue
+
+                if not isinstance(resultado, dict):
+                    resultado = {"ok": False, "error": str(resultado)}
 
                 if resultado.get("ok"):
                     importadas += 1
