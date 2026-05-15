@@ -967,6 +967,642 @@ async def get_calendar_today():
         )
 
 
+# ==================================================================================
+# IMPORTAR CITAS HISTÓRICAS DEL GRUPO WHATSAPP
+# ==================================================================================
+
+def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
+    """
+    Parsea una cadena como "Jueves 15 de mayo, 3:30 PM" a datetime.
+    VERSIÓN ULTRA-ROBUSTA: Sin regex complicado, solo string splitting.
+    [2026-05-15 VERSIÓN 4: String splitting robusto]
+    """
+    logger.info(f"[IMPORT] _parsear_fecha_hora_del_mensaje() INICIADA - fecha_str='{fecha_str}'")
+    if not fecha_str:
+        return None
+
+    try:
+        fecha_str = fecha_str.strip()
+        meses_inversos = {v: k for k, v in MESES_ES.items()}
+
+        # Dividir por "de" para extraer día y mes
+        partes = fecha_str.split(" de ")
+        if len(partes) < 2:
+            logger.warning(f"[IMPORT] Formato inválido (sin 'de'): {fecha_str}")
+            return None
+
+        # Parte 1: "DIA_NOMBRE DIA_NUM" (ej: "Sábado 9")
+        parte_dia = partes[0].strip()
+        dia_parts = parte_dia.split()
+        if len(dia_parts) < 2:
+            logger.warning(f"[IMPORT] No se pudo extraer día: {parte_dia}")
+            return None
+        dia_num_str = dia_parts[-1]
+        try:
+            dia_num = int(dia_num_str)
+        except ValueError:
+            logger.warning(f"[IMPORT] Día no es número: {dia_num_str}")
+            return None
+
+        # Parte 2: "MES_NOMBRE, HH:MM AMPM" (ej: "mayo, 11:30 a.m.")
+        parte_mes_hora = partes[1].strip()
+        # Dividir por coma
+        if "," not in parte_mes_hora:
+            logger.warning(f"[IMPORT] No hay coma: {parte_mes_hora}")
+            return None
+        mes_name, hora_part = parte_mes_hora.split(",", 1)
+        mes_name = mes_name.strip()
+        hora_part = hora_part.strip()
+
+        # Buscar el mes
+        mes_num = meses_inversos.get(mes_name.lower())
+        if not mes_num:
+            logger.warning(f"[IMPORT] Mes no encontrado: {mes_name}")
+            return None
+
+        # Extraer hora y ampm del formato "HH:MM AM/PM" o "HH:MM a.m."
+        hora_partes = hora_part.split()
+        if len(hora_partes) < 2:
+            logger.warning(f"[IMPORT] Formato hora inválido: {hora_part}")
+            return None
+
+        tiempo = hora_partes[0]  # "11:30"
+        ampm = " ".join(hora_partes[1:]).lower()  # "a.m." o "am"
+
+        # Extraer hora y minuto
+        if ":" not in tiempo:
+            logger.warning(f"[IMPORT] No hay ':' en tiempo: {tiempo}")
+            return None
+        hora_str, min_str = tiempo.split(":", 1)
+        try:
+            hora = int(hora_str)
+            minuto = int(min_str)
+        except ValueError:
+            logger.warning(f"[IMPORT] Hora/minuto no válidos: {hora_str}:{min_str}")
+            return None
+
+        # Convertir a 24h
+        if ("pm" in ampm or "p.m" in ampm) and hora != 12:
+            hora += 12
+        elif ("am" in ampm or "a.m" in ampm) and hora == 12:
+            hora = 0
+
+        # Crear datetime
+        ahora = datetime.now(ZONA_CDMX)
+        año = ahora.year
+
+        try:
+            fecha = datetime(año, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
+            if fecha < ahora:
+                fecha = datetime(año - 1, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
+            return fecha
+        except ValueError as e:
+            logger.warning(f"[IMPORT] Error datetime: {e}")
+            return None
+
+    except Exception as e:
+        logger.error(f"[IMPORT] Error parseando: {fecha_str} - {e}")
+        return None
+
+
+def _extraer_campos_cita(mensaje: str) -> dict | None:
+    """
+    Extrae campos de un mensaje "NUEVA CITA AGENDADA".
+    Retorna dict con: nombre, dispositivo, problema, cuando, asesor
+    O None si falla el parseo.
+
+    Formato esperado:
+    🔔 *NUEVA CITA AGENDADA*
+    👤 {nombre} | 📱 {dispositivo}
+    ⏰ {cuando} | ⚠️ {problema}
+    👨‍💼 Asesor: {asesor}
+    """
+    try:
+        # Líneas del mensaje
+        lineas = mensaje.strip().split('\n')
+        if len(lineas) < 4:
+            return None
+
+        # Línea 2: nombre y dispositivo
+        # Patrón: "👤 {nombre} | 📱 {dispositivo}"
+        patron_linea2 = r"(.+?)\s*\|\s*(.+?)$"
+        match_linea2 = re.search(patron_linea2, lineas[1])
+        if not match_linea2:
+            logger.warning(f"[IMPORT] No se extrajo nombre/dispositivo de: {lineas[1]}")
+            return None
+        nombre = match_linea2.group(1).strip()
+        dispositivo = match_linea2.group(2).strip()
+
+        # Línea 3: cuando y problema
+        # Patrón: "⏰ {cuando} | ⚠️ {problema}"
+        patron_linea3 = r"⏰\s+(.+?)\s*\|\s*⚠️\s+(.+?)(?:\s|$)"
+        match_linea3 = re.search(r"(.+?)\s*\|\s*(.+?)$", lineas[2])
+        if not match_linea3:
+            logger.warning(f"[IMPORT] No se extrajo cuando/problema de: {lineas[2]}")
+            return None
+        cuando = match_linea3.group(1).strip()
+        problema = match_linea3.group(2).strip()
+
+        # Línea 4: asesor
+        # Patrón: "👨‍💼 Asesor: {asesor}"
+        patron_linea4 = r"👨‍💼\s+Asesor:\s*(.+?)(?:\s|$)"
+        match_linea4 = re.search(r"(?:Asesor:\s*)?(.+?)$", lineas[3])
+        asesor = match_linea4.group(1).strip() if match_linea4 else ""
+
+        return {
+            "nombre": nombre,
+            "dispositivo": dispositivo,
+            "problema": problema,
+            "cuando": cuando,
+            "asesor": asesor,
+        }
+
+    except Exception as e:
+        logger.error(f"[IMPORT] Error extrayendo campos de cita: {e}")
+        return None
+
+
+async def _obtener_grupo_id_whapi() -> str | None:
+    """Obtiene el ID del grupo 'Taller Interno TS' desde Whapi.cloud."""
+    token = os.getenv("WHAPI_TOKEN", "")
+    if not token:
+        logger.warning("[IMPORT] WHAPI_TOKEN no configurado")
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            # Obtener lista de chats
+            response = await http.get(
+                "https://gate.whapi.cloud/chats",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"count": 100},
+            )
+            if response.status_code != 200:
+                logger.error(f"[IMPORT] Error obteniendo chats: {response.status_code}")
+                return None
+
+            chats = response.json().get("chats", [])
+            for chat in chats:
+                chat_name = chat.get("name", "").lower()
+                if "taller" in chat_name and "interno" in chat_name:
+                    grupo_id = chat.get("id")
+                    logger.info(f"[IMPORT] ✅ Encontrado grupo: {chat.get('name')} (ID: {grupo_id})")
+                    return grupo_id
+
+            logger.warning("[IMPORT] No se encontró el grupo 'Taller Interno TS'")
+            return None
+
+    except Exception as e:
+        logger.error(f"[IMPORT] Error buscando grupo en Whapi: {e}")
+        return None
+
+
+async def _obtener_mensajes_grupo_whapi(grupo_id: str, limite: int = 100) -> list[dict]:
+    """Obtiene mensajes del grupo desde Whapi.cloud."""
+    token = os.getenv("WHAPI_TOKEN", "")
+    if not token or not grupo_id:
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as http:
+            response = await http.get(
+                f"https://gate.whapi.cloud/messages",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"chat_id": grupo_id, "count": limite},
+            )
+            if response.status_code != 200:
+                logger.error(f"[IMPORT] Error obteniendo mensajes: {response.status_code}")
+                return []
+
+            data = response.json()
+            mensajes = data.get("messages", [])
+            logger.info(f"[IMPORT] Obtenidos {len(mensajes)} mensajes del grupo")
+            return mensajes
+
+    except Exception as e:
+        logger.error(f"[IMPORT] Error obteniendo mensajes del grupo: {e}")
+        return []
+
+
+@app.post("/api/calendar/importar-de-texto")
+async def importar_citas_de_texto(request: Request):
+    """
+    Importa citas pegando el texto del grupo de WhatsApp.
+    Acepta POST con JSON:
+    {
+        "mensajes": [
+            "🔔 *NUEVA CITA AGENDADA*\n👤 Juan | 📱 iPhone\n⏰ Jueves 15 de mayo, 3:30 PM | ⚠️ Pantalla rota\n👨‍💼 Asesor: Sofia"
+        ]
+    }
+
+    POST /api/calendar/importar-de-texto
+    """
+    try:
+        body = await request.json()
+
+        # LOGGING EXHAUSTIVO para diagnosticar
+        logger.info(f"[IMPORT] RAW body type: {type(body)}")
+        logger.info(f"[IMPORT] RAW body repr: {repr(body)[:500]}")
+
+        # Manejar tanto {mensajes: [...]} como [...]
+        if isinstance(body, list):
+            logger.info(f"[IMPORT] Body es lista directa, {len(body)} elementos")
+            mensajes_texto = body
+        elif isinstance(body, dict):
+            logger.info(f"[IMPORT] Body es dict, claves: {list(body.keys())}")
+            mensajes_texto = body.get("mensajes", [])
+            logger.info(f"[IMPORT] Extrajeron {len(mensajes_texto)} mensajes de .get('mensajes')")
+        else:
+            logger.warning(f"[IMPORT] Body tipo inesperado: {type(body)}")
+            mensajes_texto = []
+
+        if not mensajes_texto:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Se requiere 'mensajes' (lista de strings)"}
+            )
+
+        # IMPORTANTE: Asegurar que mensajes_texto es una LISTA (no un string)
+        if isinstance(mensajes_texto, str):
+            logger.warning(f"[IMPORT] mensajes_texto es un string, convirtiéndolo a lista de 1 elemento")
+            mensajes_texto = [mensajes_texto]
+        elif not isinstance(mensajes_texto, list):
+            logger.error(f"[IMPORT] mensajes_texto no es lista ni string: {type(mensajes_texto)}")
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": f"'mensajes' debe ser una lista de strings, recibí {type(mensajes_texto).__name__}"}
+            )
+
+        logger.info(f"[IMPORT] Procesando {len(mensajes_texto)} mensajes de texto")
+
+        total_encontradas = len(mensajes_texto)
+        importadas = 0
+        ya_existentes = 0
+        errores = 0
+        detalles = []
+
+        # Procesar cada mensaje de texto
+        for idx, texto_msg in enumerate(mensajes_texto, 1):
+            try:
+                logger.info(f"[IMPORT] ▄▄▄ Procesando mensaje #{idx} ▄▄▄")
+                logger.info(f"[IMPORT] Tipo de texto_msg: {type(texto_msg)}")
+                logger.info(f"[IMPORT] Contenido (primeros 200 chars): {repr(str(texto_msg)[:200])}")
+
+                # Asegurar que texto_msg es un string (PowerShell puede crear estructuras anidadas)
+                if isinstance(texto_msg, dict):
+                    logger.info(f"[IMPORT] Convirtiendo dict a string")
+                    texto_msg = str(texto_msg)
+                elif isinstance(texto_msg, list):
+                    logger.info(f"[IMPORT] Convirtiendo lista a string (len={len(texto_msg)})")
+                    texto_msg = " ".join(str(x) for x in texto_msg)
+                else:
+                    logger.info(f"[IMPORT] Ya es string, converso por si acaso")
+                    texto_msg = str(texto_msg)
+
+                logger.info(f"[IMPORT] Después conversión: {type(texto_msg)}, len={len(texto_msg)}")
+
+                # Extraer campos de la cita
+                logger.info(f"[IMPORT] Llamando _extraer_campos_cita()...")
+                campos = _extraer_campos_cita(texto_msg)
+                logger.info(f"[IMPORT] _extraer_campos_cita() retornó: {type(campos)}")
+                if not campos:
+                    logger.warning(f"[IMPORT] No se extrajeron campos del mensaje #{idx}")
+                    errores += 1
+                    detalles.append({
+                        "numero": idx,
+                        "estado": "error",
+                        "razon": "No se extrajeron los campos correctamente",
+                    })
+                    continue
+
+                # Parsear la fecha y hora
+                fecha_hora = _parsear_fecha_hora_del_mensaje(campos["cuando"])
+                if not fecha_hora:
+                    logger.warning(f"[IMPORT] No se pudo parsear: {campos['cuando']}")
+                    errores += 1
+                    detalles.append({
+                        "numero": idx,
+                        "nombre": campos.get("nombre", "?"),
+                        "estado": "error",
+                        "razon": f"No se pudo parsear fecha: {campos['cuando']}",
+                    })
+                    continue
+
+                # Agendar la cita en Google Calendar
+                logger.info(f"[IMPORT] Llamando agendar_cita()...")
+                resultado = await agendar_cita(
+                    nombre=campos["nombre"],
+                    telefono="",
+                    dispositivo=campos["dispositivo"],
+                    problema=campos["problema"],
+                    fecha_hora=fecha_hora,
+                    asesor=campos["asesor"],
+                )
+
+                logger.info(f"[IMPORT] agendar_cita() retornó tipo: {type(resultado)}, contenido: {repr(str(resultado)[:200])}")
+
+                # Asegurar que resultado es un dict
+                if isinstance(resultado, str):
+                    logger.error(f"[IMPORT] ❌ agendar_cita() retornó un string en lugar de dict: {resultado}")
+                    errores += 1
+                    detalles.append({
+                        "numero": idx,
+                        "nombre": campos["nombre"],
+                        "estado": "error",
+                        "razon": f"Error interno: agendar_cita retornó string",
+                    })
+                    continue
+
+                if not isinstance(resultado, dict):
+                    resultado = {"ok": False, "error": str(resultado)}
+
+                if resultado.get("ok"):
+                    importadas += 1
+                    detalles.append({
+                        "numero": idx,
+                        "nombre": campos["nombre"],
+                        "dispositivo": campos["dispositivo"],
+                        "problema": campos["problema"],
+                        "fecha_hora": fecha_hora.isoformat(),
+                        "asesor": campos["asesor"],
+                        "estado": "importada",
+                        "confirmacion": resultado.get("confirmacion", ""),
+                    })
+                    logger.info(f"[IMPORT] ✅ Importada: {campos['nombre']}")
+                else:
+                    error_msg = resultado.get("error", "").lower()
+                    if "ya existe" in error_msg or "duplicate" in error_msg:
+                        ya_existentes += 1
+                        detalles.append({
+                            "numero": idx,
+                            "nombre": campos["nombre"],
+                            "estado": "ya_existente",
+                            "razon": resultado.get("error", "Ya existe"),
+                        })
+                        logger.info(f"[IMPORT] ℹ️ Ya existe: {campos['nombre']}")
+                    else:
+                        errores += 1
+                        detalles.append({
+                            "numero": idx,
+                            "nombre": campos["nombre"],
+                            "estado": "error",
+                            "razon": resultado.get("error", "Error desconocido"),
+                        })
+                        logger.warning(f"[IMPORT] ❌ Error: {resultado.get('error')}")
+
+            except Exception as e:
+                errores += 1
+                import traceback
+                logger.error(f"[IMPORT] ❌ Excepción en mensaje #{idx}: {e}")
+                logger.error(f"[IMPORT] Traceback:\n{traceback.format_exc()}")
+                detalles.append({
+                    "numero": idx,
+                    "estado": "error",
+                    "razon": str(e),
+                    "tipo_error": type(e).__name__,
+                })
+
+        logger.info(
+            f"[IMPORT] ✅ Resumen: {importadas} importadas, {ya_existentes} existentes, {errores} errores"
+        )
+
+        return {
+            "ok": True,
+            "total_encontradas": total_encontradas,
+            "importadas": importadas,
+            "ya_existentes": ya_existentes,
+            "errores": errores,
+            "timestamp": datetime.now(ZONA_CDMX).isoformat(),
+            "detalles": detalles,
+        }
+
+    except Exception as e:
+        logger.error(f"[API] Error en POST /api/calendar/importar-de-texto: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e)}
+        )
+
+
+@app.post("/api/calendar/importar-historico")
+async def importar_citas_historicas():
+    """
+    Importa citas del grupo WhatsApp a Google Calendar.
+    Lee mensajes del grupo "Taller Interno TS" desde Whapi.cloud.
+
+    POST /api/calendar/importar-historico
+
+    Retorna:
+    {
+        "ok": bool,
+        "total_encontradas": int,
+        "importadas": int,
+        "ya_existentes": int,
+        "errores": int,
+        "detalles": [...]
+    }
+    """
+    try:
+        ahora = datetime.now(ZONA_CDMX)
+        hace_12_dias = ahora - timedelta(days=12)
+
+        logger.info(f"[IMPORT] Buscando citas desde {hace_12_dias.date()} hasta {ahora.date()}")
+
+        # 1. Obtener el ID del grupo
+        grupo_id = await _obtener_grupo_id_whapi()
+        if not grupo_id:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "No se encontró el grupo 'Taller Interno TS'"}
+            )
+
+        # 2. Obtener mensajes del grupo desde Whapi
+        mensajes_whapi = await _obtener_mensajes_grupo_whapi(grupo_id, limite=200)
+
+        # 3. Filtrar solo los que contienen "NUEVA CITA AGENDADA" y son de los últimos 12 días
+        mensajes_validos = []
+        for msg in mensajes_whapi:
+            # Whapi retorna timestamp en segundos o milisegundos
+            timestamp_ms = msg.get("timestamp", 0)
+            if timestamp_ms > 1e10:  # milisegundos
+                msg_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=ZONA_CDMX)
+            else:  # segundos
+                msg_time = datetime.fromtimestamp(timestamp_ms, tz=ZONA_CDMX)
+
+            # Filtrar por fecha
+            if msg_time < hace_12_dias:
+                continue
+
+            # Filtrar por contenido
+            texto = msg.get("text", {}).get("body", "").strip()
+            if "NUEVA CITA AGENDADA" not in texto:
+                continue
+
+            mensajes_validos.append({
+                "timestamp": msg_time,
+                "content": texto,
+                "message_id": msg.get("id", ""),
+            })
+
+        logger.info(f"[IMPORT] Encontrados {len(mensajes_validos)} mensajes con citas")
+
+        total_encontradas = len(mensajes_validos)
+        importadas = 0
+        ya_existentes = 0
+        errores = 0
+        detalles = []
+
+        # 4. Procesar cada mensaje
+        for msg in mensajes_validos:
+            try:
+                # Extraer campos de la cita
+                campos = _extraer_campos_cita(msg["content"])
+                if not campos:
+                    logger.warning(f"[IMPORT] No se extrajeron campos de cita del mensaje ID {msg['message_id']}")
+                    errores += 1
+                    detalles.append({
+                        "timestamp": msg["timestamp"].isoformat(),
+                        "estado": "error",
+                        "razon": "No se extrajeron los campos correctamente",
+                    })
+                    continue
+
+                # Parsear la fecha y hora
+                fecha_hora = _parsear_fecha_hora_del_mensaje(campos["cuando"])
+                if not fecha_hora:
+                    logger.warning(f"[IMPORT] No se pudo parsear fecha/hora: {campos['cuando']}")
+                    errores += 1
+                    detalles.append({
+                        "timestamp": msg["timestamp"].isoformat(),
+                        "nombre": campos.get("nombre", "?"),
+                        "estado": "error",
+                        "razon": f"No se pudo parsear fecha: {campos['cuando']}",
+                    })
+                    continue
+
+                # Agendar la cita en Google Calendar
+                resultado = await agendar_cita(
+                    nombre=campos["nombre"],
+                    telefono="",  # No tenemos el teléfono del grupo
+                    dispositivo=campos["dispositivo"],
+                    problema=campos["problema"],
+                    fecha_hora=fecha_hora,
+                    asesor=campos["asesor"],
+                )
+
+                if resultado.get("ok"):
+                    importadas += 1
+                    detalles.append({
+                        "timestamp": msg["timestamp"].isoformat(),
+                        "nombre": campos["nombre"],
+                        "dispositivo": campos["dispositivo"],
+                        "problema": campos["problema"],
+                        "fecha_hora": fecha_hora.isoformat(),
+                        "asesor": campos["asesor"],
+                        "estado": "importada",
+                        "confirmacion": resultado.get("confirmacion", ""),
+                    })
+                    logger.info(f"[IMPORT] ✅ Importada cita: {campos['nombre']} - {fecha_hora}")
+                else:
+                    # Revisar si es porque ya existe
+                    error_msg = resultado.get("error", "").lower()
+                    if "ya existe" in error_msg or "duplicate" in error_msg:
+                        ya_existentes += 1
+                        detalles.append({
+                            "timestamp": msg["timestamp"].isoformat(),
+                            "nombre": campos["nombre"],
+                            "estado": "ya_existente",
+                            "razon": resultado.get("error", "Ya existe en calendario"),
+                        })
+                        logger.info(f"[IMPORT] ℹ️ Ya existe: {campos['nombre']}")
+                    else:
+                        errores += 1
+                        detalles.append({
+                            "timestamp": msg["timestamp"].isoformat(),
+                            "nombre": campos["nombre"],
+                            "estado": "error",
+                            "razon": resultado.get("error", "Error desconocido"),
+                        })
+                        logger.warning(f"[IMPORT] ❌ Error agendando {campos['nombre']}: {resultado.get('error')}")
+
+            except Exception as e:
+                errores += 1
+                logger.error(f"[IMPORT] Excepción procesando cita: {e}")
+                detalles.append({
+                    "timestamp": msg["timestamp"].isoformat(),
+                    "estado": "error",
+                    "razon": str(e),
+                })
+
+        logger.info(
+            f"[IMPORT] ✅ Resumen: {importadas} importadas, {ya_existentes} ya existentes, {errores} errores"
+        )
+
+        return {
+            "ok": True,
+            "total_encontradas": total_encontradas,
+            "importadas": importadas,
+            "ya_existentes": ya_existentes,
+            "errores": errores,
+            "timestamp": ahora.isoformat(),
+            "detalles": detalles,
+        }
+
+    except Exception as e:
+        logger.error(f"[API] Error en POST /api/calendar/importar-historico: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e)}
+        )
+
+
+# ==================================================================================
+# SCHEDULER PARA CITAS - ENVÍO DIARIO A LAS 9:00 AM
+# ==================================================================================
+
+async def scheduler_citas_diarias():
+    """
+    Scheduler que envía reporte de citas a las 9:00 AM México (CDMX).
+    Se ejecuta cada 30 segundos para revisar si es hora de enviar.
+    """
+    tz_mexico = pytz.timezone('America/Mexico_City')
+
+    while True:
+        try:
+            ahora = datetime.now(tz_mexico)
+
+            # Si es 9:00 AM (entre 9:00:00 y 9:00:59)
+            if ahora.hour == 9 and ahora.minute == 0:
+                logger.info("[SCHEDULER-CITAS] ⏰ Es las 9:00 AM - Enviando reporte de citas...")
+
+                try:
+                    reporte = await obtener_citas_hoy_formateadas()
+
+                    # Aquí iría el código para enviar a WhatsApp
+                    # Uso el proveedor existente: proveedor.enviar_mensaje()
+                    try:
+                        await proveedor.enviar_mensaje(
+                            numero=_NUMERO_NEGOCIO,  # Enviar al número del negocio
+                            texto=reporte,
+                            grupo_id=GRUPO_INTERNO  # Enviar al grupo interno
+                        )
+                        logger.info("[SCHEDULER-CITAS] ✅ Reporte de citas enviado al grupo")
+                    except Exception as e:
+                        logger.warning(f"[SCHEDULER-CITAS] No se pudo enviar a WhatsApp: {e}")
+
+                    # Esperar 2 minutos para no dispararse múltiples veces
+                    await asyncio.sleep(120)
+
+                except Exception as e:
+                    logger.error(f"[SCHEDULER-CITAS] Error obteniendo reporte: {e}")
+
+        except Exception as e:
+            logger.error(f"[SCHEDULER-CITAS] Error general en scheduler: {e}")
+
+        # Revisar cada 30 segundos
+        await asyncio.sleep(30)
+
+
 @app.post("/api/calendar/enviar-reporte")
 async def enviar_reporte_citas():
     """
