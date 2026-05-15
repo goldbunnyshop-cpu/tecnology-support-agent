@@ -1161,6 +1161,140 @@ async def _obtener_mensajes_grupo_whapi(grupo_id: str, limite: int = 100) -> lis
         return []
 
 
+@app.post("/api/calendar/importar-de-texto")
+async def importar_citas_de_texto(request: Request):
+    """
+    Importa citas pegando el texto del grupo de WhatsApp.
+    Acepta POST con JSON:
+    {
+        "mensajes": [
+            "🔔 *NUEVA CITA AGENDADA*\n👤 Juan | 📱 iPhone\n⏰ Jueves 15 de mayo, 3:30 PM | ⚠️ Pantalla rota\n👨‍💼 Asesor: Sofia"
+        ]
+    }
+
+    POST /api/calendar/importar-de-texto
+    """
+    try:
+        body = await request.json()
+        mensajes_texto = body.get("mensajes", [])
+
+        if not mensajes_texto:
+            return JSONResponse(
+                status_code=400,
+                content={"ok": False, "error": "Se requiere 'mensajes' (lista de strings)"}
+            )
+
+        logger.info(f"[IMPORT] Procesando {len(mensajes_texto)} mensajes de texto")
+
+        total_encontradas = len(mensajes_texto)
+        importadas = 0
+        ya_existentes = 0
+        errores = 0
+        detalles = []
+
+        # Procesar cada mensaje de texto
+        for idx, texto_msg in enumerate(mensajes_texto, 1):
+            try:
+                # Extraer campos de la cita
+                campos = _extraer_campos_cita(texto_msg)
+                if not campos:
+                    logger.warning(f"[IMPORT] No se extrajeron campos del mensaje #{idx}")
+                    errores += 1
+                    detalles.append({
+                        "numero": idx,
+                        "estado": "error",
+                        "razon": "No se extrajeron los campos correctamente",
+                    })
+                    continue
+
+                # Parsear la fecha y hora
+                fecha_hora = _parsear_fecha_hora_del_mensaje(campos["cuando"])
+                if not fecha_hora:
+                    logger.warning(f"[IMPORT] No se pudo parsear: {campos['cuando']}")
+                    errores += 1
+                    detalles.append({
+                        "numero": idx,
+                        "nombre": campos.get("nombre", "?"),
+                        "estado": "error",
+                        "razon": f"No se pudo parsear fecha: {campos['cuando']}",
+                    })
+                    continue
+
+                # Agendar la cita en Google Calendar
+                resultado = await agendar_cita(
+                    nombre=campos["nombre"],
+                    telefono="",
+                    dispositivo=campos["dispositivo"],
+                    problema=campos["problema"],
+                    fecha_hora=fecha_hora,
+                    asesor=campos["asesor"],
+                )
+
+                if resultado.get("ok"):
+                    importadas += 1
+                    detalles.append({
+                        "numero": idx,
+                        "nombre": campos["nombre"],
+                        "dispositivo": campos["dispositivo"],
+                        "problema": campos["problema"],
+                        "fecha_hora": fecha_hora.isoformat(),
+                        "asesor": campos["asesor"],
+                        "estado": "importada",
+                        "confirmacion": resultado.get("confirmacion", ""),
+                    })
+                    logger.info(f"[IMPORT] ✅ Importada: {campos['nombre']}")
+                else:
+                    error_msg = resultado.get("error", "").lower()
+                    if "ya existe" in error_msg or "duplicate" in error_msg:
+                        ya_existentes += 1
+                        detalles.append({
+                            "numero": idx,
+                            "nombre": campos["nombre"],
+                            "estado": "ya_existente",
+                            "razon": resultado.get("error", "Ya existe"),
+                        })
+                        logger.info(f"[IMPORT] ℹ️ Ya existe: {campos['nombre']}")
+                    else:
+                        errores += 1
+                        detalles.append({
+                            "numero": idx,
+                            "nombre": campos["nombre"],
+                            "estado": "error",
+                            "razon": resultado.get("error", "Error desconocido"),
+                        })
+                        logger.warning(f"[IMPORT] ❌ Error: {resultado.get('error')}")
+
+            except Exception as e:
+                errores += 1
+                logger.error(f"[IMPORT] Excepción en mensaje #{idx}: {e}")
+                detalles.append({
+                    "numero": idx,
+                    "estado": "error",
+                    "razon": str(e),
+                })
+
+        logger.info(
+            f"[IMPORT] ✅ Resumen: {importadas} importadas, {ya_existentes} existentes, {errores} errores"
+        )
+
+        return {
+            "ok": True,
+            "total_encontradas": total_encontradas,
+            "importadas": importadas,
+            "ya_existentes": ya_existentes,
+            "errores": errores,
+            "timestamp": datetime.now(ZONA_CDMX).isoformat(),
+            "detalles": detalles,
+        }
+
+    except Exception as e:
+        logger.error(f"[API] Error en POST /api/calendar/importar-de-texto: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"ok": False, "error": str(e)}
+        )
+
+
 @app.post("/api/calendar/importar-historico")
 async def importar_citas_historicas():
     """
