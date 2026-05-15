@@ -142,6 +142,34 @@ RESPUESTA_VIDEO_FALLBACK = (
 )
 
 
+def parsear_tag_agendar(texto: str) -> Optional[dict]:
+    """
+    Extrae el tag [[AGENDAR:...]] de la respuesta de Claude.
+
+    Formato esperado:
+    [[AGENDAR:nombre=Mario|telefono=521...|dispositivo=PS4|problema=Mantenimiento|fecha=2026-05-15|hora=18:00]]
+    """
+    patron = r"\[\[AGENDAR:([^\]]+)\]\]"
+    match = re.search(patron, texto)
+    if not match:
+        return None
+    contenido = match.group(1)
+    datos = {}
+    for campo in contenido.split("|"):
+        if "=" in campo:
+            clave, valor = campo.split("=", 1)
+            datos[clave.strip()] = valor.strip()
+    # Validar campos mínimos
+    if not all(k in datos for k in ["nombre", "dispositivo", "problema", "fecha", "hora"]):
+        return None
+    return datos
+
+
+def quitar_tags(texto: str) -> str:
+    """Remueve los tags [[AGENDAR:...]] de la respuesta antes de enviar al cliente."""
+    return re.sub(r"\[\[AGENDAR:[^\]]+\]\]", "", texto).strip()
+
+
 def cargar_blacklist() -> set[str]:
     try:
         with open("config/blacklist.txt", "r", encoding="utf-8") as f:
@@ -700,12 +728,11 @@ async def webhook_handler(request: Request):
                 )
 
                 # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
-                # TODO: Implementar parsear_tag_agendar basado en _RE_TAG de google_calendar.py
-                tag = None  # parsear_tag_agendar(respuesta) — función no implementada aún
-                if tag and False:  # Desactivado hasta implementar parsear_tag_agendar
+                tag = parsear_tag_agendar(respuesta)
+                if tag:
                     try:
                         fh = datetime.strptime(
-                            f"{tag['fecha_str']} {tag['hora_str']}", "%Y-%m-%d %H:%M"
+                            f"{tag['fecha']} {tag['hora']}", "%Y-%m-%d %H:%M"
                         ).replace(tzinfo=ZONA_CDMX)
                         resultado = await agendar_cita(
                             nombre=tag["nombre"],
@@ -809,6 +836,10 @@ async def webhook_handler(request: Request):
                         import traceback
                         logger.error(f"[CALENDAR] Traceback: {traceback.format_exc()}")
                         respuesta = quitar_tags(respuesta)
+
+                # CRÍTICO: limpiar tags SIEMPRE antes de enviar al cliente
+                # (por si quedó algún tag residual de cualquier pathway)
+                respuesta = quitar_tags(respuesta)
 
                 await guardar_mensaje(msg.telefono, "user", msg.texto)
                 await guardar_mensaje(msg.telefono, "assistant", respuesta)
