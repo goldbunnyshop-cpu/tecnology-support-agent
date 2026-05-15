@@ -983,62 +983,101 @@ async def enviar_reporte_citas():
 
 def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
     """
-    Parsea una cadena como "Jueves 15 de mayo, 3:30 PM" a datetime.
-    Retorna None si falla el parseo.
+    Parsea una cadena como "Sábado 9 de mayo, 11:30 a.m." a datetime.
+    VERSIÓN ULTRA-ROBUSTA: Sin regex complicado, solo string splitting.
+    [2026-05-15 VERSIÓN 5: String splitting robusto en root agent/main.py]
     """
+    print(f"[IMPORT-PRINT] _parsear_fecha_hora_del_mensaje() INICIADA con: {fecha_str!r}", flush=True)
+    logger.info(f"[IMPORT] _parsear_fecha_hora_del_mensaje() INICIADA - fecha_str='{fecha_str}'")
     if not fecha_str:
         return None
 
     try:
-        # Limpiar la cadena
         fecha_str = fecha_str.strip()
-
-        # Invertir MESES_ES para buscar por nombre
         meses_inversos = {v: k for k, v in MESES_ES.items()}
 
-        # Regex para extraer: "DIA DD de MES, HH:MM AM/PM"
-        # Ej: "Jueves 15 de mayo, 3:30 PM"
-        patron = r"(\w+)\s+(\d{1,2})\s+de\s+(\w+),\s+(\d{1,2}):(\d{2})\s*(am|pm|AM|PM)"
-        match = re.search(patron, fecha_str)
-
-        if not match:
-            logger.warning(f"[IMPORT] No se pudo parsear fecha: {fecha_str}")
+        # Dividir por " de " para extraer día y mes
+        partes = fecha_str.split(" de ")
+        print(f"[IMPORT-PRINT] split(' de ') -> {partes!r}", flush=True)
+        if len(partes) < 2:
+            logger.warning(f"[IMPORT] Formato inválido (sin 'de'): {fecha_str}")
             return None
 
-        dia_nombre, dia_num, mes_nombre, hora_str, min_str, ampm = match.groups()
+        # Parte 1: "DIA_NOMBRE DIA_NUM" (ej: "Sábado 9")
+        parte_dia = partes[0].strip()
+        dia_parts = parte_dia.split()
+        if len(dia_parts) < 2:
+            logger.warning(f"[IMPORT] No se pudo extraer día: {parte_dia}")
+            return None
+        dia_num_str = dia_parts[-1]
+        try:
+            dia_num = int(dia_num_str)
+        except ValueError:
+            logger.warning(f"[IMPORT] Día no es número: {dia_num_str}")
+            return None
 
-        # Obtener el número de mes
-        mes_num = meses_inversos.get(mes_nombre.lower())
+        # Parte 2: "MES_NOMBRE, HH:MM AMPM" (ej: "mayo, 11:30 a.m.")
+        parte_mes_hora = partes[1].strip()
+        if "," not in parte_mes_hora:
+            logger.warning(f"[IMPORT] No hay coma: {parte_mes_hora}")
+            return None
+        mes_name, hora_part = parte_mes_hora.split(",", 1)
+        mes_name = mes_name.strip()
+        hora_part = hora_part.strip()
+
+        # Buscar el mes
+        mes_num = meses_inversos.get(mes_name.lower())
         if not mes_num:
-            logger.warning(f"[IMPORT] Mes no reconocido: {mes_nombre}")
+            logger.warning(f"[IMPORT] Mes no encontrado: {mes_name}")
             return None
 
-        # Convertir hora a formato 24h
-        hora = int(hora_str)
-        minuto = int(min_str)
-        if ampm.lower() == "pm" and hora != 12:
+        # Extraer hora y ampm del formato "HH:MM AM/PM" o "HH:MM a.m."
+        hora_partes = hora_part.split()
+        if len(hora_partes) < 2:
+            logger.warning(f"[IMPORT] Formato hora inválido: {hora_part}")
+            return None
+
+        tiempo = hora_partes[0]  # "11:30"
+        ampm = " ".join(hora_partes[1:]).lower()  # "a.m." o "am"
+
+        # Extraer hora y minuto
+        if ":" not in tiempo:
+            logger.warning(f"[IMPORT] No hay ':' en tiempo: {tiempo}")
+            return None
+        hora_str, min_str = tiempo.split(":", 1)
+        try:
+            hora = int(hora_str)
+            minuto = int(min_str)
+        except ValueError:
+            logger.warning(f"[IMPORT] Hora/minuto no válidos: {hora_str}:{min_str}")
+            return None
+
+        # Convertir a 24h
+        if ("pm" in ampm or "p.m" in ampm) and hora != 12:
             hora += 12
-        elif ampm.lower() == "am" and hora == 12:
+        elif ("am" in ampm or "a.m" in ampm) and hora == 12:
             hora = 0
 
-        # Obtener el año (usar año actual, o año siguiente si la fecha es en el pasado)
+        # Crear datetime
         ahora = datetime.now(ZONA_CDMX)
         año = ahora.year
 
         try:
-            fecha = datetime(año, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
-
-            # Si la fecha es en el pasado, asumir que es del año anterior
-            if fecha < ahora:
-                fecha = datetime(año - 1, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
-
+            fecha = datetime(año, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
+            # Para citas HISTÓRICAS: solo retroceder al año anterior si la fecha
+            # resultante está MUY en el futuro (más de 6 meses adelante).
+            # Esto evita que "9 de mayo" cuando hoy es 15 de mayo se interprete como año anterior.
+            from datetime import timedelta
+            if fecha > ahora + timedelta(days=180):
+                fecha = datetime(año - 1, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
+            print(f"[IMPORT-PRINT] Fecha parseada OK: {fecha}", flush=True)
             return fecha
         except ValueError as e:
-            logger.warning(f"[IMPORT] Error creando datetime: {e} (año={año}, mes={mes_num}, día={dia_num})")
+            logger.warning(f"[IMPORT] Error datetime: {e}")
             return None
 
     except Exception as e:
-        logger.error(f"[IMPORT] Error parseando fecha '{fecha_str}': {e}")
+        logger.error(f"[IMPORT] Error parseando: {fecha_str} - {e}")
         return None
 
 
@@ -1055,36 +1094,55 @@ def _extraer_campos_cita(mensaje: str) -> dict | None:
     👨‍💼 Asesor: {asesor}
     """
     try:
+        print(f"[IMPORT-PRINT] _extraer_campos_cita() INICIADA - len(mensaje)={len(mensaje)}", flush=True)
         # Líneas del mensaje
         lineas = mensaje.strip().split('\n')
         if len(lineas) < 4:
+            print(f"[IMPORT-PRINT] Mensaje tiene solo {len(lineas)} líneas, se esperan 4+", flush=True)
             return None
 
-        # Línea 2: nombre y dispositivo
-        # Patrón: "👤 {nombre} | 📱 {dispositivo}"
-        patron_linea2 = r"👤\s+(.+?)\s*\|\s*📱\s+(.+?)(?:\s|$)"
-        match_linea2 = re.search(patron_linea2, lineas[1])
+        # Línea 2: nombre y dispositivo — patrón flexible sin emojis
+        # Formato: "👤 NOMBRE | 📱 DISPOSITIVO"
+        match_linea2 = re.search(r"(.+?)\s*\|\s*(.+?)$", lineas[1])
         if not match_linea2:
             logger.warning(f"[IMPORT] No se extrajo nombre/dispositivo de: {lineas[1]}")
             return None
+        # Limpiar emoji 👤 al inicio si está presente
         nombre = match_linea2.group(1).strip()
+        if nombre.startswith("👤"):
+            nombre = nombre[1:].strip()
         dispositivo = match_linea2.group(2).strip()
+        if dispositivo.startswith("📱"):
+            dispositivo = dispositivo[1:].strip()
 
-        # Línea 3: cuando y problema
-        # Patrón: "⏰ {cuando} | ⚠️ {problema}"
-        patron_linea3 = r"⏰\s+(.+?)\s*\|\s*⚠️\s+(.+?)(?:\s|$)"
-        match_linea3 = re.search(patron_linea3, lineas[2])
+        # Línea 3: cuando y problema — patrón flexible sin emojis
+        # Formato: "⏰ CUANDO | ⚠️ PROBLEMA"
+        match_linea3 = re.search(r"(.+?)\s*\|\s*(.+?)$", lineas[2])
         if not match_linea3:
             logger.warning(f"[IMPORT] No se extrajo cuando/problema de: {lineas[2]}")
             return None
         cuando = match_linea3.group(1).strip()
+        if cuando.startswith("⏰"):
+            cuando = cuando[1:].strip()
         problema = match_linea3.group(2).strip()
+        if problema.startswith("⚠️"):
+            problema = problema[2:].strip()
+        elif problema.startswith("⚠"):
+            problema = problema[1:].strip()
 
-        # Línea 4: asesor
-        # Patrón: "👨‍💼 Asesor: {asesor}"
-        patron_linea4 = r"👨‍💼\s+Asesor:\s*(.+?)(?:\s|$)"
-        match_linea4 = re.search(patron_linea4, lineas[3])
-        asesor = match_linea4.group(1).strip() if match_linea4 else ""
+        # Línea 4: asesor — patrón flexible
+        # Formato: "👨‍💼 Asesor: NOMBRE"
+        asesor = lineas[3].strip()
+        # Remover prefijo "👨‍💼" si está
+        for prefijo_emoji in ["👨‍💼", "👨"]:
+            if asesor.startswith(prefijo_emoji):
+                asesor = asesor[len(prefijo_emoji):].strip()
+                break
+        # Remover "Asesor:" si está
+        if asesor.lower().startswith("asesor:"):
+            asesor = asesor[len("asesor:"):].strip()
+
+        print(f"[IMPORT-PRINT] Campos extraídos: nombre={nombre!r}, cuando={cuando!r}", flush=True)
 
         return {
             "nombre": nombre,
