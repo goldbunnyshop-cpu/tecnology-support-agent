@@ -1009,7 +1009,7 @@ def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
 
         # Regex para extraer: "DIA DD de MES, HH:MM AM/PM"
         # Ej: "Jueves 15 de mayo, 3:30 PM" (incluyendo caracteres con tildes como Sábado)
-        patron = r"([a-záéíóúñ]+)\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+),\s+(\d{1,2}):(\d{2})\s*(am|pm|AM|PM)"
+        patron = r"([a-záéíóúñ]+)\s+(\d{1,2})\s+de\s+([a-záéíóúñ]+),\s+(\d{1,2}):(\d{2})\s*(a\.m\.|p\.m\.|am|pm|AM|PM)"
         match = re.search(patron, fecha_str)
 
         if not match:
