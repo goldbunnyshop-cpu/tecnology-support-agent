@@ -995,62 +995,92 @@ async def enviar_reporte_citas():
 def _parsear_fecha_hora_del_mensaje(fecha_str: str) -> datetime | None:
     """
     Parsea una cadena como "Jueves 15 de mayo, 3:30 PM" a datetime.
-    Retorna None si falla el parseo.
+    VERSIÓN ULTRA-ROBUSTA: Sin regex complicado, solo string splitting.
     """
     if not fecha_str:
         return None
 
     try:
-        # Limpiar la cadena
         fecha_str = fecha_str.strip()
-
-        # Invertir MESES_ES para buscar por nombre
         meses_inversos = {v: k for k, v in MESES_ES.items()}
 
-        # Regex para extraer: "DIA DD de MES, HH:MM AM/PM"
-        # Ej: "Jueves 15 de mayo, 3:30 PM" o "Sábado 9 de mayo, 11:30 a.m."
-        # Patrón SIN emojis, flexible con espacios obligatorios
-        patron = r"([a-záéíóúñA-ZÁÉÍÓÚÑ]+)\s+(\d{1,2})\s+de\s+([a-záéíóúñA-ZÁÉÍÓÚÑ]+),\s+(\d{1,2}):(\d{2})\s+(a\.m\.|p\.m\.|am|pm|AM|PM)"
-        match = re.search(patron, fecha_str)
-
-        if not match:
-            logger.warning(f"[IMPORT] No se pudo parsear fecha: {fecha_str}")
+        # Dividir por "de" para extraer día y mes
+        partes = fecha_str.split(" de ")
+        if len(partes) < 2:
+            logger.warning(f"[IMPORT] Formato inválido (sin 'de'): {fecha_str}")
             return None
 
-        dia_nombre, dia_num, mes_nombre, hora_str, min_str, ampm = match.groups()
+        # Parte 1: "DIA_NOMBRE DIA_NUM" (ej: "Sábado 9")
+        parte_dia = partes[0].strip()
+        dia_parts = parte_dia.split()
+        if len(dia_parts) < 2:
+            logger.warning(f"[IMPORT] No se pudo extraer día: {parte_dia}")
+            return None
+        dia_num_str = dia_parts[-1]
+        try:
+            dia_num = int(dia_num_str)
+        except ValueError:
+            logger.warning(f"[IMPORT] Día no es número: {dia_num_str}")
+            return None
 
-        # Obtener el nÃºmero de mes
-        mes_num = meses_inversos.get(mes_nombre.lower())
+        # Parte 2: "MES_NOMBRE, HH:MM AMPM" (ej: "mayo, 11:30 a.m.")
+        parte_mes_hora = partes[1].strip()
+        # Dividir por coma
+        if "," not in parte_mes_hora:
+            logger.warning(f"[IMPORT] No hay coma: {parte_mes_hora}")
+            return None
+        mes_name, hora_part = parte_mes_hora.split(",", 1)
+        mes_name = mes_name.strip()
+        hora_part = hora_part.strip()
+
+        # Buscar el mes
+        mes_num = meses_inversos.get(mes_name.lower())
         if not mes_num:
-            logger.warning(f"[IMPORT] Mes no reconocido: {mes_nombre}")
+            logger.warning(f"[IMPORT] Mes no encontrado: {mes_name}")
             return None
 
-        # Convertir hora a formato 24h
-        hora = int(hora_str)
-        minuto = int(min_str)
-        if ampm.lower() == "pm" and hora != 12:
+        # Extraer hora y ampm del formato "HH:MM AM/PM" o "HH:MM a.m."
+        hora_partes = hora_part.split()
+        if len(hora_partes) < 2:
+            logger.warning(f"[IMPORT] Formato hora inválido: {hora_part}")
+            return None
+
+        tiempo = hora_partes[0]  # "11:30"
+        ampm = " ".join(hora_partes[1:]).lower()  # "a.m." o "am"
+
+        # Extraer hora y minuto
+        if ":" not in tiempo:
+            logger.warning(f"[IMPORT] No hay ':' en tiempo: {tiempo}")
+            return None
+        hora_str, min_str = tiempo.split(":", 1)
+        try:
+            hora = int(hora_str)
+            minuto = int(min_str)
+        except ValueError:
+            logger.warning(f"[IMPORT] Hora/minuto no válidos: {hora_str}:{min_str}")
+            return None
+
+        # Convertir a 24h
+        if ("pm" in ampm or "p.m" in ampm) and hora != 12:
             hora += 12
-        elif ampm.lower() == "am" and hora == 12:
+        elif ("am" in ampm or "a.m" in ampm) and hora == 12:
             hora = 0
 
-        # Obtener el aÃ±o (usar aÃ±o actual, o aÃ±o siguiente si la fecha es en el pasado)
+        # Crear datetime
         ahora = datetime.now(ZONA_CDMX)
-        aÃ±o = ahora.year
+        año = ahora.year
 
         try:
-            fecha = datetime(aÃ±o, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
-
-            # Si la fecha es en el pasado, asumir que es del aÃ±o anterior
+            fecha = datetime(año, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
             if fecha < ahora:
-                fecha = datetime(aÃ±o - 1, mes_num, int(dia_num), hora, minuto, 0, tzinfo=ZONA_CDMX)
-
+                fecha = datetime(año - 1, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
             return fecha
         except ValueError as e:
-            logger.warning(f"[IMPORT] Error creando datetime: {e} (aÃ±o={aÃ±o}, mes={mes_num}, dÃ­a={dia_num})")
+            logger.warning(f"[IMPORT] Error datetime: {e}")
             return None
 
     except Exception as e:
-        logger.error(f"[IMPORT] Error parseando fecha '{fecha_str}': {e}")
+        logger.error(f"[IMPORT] Error parseando: {fecha_str} - {e}")
         return None
 
 
