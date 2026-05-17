@@ -199,18 +199,45 @@ def parsear_hora_en_texto(texto: str) -> time | None:
 
 # ─── Google Calendar API (sync interno, async público) ───────────────────────
 
+def _parse_credentials(raw: str) -> dict:
+    """
+    Parsea GOOGLE_CREDENTIALS en 3 intentos:
+    1. Base64 (Railway puede añadir saltos al string largo — se eliminan antes)
+    2. JSON crudo con \\n literales (dos caracteres)
+    3. JSON con saltos de línea reales en el private_key (los elimina y restaura)
+    """
+    raw = raw.strip()
+
+    # Intento 1: base64 (ignorar espacios/newlines que Railway pueda insertar)
+    try:
+        b64_clean = raw.replace(" ", "").replace("\n", "").replace("\r", "")
+        decoded = base64.b64decode(b64_clean.encode()).decode("utf-8")
+        return json.loads(decoded)
+    except Exception:
+        pass
+
+    # Intento 2: JSON crudo con \n como dos caracteres (backslash + n)
+    try:
+        return json.loads(raw.replace("\\n", "\n"))
+    except Exception:
+        pass
+
+    # Intento 3: JSON con saltos de línea reales mezclados (Railway los inserta a veces)
+    # Preserva los \n del private_key convirtiéndolos a placeholder antes de limpiar
+    try:
+        sanitized = raw.replace("\\n", "\x00NEWLINE\x00")
+        sanitized = sanitized.replace("\n", "").replace("\r", "")
+        sanitized = sanitized.replace("\x00NEWLINE\x00", "\\n")
+        return json.loads(sanitized)
+    except Exception as e:
+        raise RuntimeError(f"No se pudo parsear GOOGLE_CREDENTIALS (base64, JSON literal, JSON con newlines): {e}")
+
+
 def _build_service():
     raw = os.getenv("GOOGLE_CREDENTIALS") or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     if not raw:
         raise RuntimeError("GOOGLE_CREDENTIALS no configurado en Railway")
-    raw = raw.strip()
-    # Intentar base64 primero, luego JSON crudo
-    try:
-        decoded = base64.b64decode(raw.encode()).decode("utf-8")
-        info = json.loads(decoded)
-    except Exception:
-        # Si falla base64, asumir que es JSON crudo con \n literales
-        info = json.loads(raw.replace("\\n", "\n"))
+    info = _parse_credentials(raw)
     creds = Credentials.from_service_account_info(info, scopes=SCOPES)
     return build("calendar", "v3", credentials=creds)
 
