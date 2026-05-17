@@ -84,7 +84,7 @@ def _reseña_ya_solicitada(historial: list[dict]) -> bool:
 async def generar_mensaje_seguimiento(
     historial: list[dict],
     numero_seguimiento: int,
-    asesor: str = "Sofia",
+    asesor: str = "Valeria",
 ) -> tuple[str, str]:
     """
     Genera un mensaje de seguimiento personalizado.
@@ -208,7 +208,7 @@ async def ejecutar_seguimientos():
     for lead in leads:
         try:
             historial = await obtener_historial(lead.telefono, limite=30)
-            asesor = lead.asesor_asignado or "Sofia"
+            asesor = lead.asesor_asignado or "Valeria"
             mensaje, prioridad = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados, asesor)
             enviado = await proveedor.enviar_mensaje(lead.telefono, mensaje)
             if enviado:
@@ -252,7 +252,7 @@ async def ejecutar_retomas():
                 logger.info(f"Retoma cancelada (cliente ya respondió): {lead.telefono}")
                 continue
 
-            asesor = lead.asesor_asignado or "Sofia"
+            asesor = lead.asesor_asignado or "Valeria"
 
             historial = await obtener_historial(lead.telefono, limite=10)
             from agent.notifications import extraer_nombre_cliente

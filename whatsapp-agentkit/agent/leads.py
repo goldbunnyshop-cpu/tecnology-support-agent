@@ -12,7 +12,7 @@ from agent.memory import Base, async_session, engine
 logger = logging.getLogger("agentkit")
 
 
-ASESORES = ["Sofia", "Valentina", "Camila", "Diego", "Andres", "Rodrigo"]
+ASESORES = ["Sofia", "Valentina", "Camila", "Isabella", "Daniela", "Valeria"]
 
 
 class Lead(Base):
