@@ -28,25 +28,45 @@ CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", "config/credentials.json
 CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "primary")
 
 
-def _client_email_de_credenciales():
-    """Devuelve el client_email del archivo de credenciales (para logs/diagnostico)."""
+def _get_credentials_info() -> dict | None:
+    """Lee el dict de credenciales desde JSON inline o archivo."""
+    # Primero intenta la variable con el JSON completo (para Railway sin volumen)
+    json_inline = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if json_inline:
+        try:
+            return json.loads(json_inline)
+        except Exception as e:
+            logger.error(f"[CALENDAR] GOOGLE_CREDENTIALS_JSON mal formado: {e}")
+            return None
+    # Luego intenta el archivo
     try:
         with open(CREDENTIALS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f).get("client_email")
+            return json.load(f)
     except Exception:
         return None
 
 
+def _client_email_de_credenciales():
+    """Devuelve el client_email de las credenciales (para logs/diagnostico)."""
+    info = _get_credentials_info()
+    return info.get("client_email") if info else None
+
+
 def cargar_credenciales():
-    """Carga las credenciales de Google desde el archivo JSON."""
-    if not os.path.exists(CREDENTIALS_PATH):
-        logger.error(f"[CALENDAR] Archivo de credenciales no encontrado: {CREDENTIALS_PATH}")
+    """Carga las credenciales de Google desde GOOGLE_CREDENTIALS_JSON o archivo."""
+    info = _get_credentials_info()
+
+    if not info:
+        logger.error(
+            "[CALENDAR] Sin credenciales. Define GOOGLE_CREDENTIALS_JSON (Railway) "
+            f"o coloca el archivo en: {CREDENTIALS_PATH}"
+        )
         return None
 
     try:
-        creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
+        creds = Credentials.from_service_account_info(info, scopes=SCOPES)
         logger.info("[CALENDAR] Credenciales cargadas")
-        logger.info(f"[CALENDAR]   client_email (SA): {_client_email_de_credenciales()}")
+        logger.info(f"[CALENDAR]   client_email (SA): {info.get('client_email')}")
         logger.info(f"[CALENDAR]   calendar_id usado: {CALENDAR_ID!r}")
         if CALENDAR_ID == "primary":
             logger.warning(
