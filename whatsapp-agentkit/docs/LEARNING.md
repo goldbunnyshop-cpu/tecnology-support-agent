@@ -91,6 +91,49 @@ Solo verificando con el cambio sabemos si hay afectaciones extras."
 - Display nuevo en marco doblado = NO resuelve todo
 - "No solo es display, hay que valorar la situación"
 
+### IP Ratings — Crítico para displays en equipos premium
+**Problema:** Cliente cambia display y pierde certificación IP68 de fábrica.
+
+**Realidad técnica:**
+- IP68 original = diseño completo de fábrica con todos los sellos originales
+- Al cambiar display = se usan sellos nuevos que NO recuperan IP68
+- Nuestros sellos: IP67 en teoría, pero funcionan como IP66
+- IP66 = resistencia a polvo + salpicaduras de agua potentes
+- IP66 ≠ sumergible en agua (NO aplica para inmersión)
+
+**Equipos con IP68 (avisar al cliente):**
+- Samsung S24 Ultra, S25 Ultra
+- iPhone 14, 15, 16 Pro
+- Google Pixel 7, 8 Pro
+- OnePlus 12 Pro
+- Sony Xperia 1 Mark VI
+
+**Equipos con IP67:**
+- Samsung S24, S25
+- iPhone 15, 16
+- Google Pixel 8a, 8 Pro
+- Otros flagships estándar
+
+**Costo de sellos:**
+- **Displays (calidad ORIGINAL + AMOLED):** Sellos incluidos en el precio
+- **Tapas traseras:** Sellos se cotizan APARTE (no incluido)
+- **Otros cambios:** Evaluar caso a caso
+
+**Qué garantizar al cliente:**
+✅ Garantizamos: Polvo + salpicaduras de agua después del cambio
+✅ Aplicamos: Sellos de cada fabricante según especificación
+❌ NO garantizamos: Inmersión en agua
+❌ NO recupera: IP68 original de fábrica
+
+**Respuesta clara al cliente:**
+```
+"Al cambiar el display, aplicamos los sellos de fábrica para proteger contra 
+polvo y salpicaduras (IP66), pero no recupera el IP68 original porque es 
+una refacción. Se recomienda evitar sumergir el equipo en agua después del cambio.
+
+Los sellos están incluidos en el costo del display."
+```
+
 ---
 
 ## 🚫 NUNCA hacer esto:

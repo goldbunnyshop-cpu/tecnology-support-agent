@@ -108,6 +108,40 @@ Actualizar este archivo cada vez que identifiques algo que mejorar.
 
 ---
 
+### [2026-05-21] — Crítico: IP68 vs IP67 en cambio de displays
+
+**Resumen:** Cliente preguntó si conserva IP68 al cambiar display Samsung S25 Ultra. Necesita aclaración clara.
+
+**Contexto:**
+- Cliente: "¿Al cambiar el display del S25 Ultra conserva el IP68?"
+- Realidad: No, porque el display es una refacción
+- Problema potencial: Cliente cambia display, se moja, reclama "perdió IP68"
+
+**Análisis:**
+- IP68 es de fábrica con todos los componentes originales
+- Cambiar display = sellos nuevos ≠ IP68 original
+- Los sellos que instalamos: IP67 en teoría, pero funcionan como IP66
+- IP66 = resistencia a polvo + salpicaduras de agua, NO inmersión
+- Falta claridad en comunicación = reclamo futuro
+
+**Política clara:**
+1. Se incluyen sellos de fabricante en costo de display (calidad ORIGINAL + AMOLED)
+2. Garantizamos: resistencia a polvo + salpicaduras
+3. NO garantizamos: inmersión en agua
+4. Se aclara que el rearmado da IP66 máximo, no IP68
+5. Para tapas traseras, sellos se cotizan APARTE
+
+**Solución:**
+- Documentar en `LEARNING.md` qué equipos tienen IP68/IP67
+- Actualizar `prompts.yaml` para mencionar esto cuando pregunten
+- Crear guía de "equipos a probar" antes de cambio
+
+**Archivo afectado:** `config/prompts.yaml` + `docs/LEARNING.md`
+
+**Estado:** 🔄 En progreso
+
+---
+
 ## 🎯 Próximas cosas a observar
 
 - [ ] ¿El cliente agenda después de cotización aproximada?
