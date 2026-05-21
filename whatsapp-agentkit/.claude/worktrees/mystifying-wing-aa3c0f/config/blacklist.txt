@@ -1,3 +1,0 @@
-# Blacklist de números — uno por línea, sin espacios ni símbolo +
-# Ejemplo:
-# 5215512345678
