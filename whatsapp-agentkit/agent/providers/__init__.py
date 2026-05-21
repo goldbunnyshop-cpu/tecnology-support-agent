@@ -17,4 +17,17 @@ def obtener_proveedor() -> ProveedorWhatsApp:
     """
     proveedor = os.getenv("WHATSAPP_PROVIDER", "whapi").lower()
 
-    if proveedor =
+    if proveedor == "whapi":
+        from agent.providers.whapi import ProveedorWhapi
+        return ProveedorWhapi()
+    elif proveedor == "meta_inbox":
+        from agent.providers.meta_inbox import ProveedorMetaInbox
+        return ProveedorMetaInbox()
+    elif proveedor == "meta":
+        from agent.providers.meta import ProveedorMeta
+        return ProveedorMeta()
+    elif proveedor == "twilio":
+        from agent.providers.twilio import ProveedorTwilio
+        return ProveedorTwilio()
+    else:
+        raise ValueError(f"Proveedor no soportado: {proveedor}. Usa: whapi, meta_inbox, meta, o twilio")
