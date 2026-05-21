@@ -22,7 +22,7 @@ def cargar_config_prompts() -> dict:
         return {}
 
 
-def construir_system_prompt(asesor: str = "Sofia") -> str:
+def construir_system_prompt(asesor: str = "Valentina") -> str:
     """Construye el system prompt inyectando el nombre y personalidad del asesor."""
     config = cargar_config_prompts()
     template = config.get("system_prompt_template", "Eres un asistente útil. Responde en español.")
@@ -49,7 +49,7 @@ def obtener_mensaje_fallback() -> str:
 async def generar_respuesta(
     mensaje: str,
     historial: list[dict],
-    asesor: str = "Sofia",
+    asesor: str = "Valentina",
     contexto_cliente: str = "",
 ) -> str:
     if not mensaje or len(mensaje.strip()) < 2:

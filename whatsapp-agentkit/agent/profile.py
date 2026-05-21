@@ -14,7 +14,7 @@ _PATRONES_NOMBRE = [
 ]
 
 _FALSOS_POSITIVOS = {
-    "Sofia", "Valentina", "Camila", "Diego", "Andres", "Rodrigo",
+    "Sofia", "Valentina", "Camila", "Daniela", "Andrea", "Rocio",
     "Tecnology", "Support", "Cliente", "Tecnico", "Hola", "Buenas",
 }
 
@@ -72,6 +72,43 @@ def detectar_dispositivo_en_texto(texto: str) -> str | None:
     for nombre, keywords in _DISPOSITIVOS:
         if any(kw in texto_lower for kw in keywords):
             return nombre
+    return None
+
+
+def extraer_asesor_de_historial(historial: list[dict]) -> str | None:
+    """
+    Busca en los últimos 10 mensajes del asistente quién está atendiendo.
+
+    Busca patrones como:
+    - "Soy Sofia, asesor de..."
+    - "Te habla Valentina"
+    - "Hola, soy Camila"
+
+    Args:
+        historial: Lista de mensajes [{"role": "user/assistant", "content": "..."}]
+
+    Returns:
+        Nombre del asesor si se encuentra, None si no
+    """
+    asesores_validos = {"Sofia", "Valentina", "Camila", "Daniela", "Andrea", "Rocio"}
+
+    # Buscar en últimos 10 mensajes del asistente
+    for msg in reversed(historial[-10:]):
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content", "").lower()
+
+        # Buscar patrones donde se mencione el asesor
+        for asesor in asesores_validos:
+            asesor_lower = asesor.lower()
+            # Buscar "soy [asesor]", "te habla [asesor]", etc.
+            if asesor_lower in content:
+                # Validar que aparezca en contexto de presentación
+                contexto = ["soy", "te habla", "hola", "asesor", "asesora"]
+                if any(ctx in content for ctx in contexto):
+                    logger.debug(f"[PERFIL] Asesor detectado en historial: {asesor}")
+                    return asesor
+
     return None
 
 

@@ -8,6 +8,8 @@ Funciona con cualquier proveedor (Whapi, Meta, Meta Inbox, Twilio) gracias a la 
 
 import os
 import logging
+import random
+from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse
@@ -17,8 +19,15 @@ from agent.brain import generar_respuesta
 from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
 from agent.providers import obtener_proveedor
 from agent.sleep_mode import (
-    esta_en_horario_atencion,
-    obtener_mensaje_fuera_horario,
+    esta_en_horario_operacion_bot,
+    obtener_mensaje_sleep_mode,
+    calcular_hora_reactivacion,
+    ZONA_MEXICO,
+)
+from agent.profile import extraer_asesor_de_historial
+from agent.reminder_scheduler import (
+    inicializar_scheduler,
+    programar_reactivacion_sleep,
 )
 from agent.tools import (
     fue_ultimo_mensaje_menu_ambiguo,
@@ -41,9 +50,14 @@ PORT = int(os.getenv("PORT", 8000))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicializa la base de datos al arrancar el servidor."""
+    """Inicializa la base de datos y el scheduler al arrancar el servidor."""
     await inicializar_db()
     logger.info("Base de datos inicializada")
+
+    # Inicializar scheduler para reactivación de sleep mode
+    await inicializar_scheduler(app)
+    logger.info("Scheduler de reactivación inicializado")
+
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")
     logger.info(f"Proveedor de WhatsApp: {proveedor.__class__.__name__}")
     yield
@@ -104,13 +118,43 @@ async def webhook_handler(request: Request):
 
             logger.info(f"📱 Mensaje recibido de {msg.telefono}: '{msg.texto[:50]}...'")
 
-            # VERIFICACIÓN HORARIO: Sleep mode
-            if not esta_en_horario_atencion():
-                logger.info(f"⏰ [SLEEP] Mensaje ignorado — fuera de horario. Enviando mensaje de cierre.")
-                respuesta_sleep = obtener_mensaje_fuera_horario()
+            # VERIFICACIÓN HORARIO: Sleep mode (00:00 - 5:59 AM)
+            if not esta_en_horario_operacion_bot():
+                logger.info(f"🌙 [SLEEP] Mensaje en horario de reposo — Enviando mensaje sin mostrar horas.")
+
+                # Obtener historial para detectar asesor
+                try:
+                    historial_temp = await obtener_historial(msg.telefono)
+                    asesor = extraer_asesor_de_historial(historial_temp)
+                    if not asesor:
+                        asesor = random.choice(["Sofia", "Valentina", "Camila", "Daniela", "Andrea", "Rocio"])
+                    logger.debug(f"[SLEEP] Asesor seleccionado: {asesor}")
+                except Exception as e:
+                    logger.warning(f"[SLEEP] No se pudo obtener historial: {e}, usando asesor aleatorio")
+                    asesor = random.choice(["Sofia", "Valentina", "Camila", "Daniela", "Andrea", "Rocio"])
+
+                # Enviar mensaje de sleep mode (sin mostrar horas)
+                respuesta_sleep = obtener_mensaje_sleep_mode(asesor)
                 await guardar_mensaje(msg.telefono, "user", msg.texto)
                 await guardar_mensaje(msg.telefono, "assistant", respuesta_sleep)
                 await proveedor.enviar_mensaje(msg.telefono, respuesta_sleep)
+
+                # Programar reactivación automática a +7 horas
+                ahora = datetime.now(ZONA_MEXICO)
+                hora_reactivacion = calcular_hora_reactivacion(ahora)
+
+                resultado_sched = await programar_reactivacion_sleep(
+                    telefono=msg.telefono,
+                    asesor=asesor,
+                    hora_reactivacion=hora_reactivacion,
+                    callback_enviar_mensaje=proveedor.enviar_mensaje
+                )
+
+                if resultado_sched["exito"]:
+                    logger.info(f"[SLEEP] ✅ Reactivación programada: {resultado_sched['detalle']}")
+                else:
+                    logger.warning(f"[SLEEP] ⚠️ No se pudo programar reactivación: {resultado_sched['detalle']}")
+
                 continue
 
             try:
@@ -123,6 +167,19 @@ async def webhook_handler(request: Request):
                     logger.error(f"❌ FALLO obteniendo historial: {e}", exc_info=True)
                     raise
 
+                # PASO 3.5: Seleccionar asesor (basado en historial o aleatorio)
+                try:
+                    logger.debug(f"🔵 PASO 3.5: Seleccionando asesor...")
+                    asesor = extraer_asesor_de_historial(historial)
+                    if not asesor:
+                        asesor = random.choice(["Sofia", "Valentina", "Camila", "Daniela", "Andrea", "Rocio"])
+                        logger.debug(f"✅ Asesor elegido aleatoriamente: {asesor}")
+                    else:
+                        logger.debug(f"✅ Asesor recuperado del historial: {asesor}")
+                except Exception as e:
+                    logger.warning(f"⚠️  Error seleccionando asesor: {e}, usando default")
+                    asesor = "Valentina"
+
                 # PASO 4: Detectar tipo de dispositivo
                 try:
                     logger.debug(f"🔵 PASO 4: Detectando tipo de dispositivo...")
@@ -134,16 +191,16 @@ async def webhook_handler(request: Request):
 
                 # PASO 5: Generar respuesta
                 try:
-                    logger.debug(f"🔵 PASO 5: Generando respuesta...")
+                    logger.debug(f"🔵 PASO 5: Generando respuesta con asesor: {asesor}...")
 
                     # Verificar si el último mensaje del asistente fue un menú ambiguo
                     if fue_ultimo_mensaje_menu_ambiguo(historial) and tipo_dispositivo == "ambiguo":
                         logger.debug("ℹ️  Usando respuesta post-ambiguo")
                         respuesta = generar_respuesta_post_ambiguo()
                     else:
-                        respuesta = await generar_respuesta(msg.texto, historial)
+                        respuesta = await generar_respuesta(msg.texto, historial, asesor=asesor)
 
-                    logger.info(f"✅ Respuesta generada ({len(respuesta)} caracteres)")
+                    logger.info(f"✅ Respuesta generada por {asesor} ({len(respuesta)} caracteres)")
                 except Exception as e:
                     logger.error(f"❌ FALLO generando respuesta: {e}", exc_info=True)
                     raise

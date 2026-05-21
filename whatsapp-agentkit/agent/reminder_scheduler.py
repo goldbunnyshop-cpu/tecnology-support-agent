@@ -256,3 +256,106 @@ async def manejar_cita_confirmada(
             await proveedor_whatsapp.enviar_mensaje(telefono, msg_confirmacion)
     else:
         logger.error(f"❌ Error programando recordatorios: {resultado['detalle']}")
+
+
+# ════════════════════════════════════════════════════════════
+# Reactivación de Sleep Mode — Mensaje automático a +7 horas
+# ════════════════════════════════════════════════════════════
+
+async def programar_reactivacion_sleep(
+    telefono: str,
+    asesor: str,
+    hora_reactivacion: datetime,
+    callback_enviar_mensaje: Optional[Callable] = None
+) -> dict:
+    """
+    Programa el mensaje de reactivación después del sleep mode.
+    Se ejecuta exactamente 7 horas después del mensaje de sleep mode.
+
+    Ejemplo:
+        Cliente escribe a 1:05 AM → Bot entra en sleep mode
+        Bot programa reactivación para 8:05 AM con este mensaje
+        A las 8:05 AM, el bot envía automáticamente un mensaje de reactivación
+
+    Args:
+        telefono: Número de teléfono del cliente
+        asesor: Nombre del asesor que atendió en sleep mode
+        hora_reactivacion: datetime exacta en que debe enviarse (ahora + 7 horas)
+        callback_enviar_mensaje: Función async para enviar mensaje
+            Signature: async def callback(tel: str, msg: str) -> bool
+            Si es None, no se envía nada (útil para logging)
+
+    Returns:
+        {
+            "exito": bool,
+            "job_id": str | None,
+            "scheduled_for": datetime,
+            "detalle": str
+        }
+    """
+
+    if scheduler is None:
+        logger.error("Scheduler no inicializado para reactivación sleep")
+        return {
+            "exito": False,
+            "job_id": None,
+            "detalle": "Scheduler no inicializado"
+        }
+
+    # Importar dinámicamente para evitar ciclos
+    from agent.sleep_mode import obtener_mensaje_reactivacion
+
+    try:
+        # Obtener mensaje aleatorio de reactivación (una de 4 opciones)
+        mensaje = obtener_mensaje_reactivacion()
+
+        # ID único para el job: sleep_retoma_{telefono}_{timestamp}
+        job_id = f"sleep_retoma_{telefono}_{int(hora_reactivacion.timestamp())}"
+
+        # Función wrapper que captura el contexto
+        async def enviar_reactivacion(tel=telefono, msg=mensaje, asesor_name=asesor):
+            logger.info(
+                f"🔔 [REACTIVACIÓN SLEEP] Enviando mensaje automático a {tel} "
+                f"(asesor: {asesor_name})"
+            )
+            if callback_enviar_mensaje:
+                try:
+                    resultado = await callback_enviar_mensaje(tel, msg)
+                    if resultado:
+                        logger.info(f"✅ Reactivación enviada a {tel}")
+                    else:
+                        logger.warning(f"⚠️  Reactivación NO se envió a {tel}")
+                except Exception as e:
+                    logger.error(f"❌ Error en callback de reactivación: {e}")
+            else:
+                logger.warning(f"⚠️  No hay callback — mensaje no se envió a {tel}")
+
+        # Programar en APScheduler
+        job = scheduler.add_job(
+            enviar_reactivacion,
+            trigger=DateTrigger(run_date=hora_reactivacion),
+            id=job_id,
+            replace_existing=True,
+            timezone="America/Mexico_City"
+        )
+
+        logger.info(
+            f"🌙→☀️ [REACTIVACIÓN SLEEP] Job programado: {job_id}\n"
+            f"   Reactivación: {hora_reactivacion.strftime('%Y-%m-%d %H:%M:%S')} "
+            f"(cliente: {telefono}, asesor: {asesor})"
+        )
+
+        return {
+            "exito": True,
+            "job_id": job_id,
+            "scheduled_for": hora_reactivacion,
+            "detalle": f"Reactivación sleep programada para {hora_reactivacion.strftime('%d/%m %H:%M')}"
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error programando reactivación sleep: {e}", exc_info=True)
+        return {
+            "exito": False,
+            "job_id": None,
+            "detalle": f"Error: {str(e)}"
+        }
