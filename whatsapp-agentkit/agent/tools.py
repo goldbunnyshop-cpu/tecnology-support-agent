@@ -1,6 +1,29 @@
 # agent/tools.py — Herramientas del agente para Tecnology Support
 # Generado por AgentKit
 
+"""
+COTIZACIONES INTELIGENTES — Lógica principal
+==============================================
+
+Cuando un cliente pregunta por "precio de una pantalla" o similar:
+
+1. NUNCA responde con un número fijo ($900, $500, etc)
+2. SIEMPRE explica que el precio varía según:
+   - Complejidad de la reparación
+   - Marca y modelo exacto del dispositivo
+   - Calidad de la refacción (genérica vs tipo original)
+   - Estado del equipo (corrosión, daño colateral, etc)
+   - Técnico que lo atienda (experiencia, disponibilidad)
+
+3. SIEMPRE invita al módulo para diagnóstico:
+   "El técnico hace un diagnóstico en ~2 horas y te da el precio exacto sin sorpresas"
+
+4. SIEMPRE captura marca/modelo/daño para personalizar la invitación
+
+Este enfoque genera CONFIANZA (no promesas vagas) y CONVERSIÓN
+(cliente viene al módulo en lugar de comparar precios online).
+"""
+
 import os
 import yaml
 import logging
