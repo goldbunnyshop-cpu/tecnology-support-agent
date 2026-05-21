@@ -14,6 +14,8 @@ import os
 import asyncio
 
 from anthropic import AsyncAnthropic
+from agent.reminder_scheduler import manejar_cita_confirmada
+from agent.send_to_crm import crear_y_notificar_desde_cita
 
 logger = logging.getLogger("agentkit")
 
@@ -187,11 +189,17 @@ async def guardar_cita_automatica(
 
         # Crear evento en Google Calendar si está configurado (no crítico)
         try:
-            await crear_en_google_calendar(
-                nombre=nombre,
+            from agent.google_calendar_sync import agregar_cita_a_calendar
+
+            fecha_str = fecha_hora.strftime("%Y-%m-%d")
+            hora_str = fecha_hora.strftime("%H:%M")
+
+            await agregar_cita_a_calendar(
+                nombre_cliente=nombre,
                 dispositivo=dispositivo,
                 problema=problema,
-                fecha_hora=fecha_hora,
+                fecha_str=fecha_str,
+                hora_str=hora_str,
                 asesor=asesor
             )
         except Exception as cal_e:
@@ -223,6 +231,25 @@ async def guardar_cita_automatica(
             f"[CITA_DETECTOR] ✅ Cita guardada en {db_kind}: "
             f"{nombre} — {fecha_hora.strftime('%d/%m %H:%M')} — tel={telefono}"
         )
+
+        # ✅ NUEVO: Programar recordatorios inteligentes (24h, 90min, 10min)
+        try:
+            from agent.providers import obtener_proveedor
+            fecha_str = fecha_hora.strftime("%Y-%m-%d")
+            hora_str = fecha_hora.strftime("%H:%M")
+            proveedor = obtener_proveedor()
+
+            await manejar_cita_confirmada(
+                telefono=telefono,
+                fecha_cita=fecha_str,
+                hora_cita=hora_str,
+                nombre_cliente=nombre,
+                proveedor_whatsapp=proveedor
+            )
+            logger.info(f"[CITA_DETECTOR] ✓ Recordatorios inteligentes programados para {nombre}")
+        except Exception as rem_e:
+            logger.warning(f"[CITA_DETECTOR] Recordatorios no programados (no crítico): {rem_e}")
+
         return True
 
     except Exception as e:
@@ -232,57 +259,8 @@ async def guardar_cita_automatica(
         return False
 
 
-async def crear_en_google_calendar(
-    nombre: str,
-    dispositivo: str,
-    problema: str,
-    fecha_hora: datetime,
-    asesor: str = ""
-):
-    """
-    Crea un evento en Google Calendar.
-    (Reusa lógica de importar_citas_directo.py)
-    """
-    try:
-        from google.oauth2.service_account import Credentials
-        from googleapiclient.discovery import build
-        import json
-
-        # Cargar credenciales
-        creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "config/credentials.json")
-        if not os.path.exists(creds_path):
-            logger.debug("[CITA_DETECTOR] Google credentials no configuradas, saltando Calendar")
-            return False
-
-        with open(creds_path, "r") as f:
-            creds_dict = json.load(f)
-
-        scopes = ["https://www.googleapis.com/auth/calendar"]
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        service = build("calendar", "v3", credentials=creds)
-
-        # Construir detalles del evento
-        fin = fecha_hora + timedelta(minutes=30)
-        dia_txt = DIAS_ES.get(fecha_hora.weekday(), "")
-        mes_txt = MESES_ES.get(fecha_hora.month, "")
-        fecha_txt = f"{dia_txt} {fecha_hora.day} de {mes_txt}"
-
-        body = {
-            "summary": f"🔧 {nombre} — {dispositivo}",
-            "description": f"Cliente: {nombre}\nDispositivo: {dispositivo}\nProblema: {problema}\nAsesor: {asesor}",
-            "start": {"dateTime": fecha_hora.isoformat(), "timeZone": "America/Mexico_City"},
-            "end": {"dateTime": fin.isoformat(), "timeZone": "America/Mexico_City"},
-        }
-
-        calendar_id = "tecnotogysupportmx@gmail.com"
-        service.events().insert(calendarId=calendar_id, body=body).execute()
-
-        logger.info(f"[CITA_DETECTOR] 📅 Evento creado en Google Calendar: {nombre}")
-        return True
-
-    except Exception as e:
-        logger.debug(f"[CITA_DETECTOR] Google Calendar error (no crítico): {e}")
-        return False  # No detiene el flujo
+# DEPRECATED: Función reemplazada por google_calendar_sync.agregar_cita_a_calendar()
+# Ver: agent/google_calendar_sync.py
 
 
 async def procesar_mensaje_para_cita(
@@ -365,6 +343,34 @@ async def procesar_mensaje_para_cita(
         ).replace(
             "Sunday", "domingo"
         )
+
+        # 🔗 INTEGRACIÓN AUTO-CRM: Crear transacción y enviar notificación
+        logger.info(f"[CITA_DETECTOR] 🔗 Iniciando integración con Auto-CRM para {nombre}")
+        try:
+            crm_result = await crear_y_notificar_desde_cita(
+                cliente_nombre=nombre,
+                cliente_phone=telefono,
+                dispositivo_marca=dispositivo.split()[0] if dispositivo else "Dispositivo",  # Primera palabra (marca)
+                dispositivo_modelo=dispositivo.split()[1] if len(dispositivo.split()) > 1 else "",
+                descripcion=problema,
+                fecha_cita=fecha_hora,
+                asesor=asesor,
+            )
+
+            if crm_result["success"]:
+                logger.info(
+                    f"[CITA_DETECTOR] ✅ Cita vinculada a Auto-CRM "
+                    f"(Transaction ID: {crm_result['transaction_id']})"
+                )
+            else:
+                logger.warning(
+                    f"[CITA_DETECTOR] ⚠️ No se pudo vincular con Auto-CRM: "
+                    f"{crm_result['error']}"
+                )
+        except Exception as crm_e:
+            logger.warning(
+                f"[CITA_DETECTOR] ⚠️ Error integrando con Auto-CRM (no crítico): {crm_e}"
+            )
 
         return {
             "es_cita": True,

@@ -6,11 +6,15 @@ from agent.providers.base import ProveedorWhatsApp
 
 
 def obtener_proveedor() -> ProveedorWhatsApp:
-    """Retorna el proveedor de WhatsApp configurado en .env."""
+    """
+    Retorna el proveedor configurado en .env.
+
+    Opciones:
+    - whapi: Solo WhatsApp (Whapi.cloud)
+    - meta_inbox: Meta Inbox (Facebook Messenger + Instagram DMs)
+    - meta: Meta Cloud API (WhatsApp oficial)
+    - twilio: Twilio WhatsApp
+    """
     proveedor = os.getenv("WHATSAPP_PROVIDER", "whapi").lower()
 
-    if proveedor == "whapi":
-        from agent.providers.whapi import ProveedorWhapi
-        return ProveedorWhapi()
-    else:
-        raise ValueError(f"Proveedor no soportado: {proveedor}. Este agente usa: whapi")
+    if proveedor =

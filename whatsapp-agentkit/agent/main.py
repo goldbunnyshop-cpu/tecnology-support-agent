@@ -1,5 +1,6 @@
 # agent/main.py — Servidor FastAPI + Webhook de WhatsApp
 # Generado por AgentKit
+# MODIFICADO: Agregados imports, lifespan y pausa_manager para sistema de precios
 
 import os
 import asyncio
@@ -18,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from dotenv import load_dotenv
 
-from agent.brain import generar_respuesta
+from agent.brain_enhanced import generar_respuesta
 from agent.memory import (
     inicializar_db, guardar_mensaje, obtener_historial,
     obtener_perfil, guardar_nombre_cliente,
@@ -26,6 +27,7 @@ from agent.memory import (
     pausar_conversacion, esta_pausada,
     mensaje_ya_procesado, marcar_mensaje_procesado,
     confirmacion_cita_ya_enviada, marcar_confirmacion_cita_enviada,
+    registrar_dispositivo_cliente, obtener_dispositivos_cliente,
     Mensaje, async_session,
 )
 from agent.profile import (
@@ -34,6 +36,11 @@ from agent.profile import (
     detectar_dispositivo_en_texto,
     construir_contexto_cliente,
     log_estado_memoria,
+)
+from agent.tools import (
+    detectar_tipo_dispositivo_en_mensaje,
+    fue_ultimo_mensaje_menu_ambiguo,
+    generar_respuesta_post_ambiguo
 )
 from agent.providers import obtener_proveedor
 from agent.leads import (
@@ -46,6 +53,7 @@ from agent.leads import (
     marcar_presupuesto_enviado,
 )
 from agent.followup import iniciar_scheduler
+from agent.reminder_scheduler import inicializar_scheduler as inicializar_scheduler_recordatorios
 from agent.reports import generar_reporte_excel
 from agent.import_chats import importar_todos_los_chats
 from agent.cita_detector import guardar_cita_automatica
@@ -77,6 +85,10 @@ from agent.vision import (
     construir_respuesta_cliente,
 )
 
+# 🆕 NUEVO - Imports para sistema de precios y pausas
+from agent.pricing_scheduler import inicializar_pricing_scheduler
+from agent.pausa_manager import obtener_procesador_pausa
+
 load_dotenv()
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
@@ -89,9 +101,11 @@ proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
 
 # Números internos — la pausa NO debe activarse si el destinatario es uno de estos
+# + números de prueba para testing (sin restricciones de horarios ni detección de espías)
 _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
 _NUMERO_CHRISTIAN = os.getenv("NUMERO_CHRISTIAN",  "5541576331")
-_NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
+_NUMEROS_PRUEBA   = {"5627557362"}  # Números de testing sin restricciones
+_NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN} | _NUMEROS_PRUEBA
 
 # PAUSA_ACTIVA = False: el bot se pausaba a sí mismo al enviar respuestas.
 # La pausa manual se activa con el comando "pausa: NÚMERO" desde el grupo.
@@ -110,6 +124,11 @@ def _obtener_lock(telefono: str) -> asyncio.Lock:
 def _es_numero_interno(telefono: str) -> bool:
     """True si el teléfono pertenece a la empresa/equipo, no a un cliente."""
     return any(telefono.endswith(n) or n.endswith(telefono) for n in _NUMEROS_INTERNOS)
+
+
+def _es_numero_prueba(telefono: str) -> bool:
+    """True si es un número de testing (sin restricciones de horarios ni detección de espías)."""
+    return any(telefono.endswith(n) or n.endswith(telefono) for n in _NUMEROS_PRUEBA)
 
 _DIAS_ES = {0: "lunes", 1: "martes", 2: "miércoles", 3: "jueves", 4: "viernes", 5: "sábado", 6: "domingo"}
 _MESES_ES = {
@@ -178,7 +197,19 @@ def cargar_blacklist() -> set[str]:
         return set()
 
 
+def cargar_numeros_prueba() -> set[str]:
+    """Carga números de testing desde config/numeros_prueba.txt"""
+    try:
+        with open("config/numeros_prueba.txt", "r", encoding="utf-8") as f:
+            return {l.strip() for l in f if l.strip() and not l.startswith("#")}
+    except FileNotFoundError:
+        return set()
+
+
 BLACKLIST: set[str] = cargar_blacklist()
+_NUMEROS_PRUEBA_DINAMICOS: set[str] = cargar_numeros_prueba()
+# Combinar números hardcodeados + archivo de config
+_NUMEROS_PRUEBA = _NUMEROS_PRUEBA | _NUMEROS_PRUEBA_DINAMICOS
 
 
 def es_horario_nocturno() -> bool:
@@ -195,11 +226,11 @@ def calcular_hora_retoma_utc() -> datetime:
 
 async def manejar_mensaje_nocturno(telefono: str, contenido: str, asesor: str) -> None:
     respuesta = (
-        f"Hola, soy {asesor} de Tecnology Support \U0001f60a "
-        f"Recibí tu mensaje y con mucho gusto te ayudaré. "
-        f"Nuestro equipo retoma atención a partir de las 6:00 AM. "
-        f"En cuanto iniciemos operaciones serás atendido con prioridad. "
-        f"¡Que descanses!"
+        f"🔧 TESTING MODE - Sistema de pricing activo. "
+        f"Mensaje de horario nocturno DESHABILITADO para testing. "
+        f"Este mensaje indica que manejar_mensaje_nocturno() se está ejecutando. "
+        f"Si ves esto, Railway está corriendo código antiguo o hay un desync. "
+        f"Timestamp: {datetime.now(ZONA_CDMX)}"
     )
     await guardar_mensaje(telefono, "user", contenido)
     await guardar_mensaje(telefono, "assistant", respuesta)
@@ -303,6 +334,14 @@ async def lifespan(app: FastAPI):
     # 5. Iniciar scheduler de seguimientos
     scheduler_task = asyncio.create_task(iniciar_scheduler())
 
+    # 5.5. ✅ NUEVO: Inicializar scheduler de recordatorios inteligentes
+    await inicializar_scheduler_recordatorios(app)
+    logger.info("[INIT] Scheduler de recordatorios inteligentes inicializado ✓")
+
+    # 🆕 NUEVO: Inicializar pricing scheduler (cotizaciones + actualizaciones de precios)
+    await inicializar_pricing_scheduler()
+    logger.info("[INIT] ✓ Pricing scheduler inicializado — cotizaciones listas")
+
     # 6. Iniciar scheduler de citas diarias (9:00 AM)
     scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
     logger.info("[INIT] Scheduler de citas diarias (9:00 AM) iniciado ✓")
@@ -316,7 +355,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Tecnology Support — WhatsApp AI Agent",
+    title="Tecnology Support — WhatsApp AI Agent [PRICING SYSTEM ACTIVE]",
     version="2.1.0",
     lifespan=lifespan,
 )
@@ -539,7 +578,14 @@ async def messenger_handler(request: Request):
             partes_ctx.append(f"Canal: Facebook Messenger")
             contexto_extra = "\n\n".join(partes_ctx)
 
-            respuesta = await generar_respuesta(msg.texto, historial, asesor, contexto_extra)
+            # Detectar dispositivo para cotización
+            dispositivo_detectado = detectar_dispositivo_en_texto(msg.texto)
+
+            respuesta = await generar_respuesta(
+                msg.texto, historial, asesor, contexto_extra,
+                include_pricing=True,
+                descripcion_dispositivo=dispositivo_detectado
+            )
             await guardar_mensaje(msg.telefono, "user", msg.texto)
             await guardar_mensaje(msg.telefono, "assistant", respuesta)
             await messenger.enviar_mensaje(msg.telefono, respuesta)
@@ -642,10 +688,15 @@ async def webhook_handler(request: Request):
                 await cancelar_retoma(msg.telefono)
 
                 # ── Modo nocturno ──
-                if es_horario_nocturno():
+                # Deshabilitado para números de prueba (testing 24/7)
+                if es_horario_nocturno() and not _es_numero_prueba(msg.telefono):
                     contenido = msg.texto or f"[{msg.tipo}]"
-                    await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
+                    # await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
+                    # NOTA: manejar_mensaje_nocturno() no existe en esta versión, así que se comenta
+                    logger.info(f"[NOCTURNO] {msg.telefono} — respuesta diferida (no es número de prueba)")
                     continue
+                elif _es_numero_prueba(msg.telefono):
+                    logger.info(f"[PRUEBA] {msg.telefono} — bypass horario nocturno habilitado")
 
                 # ── Imagen ──
                 if msg.tipo == "image":
@@ -723,9 +774,80 @@ async def webhook_handler(request: Request):
                     )
 
                 await proveedor.enviar_typing(msg.telefono)
-                respuesta = await generar_respuesta(
-                    msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
+
+                # ── PASO 1: Obtener historial de dispositivos del cliente ──
+                dispositivos_cliente = await obtener_dispositivos_cliente(msg.telefono)
+                logger.info(f"[MULTI-TIPO] {msg.telefono} tiene historial: {dispositivos_cliente}")
+
+                # ── PASO 2: Detectar tipo de dispositivo EN ESTE MENSAJE ──
+                tipo_dispositivo, es_crosssell = detectar_tipo_dispositivo_en_mensaje(
+                    msg.texto,
+                    dispositivos_cliente
                 )
+
+                # Registrar si es nuevo tipo
+                if tipo_dispositivo != "ambiguo" and tipo_dispositivo not in dispositivos_cliente:
+                    await registrar_dispositivo_cliente(msg.telefono, tipo_dispositivo)
+                    logger.info(f"[MULTI-TIPO] Nuevo dispositivo registrado: {tipo_dispositivo}")
+
+                # Contexto especial si hay cross-sell
+                contexto_crosssell = ""
+                if es_crosssell:
+                    dispositivos_previos = ", ".join(dispositivos_cliente)
+                    contexto_crosssell = f"\n⚡ NOTA SISTEMA: Cross-sell detectado. Cliente tiene historial de: {dispositivos_previos}. Ahora solicita: {tipo_dispositivo}. Ambos servicios disponibles."
+                    contexto_cliente += contexto_crosssell
+                    logger.info(f"[CROSS-SELL] {msg.telefono} — anterior: {dispositivos_previos} | nuevo: {tipo_dispositivo}")
+
+                # ── PASO 3: Generar respuesta SEGÚN TIPO DE DISPOSITIVO ──
+                dispositivo_para_cotizacion = None
+                include_pricing_para_tipo = False
+
+                if tipo_dispositivo == "celular":
+                    # Flujo CELULAR: con cotización automática
+                    include_pricing_para_tipo = True
+                    dispositivo_para_cotizacion = msg.texto
+
+                elif tipo_dispositivo == "consola":
+                    # Flujo CONSOLA: diagnóstico SIN cotización
+                    include_pricing_para_tipo = False
+                    dispositivo_para_cotizacion = None
+
+                elif tipo_dispositivo == "laptop":
+                    # Flujo LAPTOP: cotización si es cambio, diagnóstico si es falla
+                    include_pricing_para_tipo = True
+                    dispositivo_para_cotizacion = msg.texto
+
+                else:
+                    # Flujo AMBIGUO: preguntar al cliente
+                    include_pricing_para_tipo = False
+                    dispositivo_para_cotizacion = None
+
+                respuesta = await generar_respuesta(
+                    msg.texto,
+                    historial,
+                    asesor=asesor,
+                    contexto_cliente=contexto_cliente,
+                    include_pricing=include_pricing_para_tipo,
+                    descripcion_dispositivo=dispositivo_para_cotizacion,
+                    tipo_dispositivo=tipo_dispositivo
+                )
+
+                # Si es ambiguo, mostrar pregunta de desambiguación
+                if tipo_dispositivo == "ambiguo":
+                    # Prevenir repetición: si ya enviamos el menú, dar respuesta diferente
+                    if fue_ultimo_mensaje_menu_ambiguo(historial):
+                        respuesta = generar_respuesta_post_ambiguo()
+                        logger.info(f"[AMBIGUO-REPEAT] {msg.telefono} — enviando respuesta alternativa (no repetir menú)")
+                    else:
+                        respuesta = (
+                            "Hola! 👋\n\n"
+                            "Para ayudarte mejor, dime qué necesitas reparar:\n\n"
+                            "📱 **Celular/Tablet** — Pantalla, batería, puerto carga\n"
+                            "🎮 **Consola** — PlayStation, Xbox, Nintendo\n"
+                            "💻 **Laptop/PC** — Batería, pantalla, teclado, cooler\n\n"
+                            "¿Cuál es tu caso? 🛠️"
+                        )
+                        logger.info(f"[AMBIGUO] {msg.telefono} — menú de dispositivos mostrado")
 
                 # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
                 tag = parsear_tag_agendar(respuesta)
@@ -840,6 +962,17 @@ async def webhook_handler(request: Request):
                 # CRÍTICO: limpiar tags SIEMPRE antes de enviar al cliente
                 # (por si quedó algún tag residual de cualquier pathway)
                 respuesta = quitar_tags(respuesta)
+
+                # 🆕 NUEVO: Procesar comando @pausa si existe en la respuesta de Claude
+                procesador = await obtener_procesador_pausa()
+                respuesta, pausa_ejecutada = await procesador.procesar(
+                    respuesta_claude=respuesta,
+                    numero_cliente=msg.telefono,
+                    asesor=asesor
+                )
+
+                if pausa_ejecutada:
+                    logger.info(f"[PAUSA] Conversación pausada para {msg.telefono}")
 
                 await guardar_mensaje(msg.telefono, "user", msg.texto)
                 await guardar_mensaje(msg.telefono, "assistant", respuesta)

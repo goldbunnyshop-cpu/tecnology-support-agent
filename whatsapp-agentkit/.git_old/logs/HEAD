@@ -1,0 +1,12 @@
+0000000000000000000000000000000000000000 7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 Christian <goldbunnyshop@gmail.com> 1779054335 -0600	commit (initial): feat: Add Smart Reminder System - Complete implementation
+7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 0000000000000000000000000000000000000000 Christian <goldbunnyshop@gmail.com> 1779054395 +0000	Branch: renamed refs/heads/master to refs/heads/main
+0000000000000000000000000000000000000000 7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 Christian <goldbunnyshop@gmail.com> 1779054395 +0000	Branch: renamed refs/heads/master to refs/heads/main
+7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 0000000000000000000000000000000000000000 Christian <goldbunnyshop@gmail.com> 1779054633 -0600	Branch: renamed refs/heads/main to refs/heads/main
+7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 Christian <goldbunnyshop@gmail.com> 1779054633 -0600	Branch: renamed refs/heads/main to refs/heads/main
+7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 0000000000000000000000000000000000000000 Christian <goldbunnyshop@gmail.com> 1779054650 -0600	Branch: renamed refs/heads/main to refs/heads/main
+7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 Christian <goldbunnyshop@gmail.com> 1779054650 -0600	Branch: renamed refs/heads/main to refs/heads/main
+7724ac61ad2e40bce67ee4c88bc46b7f5ea89760 0a8763d1d0630b943857d2220c59b7e629051cf9 Christian <goldbunnyshop@gmail.com> 1779054759 +0000	commit: feat: Integrate Smart Reminders System - Auto-schedule appointment notifications
+0a8763d1d0630b943857d2220c59b7e629051cf9 cce42def9dbdc1f53209b61f427c52d1cb8b5d7b Christian <goldbunnyshop@gmail.com> 1779266908 -0600	commit: Temporalmente: deshabilitado modo nocturno para testing de pricing system
+cce42def9dbdc1f53209b61f427c52d1cb8b5d7b 218a18e4660182b98ec6bd569891faf5aeab003c Christian <goldbunnyshop@gmail.com> 1779267414 -0600	commit: chore: force redeploy after Railway outage — sleep mode disabled for testing
+218a18e4660182b98ec6bd569891faf5aeab003c cd3f04ab3ea1a834851d0874f3861d7b6cc48ef9 Christian <goldbunnyshop@gmail.com> 1779268564 -0600	commit: test: mensaje visible para verificar que Railway usa código nuevo
+cd3f04ab3ea1a834851d0874f3861d7b6cc48ef9 2970e3a79c0f39aceb9dbb1613106eddad979f70 Christian <goldbunnyshop@gmail.com> 1779269621 +0000	commit: chore: force railway redeploy — verify infrastructure

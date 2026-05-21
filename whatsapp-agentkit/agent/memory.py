@@ -154,6 +154,16 @@ class Pausa(Base):
     activa: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class HistorialDispositivo(Base):
+    """Historial de tipos de dispositivos que un cliente ha consultado o reparado."""
+    __tablename__ = "historial_dispositivos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telefono: Mapped[str] = mapped_column(String(50), index=True)
+    tipo_dispositivo: Mapped[str] = mapped_column(String(20))  # "celular" | "consola" | "laptop"
+    fecha_consulta: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 async def obtener_perfil(telefono: str) -> ClientePerfil | None:
     async with async_session() as session:
         result = await session.execute(
@@ -287,7 +297,7 @@ async def inicializar_db():
     from agent.leads import _migrar_columnas
     await _migrar_columnas()
     await _migrar_clientes_perfil()
-    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio, mensajes_procesados, citas_notificadas, pausas")
+    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio, mensajes_procesados, citas_notificadas, pausas, historial_dispositivos")
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):
@@ -547,3 +557,32 @@ async def marcar_confirmacion_cita_enviada(cliente_telefono: str, evento_id: str
             await session.commit()
         except Exception:
             await session.rollback()  # UNIQUE constraint → ya registrada, ignorar
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# HISTORIAL DE DISPOSITIVOS — Multi-dispositivo + Cross-sell
+# ════════════════════════════════════════════════════════════════════════════════
+
+async def registrar_dispositivo_cliente(telefono: str, tipo: str) -> None:
+    """Registra que el cliente ha consultado sobre este tipo de dispositivo."""
+    if tipo not in ["celular", "consola", "laptop"]:
+        return
+    async with async_session() as session:
+        registro = HistorialDispositivo(telefono=telefono, tipo_dispositivo=tipo)
+        session.add(registro)
+        await session.commit()
+        logger.info(f"[HISTORIAL] Dispositivo registrado: {telefono} → {tipo}")
+
+
+async def obtener_dispositivos_cliente(telefono: str) -> list[str]:
+    """Retorna TODOS los tipos de dispositivos que el cliente ha consultado (sin duplicados)."""
+    async with async_session() as session:
+        query = (
+            select(HistorialDispositivo.tipo_dispositivo)
+            .where(HistorialDispositivo.telefono == telefono)
+            .distinct()
+        )
+        result = await session.execute(query)
+        tipos = result.scalars().all()
+        logger.info(f"[HISTORIAL] Dispositivos del cliente {telefono}: {tipos}")
+        return list(tipos) if tipos else []

@@ -22,8 +22,18 @@ CALIDADES_REFACCION = ["Genérica", "Tipo original"]
 UBICACION = "https://maps.app.goo.gl/XdCSu743LpyY6aAt7"
 
 HORARIO = {
-    "lunes_viernes": {"apertura": "10:30", "cierre": "19:00"},
-    "sabado_domingo": {"apertura": "11:30", "cierre": "18:30"},
+    "lunes_viernes": {
+        "apertura": "10:00",
+        "cierre": "21:00",
+        "citas_apertura": "10:30",  # Media hora después de abrir
+        "citas_cierre": "20:30",    # Media hora antes de cerrar
+    },
+    "sabado_domingo": {
+        "apertura": "11:00",
+        "cierre": "20:00",
+        "citas_apertura": "11:30",  # Media hora después de abrir
+        "citas_cierre": "19:30",    # Media hora antes de cerrar
+    },
 }
 
 
@@ -44,20 +54,27 @@ def obtener_horario() -> dict:
     hora_actual = ahora.hour + ahora.minute / 60
 
     if dia_semana <= 4:  # Lunes a Viernes
-        apertura = 10.5   # 10:30
-        cierre = 19.0     # 7:00 PM
-        horario_texto = "Lunes a Viernes de 10:30am a 7:00pm"
+        apertura = 10.0        # 10:00 AM (abre)
+        cierre = 21.0          # 9:00 PM (cierra)
+        citas_apertura = 10.5  # 10:30 AM (primeras citas)
+        citas_cierre = 20.5    # 8:30 PM (últimas citas)
+        horario_texto = "Lunes a Viernes de 10:00am a 9:00pm"
     else:  # Sábado y Domingo
-        apertura = 11.5   # 11:30
-        cierre = 18.5     # 6:30 PM
-        horario_texto = "Sábados y Domingos de 11:30am a 6:30pm"
+        apertura = 11.0        # 11:00 AM (abre)
+        cierre = 20.0          # 8:00 PM (cierra)
+        citas_apertura = 11.5  # 11:30 AM (primeras citas)
+        citas_cierre = 19.5    # 7:30 PM (últimas citas)
+        horario_texto = "Sábados y Domingos de 11:00am a 8:00pm"
 
     esta_abierto = apertura <= hora_actual < cierre
 
     return {
         "horario_texto": horario_texto,
         "esta_abierto": esta_abierto,
-        "horario_completo": "Lunes a Viernes 10:30am–7:00pm · Sábados y Domingos 11:30am–6:30pm · Abiertos los 7 días",
+        "horario_completo": "Lunes a Viernes 10:00am–9:00pm · Sábados y Domingos 11:00am–8:00pm · Abiertos los 7 días",
+        "horario_citas": f"{int(citas_apertura)}:{int((citas_apertura % 1) * 60):02d} – {int(citas_cierre)}:{int((citas_cierre % 1) * 60):02d}",
+        "citas_apertura": citas_apertura,
+        "citas_cierre": citas_cierre,
     }
 
 
@@ -132,21 +149,70 @@ def registrar_lead(telefono: str, nombre: str, dispositivo: str, interes: str) -
         "nombre": nombre,
         "dispositivo": dispositivo,
         "interes": interes,
-        "fecha_registro": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "estado": "nuevo",
+        "timestamp": datetime.now().isoformat(),
+        "estado": "nuevo_lead",
     }
-    logger.info(f"Lead registrado: {nombre} — {dispositivo}")
+    logger.info(f"Lead registrado: {nombre} — {dispositivo} — {interes}")
     return lead
 
 
-def escalar_a_tecnico(telefono: str, motivo: str) -> str:
+def fue_ultimo_mensaje_menu_ambiguo(historial: list[dict]) -> bool:
     """
-    Marca una conversación para escalamiento al técnico.
-    Se usa para servicios de software, soporte post-venta complejo o cotizaciones especiales.
+    Detecta si el último mensaje del asistente fue el menú de dispositivos ambiguo.
     """
-    logger.info(f"Escalamiento requerido: {telefono} — Motivo: {motivo}")
+    if not historial:
+        return False
+
+    ultimo = historial[-1]
+    if ultimo.get("role") != "assistant":
+        return False
+
+    contenido = ultimo.get("content", "").lower()
+    palabras_clave = ["¿qué dispositivo", "cual dispositivo", "tipo de dispositivo", "celular", "laptop", "consola"]
+
+    return any(palabra in contenido for palabra in palabras_clave) and "?" in contenido
+
+
+def generar_respuesta_post_ambiguo() -> str:
+    """
+    Genera una respuesta alternativa cuando el cliente insiste siendo ambiguo
+    después de que el bot ya mostró el menú una vez.
+    """
     return (
-        "He registrado su consulta y un técnico especializado le contactará a la brevedad. "
-        "También puede acudir directamente a nuestro módulo de reparación: "
-        f"{UBICACION}"
+        "Para poder ayudarte mejor, necesito saber qué dispositivo tienes:\n\n"
+        "📱 *Celular* (iPhone, Samsung, Motorola, etc.)\n"
+        "💻 *Laptop* (Windows, Mac, Linux)\n"
+        "🎮 *Consola* (PS4, PS5, Xbox, Nintendo Switch)\n\n"
+        "¿Cuál es tu dispositivo? Así te doy presupuesto exacto."
     )
+
+
+def detectar_tipo_dispositivo_en_mensaje(mensaje: str, historial: list[dict] = None) -> str:
+    """
+    Detecta el tipo de dispositivo mencionado en el mensaje.
+    Si no hay coincidencia clara, usa el dispositivo del historial.
+    Si no hay historial, retorna 'ambiguo'.
+    """
+    mensaje_lower = mensaje.lower()
+
+    # Palabras clave por dispositivo
+    dispositivos = {
+        "celular": ["iphone", "samsung", "motorola", "xiaomi", "huawei", "celular", "teléfono", "phone", "móvil", "android"],
+        "laptop": ["laptop", "notebook", "macbook", "windows", "mac", "linux", "computadora", "pc", "thinkpad", "dell", "hp", "asus"],
+        "consola": ["ps4", "ps5", "playstation", "xbox", "nintendo", "switch", "consola", "gaming"],
+    }
+
+    # Buscar coincidencias en el mensaje
+    for tipo, palabras in dispositivos.items():
+        if any(palabra in mensaje_lower for palabra in palabras):
+            return tipo
+
+    # Si no hay coincidencia clara, usar historial
+    if historial:
+        for msg in reversed(historial):
+            if msg.get("role") == "user":
+                for tipo, palabras in dispositivos.items():
+                    if any(palabra in msg.get("content", "").lower() for palabra in palabras):
+                        return tipo
+
+    return "ambiguo"

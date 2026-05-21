@@ -22,6 +22,7 @@ class MensajeEntrante:
     media_thumbnail_b64: str = ""    # Thumbnail JPEG en base64 (videos de Whapi)
     media_id: str = ""               # ID de media de Whapi (fallback si URL vacía)
     media_mime_type: str = ""        # MIME type declarado por el proveedor
+    canal: str = "whatsapp"     # Origen del mensaje: whatsapp | messenger | instagram
 
 
 class ProveedorWhatsApp(ABC):
@@ -36,7 +37,4 @@ class ProveedorWhatsApp(ABC):
         ...
 
     async def validar_webhook(self, request: Request) -> dict | int | None:
-        return None
-
-    async def enviar_typing(self, telefono: str) -> None:
-        pass
+        

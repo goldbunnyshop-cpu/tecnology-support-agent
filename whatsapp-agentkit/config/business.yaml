@@ -13,6 +13,7 @@ negocio:
     El diagnóstico físico tiene un costo de $200 MXN, toma aproximadamente 2 horas
     y se bonifica si el cliente acepta el presupuesto de reparación.
   horario: "Lunes a Viernes de 10:00am a 9:00pm, Sábados y Domingos de 11:00am a 8:00pm"
+  horario_citas: "Lunes a Viernes de 10:30am a 8:30pm (media hora después de apertura, media hora antes de cierre), Sábados y Domingos de 11:30am a 7:30pm"
   ubicacion: "https://maps.app.goo.gl/XdCSu743LpyY6aAt7"
   costo_diagnostico: "$200 MXN (se bonifica si acepta la reparación)"
   tiempo_diagnostico: "Aproximadamente 2 horas"
@@ -25,11 +26,4 @@ agente:
   tono: "Profesional y formal"
   casos_de_uso:
     - "Responder preguntas frecuentes"
-    - "Agendar citas o reservaciones"
-    - "Calificar y atender leads / ventas"
-    - "Tomar pedidos"
-    - "Soporte post-venta"
-
-metadata:
-  creado: "2026-04-24"
-  version: "1.0"
+    - "Agendar citas o reserva
