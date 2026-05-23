@@ -34,6 +34,7 @@ from agent.tools import (
     generar_respuesta_post_ambiguo,
     detectar_tipo_dispositivo_en_mensaje,
 )
+from agent.commands import procesar_comando_grupo, esta_bloqueado, inicializar_sistema_cupones
 
 load_dotenv()
 
@@ -50,13 +51,17 @@ PORT = int(os.getenv("PORT", 8000))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicializa la base de datos y el scheduler al arrancar el servidor."""
+    """Inicializa la base de datos, scheduler y sistema de cupones al arrancar el servidor."""
     await inicializar_db()
     logger.info("Base de datos inicializada")
 
     # Inicializar scheduler para reactivación de sleep mode
     await inicializar_scheduler(app)
     logger.info("Scheduler de reactivación inicializado")
+
+    # Inicializar sistema de cupones (crea hoja ClientePerfil en Google Sheets)
+    await inicializar_sistema_cupones()
+    logger.info("Sistema de cupones inicializado")
 
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")
     logger.info(f"Proveedor de WhatsApp: {proveedor.__class__.__name__}")
@@ -158,6 +163,34 @@ async def webhook_handler(request: Request):
                 continue
 
             try:
+                # PASO 2.5: VERIFICAR BLOQUEO (NUEVO)
+                if esta_bloqueado(msg.telefono):
+                    logger.info(f"🚫 [BLOQUEO] Número {msg.telefono} está bloqueado — ignorando mensaje")
+                    continue
+
+                # PASO 2.6: PROCESAR COMANDOS DEL GRUPO INTERNO (NUEVO)
+                # Intentar procesar si es un comando del grupo
+                try:
+                    # Crear un objeto simple con los atributos necesarios si msg no es un objeto completo
+                    if not hasattr(msg, "nombre_grupo"):
+                        # Si msg viene de Whapi sin nombre_grupo, saltamos procesamiento de comandos
+                        es_comando_procesado = False
+                    else:
+                        es_comando_procesado = await procesar_comando_grupo(
+                            msg,
+                            proveedor,
+                            guardar_mensaje,
+                            obtener_historial,
+                        )
+
+                    if es_comando_procesado:
+                        logger.info(f"✅ Comando de grupo procesado para {msg.telefono}")
+                        continue  # No procesar como mensaje normal
+                except Exception as e:
+                    logger.debug(f"[CMD] No es comando o error procesando: {e}")
+                    # No es error crítico, continuar con flujo normal
+                    es_comando_procesado = False
+
                 # PASO 3: Obtener historial
                 try:
                     logger.debug(f"🔵 PASO 3: Obteniendo historial de {msg.telefono}...")

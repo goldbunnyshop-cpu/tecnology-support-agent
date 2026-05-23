@@ -5,7 +5,7 @@ import re
 import json
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from googleapiclient.discovery import build
@@ -474,6 +474,247 @@ def _subir_reporte_a_drive_sync(ruta_local: str) -> str:
         return ""
 
 
+# ─── Cupones: Sistema de descuentos (2nd, noshow) ────────────────────────────
+
+def _crear_hoja_cupones_sync():
+    """Crea hoja ClientePerfil si no existe, con headers."""
+    if not SHEET_ID:
+        return False
+    try:
+        svc = _sheets_svc()
+        meta = svc.spreadsheets().get(spreadsheetId=SHEET_ID).execute()
+        hojas = [s["properties"]["title"] for s in meta.get("sheets", [])]
+
+        if "ClientePerfil" in hojas:
+            logger.info("[CRM] ClientePerfil ya existe")
+            return True
+
+        # Crear hoja
+        svc.spreadsheets().batchUpdate(
+            spreadsheetId=SHEET_ID,
+            body={"requests": [{"addSheet": {"properties": {"title": "ClientePerfil"}}}]},
+        ).execute()
+
+        # Headers
+        headers = [
+            "Teléfono", "Nombre", "Cupones Activos", "Cupones Usados",
+            "Última Actualización"
+        ]
+        svc.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID,
+            range="'ClientePerfil'!A1",
+            valueInputOption="USER_ENTERED",
+            body={"values": [headers]},
+        ).execute()
+
+        logger.info("[CRM] Hoja ClientePerfil creada")
+        return True
+    except Exception as e:
+        logger.error(f"[CRM] Error creando ClientePerfil: {e}")
+        return False
+
+
+def _buscar_cliente_en_perfil_sync(telefono: str) -> dict | None:
+    """Busca un cliente en ClientePerfil. Retorna fila o None."""
+    if not SHEET_ID:
+        return None
+    try:
+        svc = _sheets_svc()
+        # Obtener todas las filas
+        res = svc.spreadsheets().values().get(
+            spreadsheetId=SHEET_ID, range="'ClientePerfil'!A:E"
+        ).execute()
+        valores = res.get("values", [])[1:]  # saltar header
+
+        telefono_norm = re.sub(r"\D", "", telefono)
+        for idx, fila in enumerate(valores):
+            tel = re.sub(r"\D", "", fila[0] if len(fila) > 0 else "")
+            if tel == telefono_norm:
+                return {
+                    "fila": idx + 2,  # +2: idx es 0-based + header
+                    "telefono": fila[0] if len(fila) > 0 else "",
+                    "nombre": fila[1] if len(fila) > 1 else "",
+                    "cupones_activos": json.loads(fila[2]) if len(fila) > 2 and fila[2].strip() else [],
+                    "cupones_usados": json.loads(fila[3]) if len(fila) > 3 and fila[3].strip() else [],
+                    "ultima_actualizacion": fila[4] if len(fila) > 4 else "",
+                }
+        return None
+    except Exception as e:
+        logger.warning(f"[CRM] Error buscando cliente {telefono}: {e}")
+        return None
+
+
+def _registrar_cupon_sync(
+    telefono: str, codigo: str, porcentaje: int, dias_validez: int = 8
+) -> bool:
+    """Registra un nuevo cupón para un cliente."""
+    if not SHEET_ID:
+        return False
+
+    try:
+        svc = _sheets_svc()
+        zona = ZoneInfo("America/Mexico_City")
+        ahora = datetime.now(zona)
+        vencimiento = ahora + timedelta(days=dias_validez)
+
+        # Crear cupon dict
+        cupon = {
+            "codigo": codigo,
+            "porcentaje": porcentaje,
+            "fecha_generacion": ahora.isoformat(),
+            "fecha_expiracion": vencimiento.isoformat(),
+            "estado": "activo",
+            "folio_aplicado": None,
+        }
+
+        cliente = _buscar_cliente_en_perfil_sync(telefono)
+
+        if cliente:
+            # Cliente existe — actualizar
+            cupones_activos = cliente["cupones_activos"] or []
+            cupones_activos.append(cupon)
+            fila_num = cliente["fila"]
+
+            svc.spreadsheets().values().update(
+                spreadsheetId=SHEET_ID,
+                range=f"'ClientePerfil'!C{fila_num}",
+                valueInputOption="USER_ENTERED",
+                body={"values": [[json.dumps(cupones_activos, ensure_ascii=False, default=str)]]},
+            ).execute()
+
+            # Actualizar timestamp
+            svc.spreadsheets().values().update(
+                spreadsheetId=SHEET_ID,
+                range=f"'ClientePerfil'!E{fila_num}",
+                valueInputOption="USER_ENTERED",
+                body={"values": [[ahora.strftime("%d/%m/%Y %H:%M")]]},
+            ).execute()
+        else:
+            # Cliente nuevo — crear fila
+            nueva_fila = [
+                telefono,
+                "",  # nombre vacío
+                json.dumps([cupon], ensure_ascii=False, default=str),
+                json.dumps([], ensure_ascii=False),  # cupones_usados vacío
+                ahora.strftime("%d/%m/%Y %H:%M"),
+            ]
+
+            svc.spreadsheets().values().append(
+                spreadsheetId=SHEET_ID,
+                range="'ClientePerfil'!A:E",
+                valueInputOption="USER_ENTERED",
+                insertDataOption="INSERT_ROWS",
+                body={"values": [nueva_fila]},
+            ).execute()
+
+        logger.info(
+            f"[CRM] Cupón {codigo} ({porcentaje}%) registrado para {telefono} "
+            f"— vence {vencimiento.strftime('%d/%m/%Y')}"
+        )
+        return True
+    except Exception as e:
+        logger.error(f"[CRM] Error registrando cupón: {e}")
+        return False
+
+
+def _consultar_cupones_activos_sync(telefono: str) -> list[dict]:
+    """Retorna cupones vigentes de un cliente (no vencidos, no usados)."""
+    if not SHEET_ID:
+        return []
+
+    try:
+        cliente = _buscar_cliente_en_perfil_sync(telefono)
+        if not cliente:
+            return []
+
+        ahora = datetime.now(ZoneInfo("America/Mexico_City"))
+        cupones_vigentes = []
+
+        for cupon in cliente.get("cupones_activos", []):
+            try:
+                fecha_exp = datetime.fromisoformat(cupon.get("fecha_expiracion", ""))
+                if ahora < fecha_exp and cupon.get("estado") == "activo":
+                    cupones_vigentes.append(cupon)
+            except (ValueError, TypeError):
+                pass
+
+        return cupones_vigentes
+    except Exception as e:
+        logger.warning(f"[CRM] Error consultando cupones: {e}")
+        return []
+
+
+def _validar_cupon_sync(telefono: str, codigo: str) -> dict | None:
+    """Valida un cupón. Retorna dict del cupón si es válido, None si no."""
+    cupones = _consultar_cupones_activos_sync(telefono)
+    for cupon in cupones:
+        if cupon.get("codigo", "").upper() == codigo.upper():
+            return cupon
+    return None
+
+
+def _marcar_cupon_usado_sync(telefono: str, codigo: str, folio_orden: str) -> bool:
+    """Marca un cupón como usado (movido a cupones_usados)."""
+    if not SHEET_ID:
+        return False
+
+    try:
+        svc = _sheets_svc()
+        cliente = _buscar_cliente_en_perfil_sync(telefono)
+
+        if not cliente:
+            return False
+
+        cupones_activos = cliente.get("cupones_activos", [])
+        cupones_usados = cliente.get("cupones_usados", [])
+        fila_num = cliente["fila"]
+        ahora = datetime.now(ZoneInfo("America/Mexico_City"))
+
+        # Buscar y mover cupón
+        cupon_encontrado = None
+        for i, cupon in enumerate(cupones_activos):
+            if cupon.get("codigo", "").upper() == codigo.upper():
+                cupon_encontrado = cupon
+                cupon["estado"] = "usado"
+                cupon["folio_aplicado"] = folio_orden
+                cupon["fecha_uso"] = ahora.isoformat()
+                cupones_usados.append(cupon)
+                cupones_activos.pop(i)
+                break
+
+        if not cupon_encontrado:
+            return False
+
+        # Actualizar ambas columnas
+        svc.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID,
+            range=f"'ClientePerfil'!C{fila_num}",
+            valueInputOption="USER_ENTERED",
+            body={"values": [[json.dumps(cupones_activos, ensure_ascii=False, default=str)]]},
+        ).execute()
+
+        svc.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID,
+            range=f"'ClientePerfil'!D{fila_num}",
+            valueInputOption="USER_ENTERED",
+            body={"values": [[json.dumps(cupones_usados, ensure_ascii=False, default=str)]]},
+        ).execute()
+
+        # Actualizar timestamp
+        svc.spreadsheets().values().update(
+            spreadsheetId=SHEET_ID,
+            range=f"'ClientePerfil'!E{fila_num}",
+            valueInputOption="USER_ENTERED",
+            body={"values": [[ahora.strftime("%d/%m/%Y %H:%M")]]},
+        ).execute()
+
+        logger.info(f"[CRM] Cupón {codigo} marcado como usado (folio {folio_orden})")
+        return True
+    except Exception as e:
+        logger.error(f"[CRM] Error marcando cupón como usado: {e}")
+        return False
+
+
 # ─── API pública (async) ──────────────────────────────────────────────────────
 
 async def inicializar_crm():
@@ -521,3 +762,36 @@ async def obtener_ordenes_por_estatus(estatus: str) -> list[dict]:
 
 async def subir_reporte_a_drive(ruta_local: str) -> str:
     return await asyncio.to_thread(_subir_reporte_a_drive_sync, ruta_local)
+
+
+# ─── API pública para cupones (async) ─────────────────────────────────────────
+
+async def crear_hoja_cupones():
+    """Inicializa la hoja ClientePerfil para gestionar cupones."""
+    return await asyncio.to_thread(_crear_hoja_cupones_sync)
+
+
+async def registrar_cupon(
+    telefono: str, codigo: str, porcentaje: int, dias_validez: int = 8
+) -> bool:
+    """Registra un nuevo cupón para un cliente."""
+    return await asyncio.to_thread(
+        _registrar_cupon_sync, telefono, codigo, porcentaje, dias_validez
+    )
+
+
+async def consultar_cupones_activos(telefono: str) -> list[dict]:
+    """Retorna cupones vigentes (no vencidos, no usados) de un cliente."""
+    return await asyncio.to_thread(_consultar_cupones_activos_sync, telefono)
+
+
+async def validar_cupon(telefono: str, codigo: str) -> dict | None:
+    """Valida un cupón. Retorna el dict del cupón si es válido."""
+    return await asyncio.to_thread(_validar_cupon_sync, telefono, codigo)
+
+
+async def marcar_cupon_usado(telefono: str, codigo: str, folio_orden: str) -> bool:
+    """Marca un cupón como usado."""
+    return await asyncio.to_thread(
+        _marcar_cupon_usado_sync, telefono, codigo, folio_orden
+    )
