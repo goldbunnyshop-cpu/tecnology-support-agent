@@ -111,10 +111,11 @@ class PausaManager:
             return False, f"⚠️ Ya está pausado: {numero_limpio}"
 
         try:
-            # Aquí se integraría con agent.memory.pausar_conversacion
-            # await pausar_conversacion(numero_limpio, horas=duracion_horas)
+            # Guardar pausa en la base de datos
+            from agent.memory import pausar_conversacion
+            await pausar_conversacion(numero_limpio, horas=duracion_horas)
 
-            # Registrar pausa local
+            # Registrar pausa local (respaldo en memoria)
             self.pausas_activas[numero_limpio] = datetime.now(ZONA_MEXICO)
             self.historial_pausas.append({
                 'numero': numero_limpio,

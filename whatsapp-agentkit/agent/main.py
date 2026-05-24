@@ -16,7 +16,7 @@ from fastapi.responses import PlainTextResponse
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
-from agent.memory import inicializar_db, guardar_mensaje, obtener_historial
+from agent.memory import inicializar_db, guardar_mensaje, obtener_historial, esta_pausada
 from agent.providers import obtener_proveedor
 from agent.sleep_mode import (
     esta_en_horario_operacion_bot,
@@ -166,6 +166,11 @@ async def webhook_handler(request: Request):
                 # PASO 2.5: VERIFICAR BLOQUEO (NUEVO)
                 if esta_bloqueado(msg.telefono):
                     logger.info(f"🚫 [BLOQUEO] Número {msg.telefono} está bloqueado — ignorando mensaje")
+                    continue
+
+                # PASO 2.5b: VERIFICAR PAUSA (intervención manual)
+                if await esta_pausada(msg.telefono):
+                    logger.info(f"⏸️ [PAUSA] Número {msg.telefono} está pausado — Christian atenderá manualmente")
                     continue
 
                 # PASO 2.6: PROCESAR COMANDOS DEL GRUPO INTERNO (NUEVO)
