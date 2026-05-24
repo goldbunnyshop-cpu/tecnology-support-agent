@@ -164,14 +164,24 @@ async def webhook_handler(request: Request):
 
             try:
                 # PASO 2.5: VERIFICAR BLOQUEO (NUEVO)
+                logger.debug(f"🔵 PASO 2.5: Verificando bloqueo para {msg.telefono}...")
                 if esta_bloqueado(msg.telefono):
                     logger.info(f"🚫 [BLOQUEO] Número {msg.telefono} está bloqueado — ignorando mensaje")
                     continue
+                logger.debug(f"✅ PASO 2.5: No está bloqueado")
 
                 # PASO 2.5b: VERIFICAR PAUSA (intervención manual)
-                if await esta_pausada(msg.telefono):
-                    logger.info(f"⏸️ [PAUSA] Número {msg.telefono} está pausado — Christian atenderá manualmente")
-                    continue
+                logger.debug(f"🔵 PASO 2.5b: Verificando pausa para {msg.telefono}...")
+                try:
+                    esta_en_pausa = await esta_pausada(msg.telefono)
+                    logger.debug(f"✅ PASO 2.5b: Pausa check completado. Resultado: {esta_en_pausa}")
+                    if esta_en_pausa:
+                        logger.info(f"⏸️ [PAUSA] Número {msg.telefono} está pausado — Christian atenderá manualmente")
+                        continue
+                except Exception as e:
+                    logger.error(f"❌ ERROR en PASO 2.5b (pausa check): {e}", exc_info=True)
+                    raise
+                logger.debug(f"✅ PASO 2.5b: Número no está pausado, continuando")
 
                 # PASO 2.6: PROCESAR COMANDOS DEL GRUPO INTERNO (NUEVO)
                 # Intentar procesar si es un comando del grupo
@@ -269,7 +279,8 @@ async def webhook_handler(request: Request):
                 logger.info(f"✅ Ciclo completo exitoso para {msg.telefono}")
 
             except Exception as e:
-                logger.error(f"❌ ERROR en procesamiento de mensaje de {msg.telefono}: {e}", exc_info=True)
+                logger.error(f"❌ ERROR CRÍTICO en procesamiento de mensaje de {msg.telefono}: {e}", exc_info=True)
+                logger.error(f"Tipo de error: {type(e).__name__}")
                 # Continuar con el siguiente mensaje en lugar de crashear
                 continue
 
