@@ -612,3 +612,86 @@ async def obtener_cotizador() -> CotizadorPrecios:
     cotizador = CotizadorPrecios()
     await cotizador.inicializar()
     return cotizador
+
+
+# ============================================================================
+# FUNCIÓN PÚBLICA: OBTENER COTIZACIÓN DISPLAY
+# ============================================================================
+
+async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
+    """
+    Obtiene cotización de display para un modelo específico.
+    Busca en Hugo Shop cache y retorna texto formateado para el cliente.
+
+    Args:
+        marca: Marca del dispositivo (ej: "iPhone", "Samsung")
+        modelo: Modelo específico (ej: "16", "S24")
+
+    Returns:
+        String con opciones de precio formateado o mensaje de fallback
+    """
+    logger.info(f"[PRICING] Buscando cotización: {marca} {modelo}")
+
+    try:
+        # Cargar cache de Hugo Shop
+        cache_manager = CacheManager()
+        productos = cache_manager.cargar_hugo_shop()
+
+        if not productos:
+            logger.warning("[PRICING] Cache Hugo Shop vacío")
+            return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto, ambas con garantía 90 días."
+
+        # Buscar productos que coincidan
+        consulta = f"{marca} {modelo}".lower()
+        coincidencias = [p for p in productos if consulta in p.get("DESCRIPCIÓN", "").lower()]
+
+        if not coincidencias:
+            logger.warning(f"[PRICING] Sin coincidencias para: {consulta}")
+            return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto."
+
+        # Procesar cotizaciones (máximo 2 opciones: genérico y original)
+        cotizaciones = []
+        for producto in coincidencias[:2]:
+            try:
+                precio_base = float(producto.get("PRECIO_1", 0))
+                if precio_base <= 0:
+                    continue
+
+                descripcion = producto.get("DESCRIPCIÓN", "")
+                calidad = DetectorDispositivo.detectar_calidad(descripcion)
+                multiplicador = MotorMultiplicadores.obtener_multiplicador(
+                    FuentePrecio.HUGO_SHOP,
+                    calidad
+                )
+                precio_final = int(precio_base * multiplicador)
+
+                # Determinar etiqueta (Genérico o Original)
+                if "original" in descripcion.lower() or calidad in [CalidadDispositivo.OLED, CalidadDispositivo.AMOLED]:
+                    etiqueta = "Original"
+                else:
+                    etiqueta = "Genérico (Incell)"
+
+                cotizaciones.append({
+                    "etiqueta": etiqueta,
+                    "precio": precio_final,
+                    "calidad": calidad.value
+                })
+            except (ValueError, KeyError):
+                continue
+
+        if not cotizaciones:
+            return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas)."
+
+        # Formatear respuesta para el cliente
+        respuesta = f"Para {marca} {modelo} tenemos:\n"
+        for cot in cotizaciones[:2]:
+            respuesta += f"• Display {cot['etiqueta']}: ${cot['precio']:,} MXN\n"
+
+        respuesta += "\nAmbos incluyen diagnóstico, garantía 90 días y cambio el mismo día. ¿Cuál te interesa?"
+
+        logger.info(f"[PRICING] ✅ Cotización generada para {marca} {modelo}")
+        return respuesta
+
+    except Exception as e:
+        logger.error(f"[PRICING] Error obteniendo cotización: {e}")
+        return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto."
