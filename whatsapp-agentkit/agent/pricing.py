@@ -622,6 +622,68 @@ async def obtener_cotizador() -> CotizadorPrecios:
 _cotizador_global = None
 
 
+def _generar_cotizacion_fallback(marca: str, modelo: str) -> str:
+    """Genera cotización con fallback cuando Hugo Shop no está disponible"""
+
+    # Tabla de precios base por dispositivo (costo wholesale aproximado)
+    precios_fallback = {
+        'samsung galaxy a12': 280, 'samsung a12': 280,
+        'samsung galaxy a13': 300, 'samsung a13': 300,
+        'samsung galaxy a21': 280, 'samsung a21': 280,
+        'samsung galaxy a22': 320, 'samsung a22': 320,
+        'samsung galaxy a32': 350, 'samsung a32': 350,
+        'samsung galaxy a52': 400, 'samsung a52': 400,
+        'samsung galaxy a55': 420, 'samsung a55': 420,
+        'samsung galaxy s10': 500, 'samsung s10': 500,
+        'samsung galaxy s20': 800, 'samsung s20': 800,
+        'samsung galaxy s21': 950, 'samsung s21': 950,
+        'samsung galaxy s22': 1100, 'samsung s22': 1100,
+        'samsung galaxy s23': 1200, 'samsung s23': 1200,
+        'samsung galaxy s24': 1300, 'samsung s24': 1300,
+        'samsung': 350,  # Base para Samsung desconocido
+
+        'iphone 6': 400, 'iphone 7': 450, 'iphone 8': 500, 'iphone x': 800,
+        'iphone 11': 900, 'iphone 12': 1200, 'iphone 13': 1400,
+        'iphone 14': 1600, 'iphone 15': 1800, 'iphone 16': 2000,
+        'iphone': 1000,  # Base para iPhone desconocido
+
+        'motorola moto edge 50 fusion': 450, 'moto edge 50': 450,
+        'motorola moto g': 300, 'moto g': 300,
+        'motorola': 280,
+
+        'xiaomi': 250, 'redmi': 220, 'oppo': 280, 'vivo': 280,
+        'google pixel': 600, 'pixel': 600, 'oneplus': 400, 'huawei': 320,
+        'nokia': 200, 'lg': 280, 'honor': 300,
+    }
+
+    # Buscar precio base
+    consulta = f"{marca} {modelo}".lower()
+    precio_base = None
+
+    # Búsqueda exacta primero
+    for clave, precio in sorted(precios_fallback.items(), key=lambda x: -len(x[0])):
+        if clave in consulta:
+            precio_base = precio
+            break
+
+    # Si no encontró, usar promedio
+    if precio_base is None:
+        precio_base = 350
+        logger.info(f"[PRICING] Dispositivo no catalogado, usando precio genérico: ${precio_base}")
+
+    # Calcular precios con multiplicadores
+    precio_generico = int(precio_base * 3.5)  # Multiplicador 3.5x para genérico
+    precio_original = int(precio_base * 4.0)  # Multiplicador 4x para original
+
+    respuesta = f"Para {marca} {modelo} tenemos estas opciones:\n"
+    respuesta += f"• Display Genérico (Incell): ${precio_generico:,} MXN\n"
+    respuesta += f"• Display Original: ${precio_original:,} MXN\n"
+    respuesta += "\nAmbos con diagnóstico, garantía 90 días y cambio el mismo día. ¿Cuál te interesa?"
+
+    logger.info(f"[PRICING] 💬 Cotización fallback: {marca} {modelo} → Genérico: ${precio_generico:,}, Original: ${precio_original:,}")
+    return respuesta
+
+
 async def inicializar_cotizador():
     """Inicializa el cotizador global al arrancar el servidor"""
     global _cotizador_global
@@ -647,10 +709,11 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     Returns:
         String con opciones de precio formateado o mensaje de fallback
     """
-    logger.info(f"[PRICING] Buscando cotización: {marca} {modelo}")
+    logger.info(f"[PRICING] 💰 Buscando cotización: {marca} {modelo}")
 
     # Si hay cotizador global inicializado, usarlo
     if _cotizador_global:
+        logger.info(f"[PRICING] Usando cotizador global inicializado")
         try:
             descripcion = f"{marca} {modelo}".lower()
             cotizacion = await _cotizador_global.cotizar(descripcion)
@@ -679,16 +742,17 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
         productos = cache_manager.cargar_hugo_shop()
 
         if not productos:
-            logger.warning("[PRICING] Cache Hugo Shop vacío, usando fallback genérico")
-            return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto, ambas con garantía 90 días."
+            logger.warning(f"[PRICING] ⚠️ Cache Hugo Shop vacío, usando fallback genérico para: {marca} {modelo}")
+            # Generar cotización de fallback
+            return _generar_cotizacion_fallback(marca, modelo)
 
         # Buscar productos que coincidan
         consulta = f"{marca} {modelo}".lower()
         coincidencias = [p for p in productos if consulta in p.get("DESCRIPCIÓN", "").lower()]
 
         if not coincidencias:
-            logger.warning(f"[PRICING] Sin coincidencias en cache para: {consulta}")
-            return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto."
+            logger.warning(f"[PRICING] Sin coincidencias en cache para: {consulta}, usando fallback")
+            return _generar_cotizacion_fallback(marca, modelo)
 
         # Procesar cotizaciones (máximo 2 opciones: genérico y original)
         cotizaciones = []
@@ -734,5 +798,6 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
         return respuesta
 
     except Exception as e:
-        logger.error(f"[PRICING] Error obteniendo cotización: {e}")
-        return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto."
+        logger.error(f"[PRICING] 🚨 Error obteniendo cotización: {e}")
+        # Fallback final
+        return _generar_cotizacion_fallback(marca, modelo)

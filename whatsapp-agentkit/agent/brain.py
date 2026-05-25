@@ -77,11 +77,15 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
         r'\breparación\s+(?:de\s+)?(?:pantalla|display|screen)\b',
         r'\breparar\s+(?:pantalla|display|screen)\b',
 
-        # Preguntas genéricas de precio (sin requerir display explícito si hay marca)
+        # Preguntas genéricas de precio (sin requerir display explícito)
         r'\bcotizar\b',
         r'\bpresupuesto\b',
         r'\bcuánto\s+cuesta\b',
         r'\bcuál\s+es\s+el\s+(?:precio|costo|valor)\b',
+        r'\bapróximo\s+(?:precio|costo|valor)\b',
+        r'\bcosto\b',                              # Solo "costo"
+        r'\bprecio\b',                             # Solo "precio"
+        r'\bvalor\b',                              # Solo "valor"
     ]
 
     mensaje_lower = mensaje.lower()
@@ -89,10 +93,11 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
     # Verificar si pregunta sobre precios
     es_pregunta_precio = any(re.search(p, mensaje_lower) for p in patrones_display)
 
-    logger.debug(f"[BRAIN] Análisis de mensaje: '{mensaje_lower[:60]}...' | ¿Pregunta de precio? {es_pregunta_precio}")
-
-    if not es_pregunta_precio:
-        logger.debug(f"[BRAIN] Mensaje no coincide con patrones de precio")
+    # Logs en INFO para que aparezcan en Railway
+    if es_pregunta_precio:
+        logger.info(f"[BRAIN] 🔍 Pregunta de precio detectada en: '{mensaje_lower[:60]}...'")
+    else:
+        logger.debug(f"[BRAIN] Mensaje no es pregunta de precio: '{mensaje_lower[:60]}...'")
         return ""
 
     # Extraer marca y modelo (ej: "iPhone 16", "Samsung S24", "Moto Edge 50 Fusion")
