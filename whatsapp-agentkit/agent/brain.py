@@ -48,17 +48,23 @@ def obtener_mensaje_fallback() -> str:
     return config.get("fallback_message", "Disculpe, no entendí su mensaje. ¿Podría reformularlo?")
 
 
+def _confirmar_variante_amb(modelo: str) -> tuple[str, bool]:
+    """Si el modelo contiene '+', retorna una pregunta de confirmación."""
+    modelo_lower = modelo.lower()
+    if '+' in modelo_lower:
+        modelo_limpio = modelo_lower.replace(' +', '').replace('+', '')
+        respuesta = (
+            f"Detecté que preguntaste por un modelo con '+'. "
+            f"¿Quieres decir {modelo_limpio.title()} Plus, o fue accidental?\n"
+            f"Confirma: '**Plus**' para Plus o '**normal**' para el modelo base."
+        )
+        return respuesta, True
+    return "", False
 
 
 async def detectar_y_obtener_precios(mensaje: str) -> str:
-    """
-    Detecta si el mensaje pregunta sobre precios de displays.
-    Si lo hace, obtiene la cotización y retorna contexto inyectable.
-    """
-    # Patrones ampliados que indican pregunta sobre displays/pantallas
-    # Incluye: cotizar, presupuesto, valor, precio, costo, cuánto, cambio, reparación
+    """Detecta si el mensaje pregunta sobre precios de displays."""
     patrones_display = [
-        # Palabras clave de precio + display/pantalla
         r'\bcotizar.*(?:display|pantalla|screen)\b',
         r'\b(?:display|pantalla|screen).*cotizar\b',
         r'\bpresupuesto.*(?:display|pantalla|screen)\b',
@@ -71,93 +77,88 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
         r'\b(?:display|pantalla|screen).*costo\b',
         r'\bvalor.*(?:display|pantalla|screen)\b',
         r'\b(?:display|pantalla|screen).*valor\b',
-
-        # Palabras de reparación/cambio
         r'\bcambio\s+(?:de\s+)?(?:pantalla|display|screen)\b',
         r'\breparación\s+(?:de\s+)?(?:pantalla|display|screen)\b',
         r'\breparar\s+(?:pantalla|display|screen)\b',
-
-        # Preguntas genéricas de precio (sin requerir display explícito)
         r'\bcotizar\b',
         r'\bpresupuesto\b',
         r'\bcuánto\s+cuesta\b',
         r'\bcuál\s+es\s+el\s+(?:precio|costo|valor)\b',
         r'\bapróximo\s+(?:precio|costo|valor)\b',
-        r'\bcosto\b',                              # Solo "costo"
-        r'\bprecio\b',                             # Solo "precio"
-        r'\bvalor\b',                              # Solo "valor"
+        r'\bcosto\b',
+        r'\bprecio\b',
+        r'\bvalor\b',
     ]
 
     mensaje_lower = mensaje.lower()
-
-    # Verificar si pregunta sobre precios
     es_pregunta_precio = any(re.search(p, mensaje_lower) for p in patrones_display)
 
-    # Logs en INFO para que aparezcan en Railway
     if es_pregunta_precio:
-        logger.info(f"[BRAIN] 🔍 Pregunta de precio detectada en: '{mensaje_lower[:60]}...'")
+        logger.info(f"[BRAIN] 🔍 Pregunta de precio detectada")
     else:
-        logger.debug(f"[BRAIN] Mensaje no es pregunta de precio: '{mensaje_lower[:60]}...'")
+        logger.debug(f"[BRAIN] Mensaje no es pregunta de precio")
         return ""
 
-    # Extraer marca y modelo (ej: "iPhone 16", "Samsung S24", "Moto Edge 50 Fusion")
     patron_modelo = r'(iPhone|Samsung|Google Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG)\s+(\w+[\s\w]*)'
     match = re.search(patron_modelo, mensaje, re.IGNORECASE)
 
     if not match:
-        logger.debug(f"[BRAIN] Pregunta de precio detectada pero sin modelo identificable")
+        logger.debug(f"[BRAIN] Pregunta de precio pero sin modelo identificable")
         return ""
 
     marca = match.group(1)
     modelo = match.group(2).strip()
+    logger.info(f"[BRAIN] ✓ Pregunta detectada: {marca} {modelo}")
 
-    logger.info(f"[BRAIN] ✓ Pregunta sobre precios detectada: {marca} {modelo}")
+    msg_confirmacion, fue_ambiguo = _confirmar_variante_amb(modelo)
+    if fue_ambiguo:
+        return msg_confirmacion
 
-    # Obtener cotización
     cotizacion = await obtener_cotizacion_display(marca, modelo)
-
     if cotizacion:
         contexto = f"PRECIO ENCONTRADO PARA {marca.upper()} {modelo.upper()}:\n{cotizacion}"
-        logger.info(f"[BRAIN] ✓ Cotización obtenida: {marca} {modelo}")
+        logger.info(f"[BRAIN] ✓ Cotización obtenida")
         return contexto
 
-    logger.debug(f"[BRAIN] Cotización no encontrada para: {marca} {modelo}")
     return ""
 
 
-async def generar_respuesta(
-    mensaje: str,
-    historial: list[dict],
-    asesor: str = "Valentina",
-    contexto_cliente: str = "",
-) -> str:
+async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
+    """Genera una respuesta usando Claude API."""
     if not mensaje or len(mensaje.strip()) < 2:
         return obtener_mensaje_fallback()
 
-    # Detectar y obtener precios si pregunta sobre displays
-    if not contexto_cliente:
-        contexto_precios = await detectar_y_obtener_precios(mensaje)
-        if contexto_precios:
-            contexto_cliente = contexto_precios
+    system_prompt = construir_system_prompt()
 
-    system_prompt = construir_system_prompt(asesor)
-    if contexto_cliente:
-        system_prompt = f"{contexto_cliente}\n\n{system_prompt}"
+    contexto_precios = await detectar_y_obtener_precios(mensaje)
+    if contexto_precios:
+        system_prompt += f"\n\n## INFORMACIÓN DE PRECIOS (Inyectada por el sistema)\n{contexto_precios}"
+        logger.info(f"[BRAIN] 📊 Contexto de precios inyectado")
 
-    mensajes = [{"role": m["role"], "content": m["content"]} for m in historial]
-    mensajes.append({"role": "user", "content": mensaje})
+    mensajes = []
+    for msg in historial:
+        mensajes.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+
+    mensajes.append({
+        "role": "user",
+        "content": mensaje
+    })
 
     try:
         response = await client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
             system=system_prompt,
-            messages=mensajes,
+            messages=mensajes
         )
+
         respuesta = response.content[0].text
-        logger.info(f"[{asesor}] Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
+        logger.info(f"[BRAIN] ✓ Respuesta generada")
         return respuesta
 
     except Exception as e:
-        logger.error(f"Error Claude API: {e}")
+        logger.error(f"[BRAIN] Error Claude API: {e}")
         return obtener_mensaje_error()
