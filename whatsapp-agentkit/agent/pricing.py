@@ -711,6 +711,12 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     """
     logger.info(f"[PRICING] 💰 Buscando cotización: {marca} {modelo}")
 
+    # CAMBIO IMPORTANTE: Usar directamente _generar_cotizacion_fallback() que tiene tabla actualizada
+    # No pasar por CotizadorPrecios que tiene tabla desactualizada
+    return _generar_cotizacion_fallback(marca, modelo)
+
+    # Código legacy comentado - usar fallback directo es más simple y consistente
+    """
     # Si hay cotizador global inicializado, usarlo
     if _cotizador_global:
         logger.info(f"[PRICING] Usando cotizador global inicializado")
@@ -735,6 +741,7 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
                 return respuesta
         except Exception as e:
             logger.warning(f"[PRICING] Error usando CotizadorPrecios: {e}, fallback a cache local")
+    """
 
     # Fallback: intentar cargar desde cache local
     try:
