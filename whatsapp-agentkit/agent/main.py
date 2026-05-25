@@ -35,6 +35,7 @@ from agent.tools import (
     detectar_tipo_dispositivo_en_mensaje,
 )
 from agent.commands import procesar_comando_grupo, esta_bloqueado, inicializar_sistema_cupones
+from agent.pricing import inicializar_cotizador
 
 load_dotenv()
 
@@ -51,9 +52,13 @@ PORT = int(os.getenv("PORT", 8000))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Inicializa la base de datos, scheduler y sistema de cupones al arrancar el servidor."""
+    """Inicializa la base de datos, scheduler, cotizador y sistema de cupones al arrancar el servidor."""
     await inicializar_db()
     logger.info("Base de datos inicializada")
+
+    # Inicializar cotizador de precios (descarga Hugo Shop desde Google Drive si está disponible)
+    await inicializar_cotizador()
+    logger.info("Cotizador de precios inicializado")
 
     # Inicializar scheduler para reactivación de sleep mode
     await inicializar_scheduler(app)

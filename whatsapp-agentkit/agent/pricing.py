@@ -618,6 +618,23 @@ async def obtener_cotizador() -> CotizadorPrecios:
 # FUNCIÓN PÚBLICA: OBTENER COTIZACIÓN DISPLAY
 # ============================================================================
 
+# Cotizador global inicializado al arrancar el servidor
+_cotizador_global = None
+
+
+async def inicializar_cotizador():
+    """Inicializa el cotizador global al arrancar el servidor"""
+    global _cotizador_global
+    try:
+        logger.info("[PRICING] Inicializando cotizador global...")
+        _cotizador_global = CotizadorPrecios()
+        await _cotizador_global.inicializar()
+        logger.info("[PRICING] ✅ Cotizador global inicializado")
+    except Exception as e:
+        logger.error(f"[PRICING] Error inicializando cotizador: {e}")
+        _cotizador_global = None
+
+
 async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     """
     Obtiene cotización de display para un modelo específico.
@@ -632,13 +649,37 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     """
     logger.info(f"[PRICING] Buscando cotización: {marca} {modelo}")
 
+    # Si hay cotizador global inicializado, usarlo
+    if _cotizador_global:
+        try:
+            descripcion = f"{marca} {modelo}".lower()
+            cotizacion = await _cotizador_global.cotizar(descripcion)
+
+            if cotizacion and cotizacion.precio_final > 0:
+                # Usar el sistema de cotizaciones del CotizadorPrecios
+                precio_generico = int(cotizacion.precio_base * MotorMultiplicadores.obtener_multiplicador(
+                    FuentePrecio.HUGO_SHOP,
+                    CalidadDispositivo.UNKNOWN
+                ))
+                precio_original = int(cotizacion.precio_final)
+
+                respuesta = f"Para {marca} {modelo} tenemos:\n"
+                respuesta += f"• Display Genérico (Incell): ${precio_generico:,} MXN\n"
+                respuesta += f"• Display Original: ${precio_original:,} MXN\n"
+                respuesta += "\nAmbos incluyen diagnóstico, garantía 90 días y cambio el mismo día. ¿Cuál te interesa?"
+
+                logger.info(f"[PRICING] ✅ Cotización generada por CotizadorPrecios: {marca} {modelo}")
+                return respuesta
+        except Exception as e:
+            logger.warning(f"[PRICING] Error usando CotizadorPrecios: {e}, fallback a cache local")
+
+    # Fallback: intentar cargar desde cache local
     try:
-        # Cargar cache de Hugo Shop
         cache_manager = CacheManager()
         productos = cache_manager.cargar_hugo_shop()
 
         if not productos:
-            logger.warning("[PRICING] Cache Hugo Shop vacío")
+            logger.warning("[PRICING] Cache Hugo Shop vacío, usando fallback genérico")
             return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto, ambas con garantía 90 días."
 
         # Buscar productos que coincidan
@@ -646,7 +687,7 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
         coincidencias = [p for p in productos if consulta in p.get("DESCRIPCIÓN", "").lower()]
 
         if not coincidencias:
-            logger.warning(f"[PRICING] Sin coincidencias para: {consulta}")
+            logger.warning(f"[PRICING] Sin coincidencias en cache para: {consulta}")
             return "Para ese modelo te doy el precio exacto en el diagnóstico (2 horas). Tenemos opciones genérica y original según tu presupuesto."
 
         # Procesar cotizaciones (máximo 2 opciones: genérico y original)
@@ -689,7 +730,7 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
 
         respuesta += "\nAmbos incluyen diagnóstico, garantía 90 días y cambio el mismo día. ¿Cuál te interesa?"
 
-        logger.info(f"[PRICING] ✅ Cotización generada para {marca} {modelo}")
+        logger.info(f"[PRICING] ✅ Cotización generada desde cache: {marca} {modelo}")
         return respuesta
 
     except Exception as e:
