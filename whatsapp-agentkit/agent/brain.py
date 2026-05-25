@@ -55,16 +55,33 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
     Detecta si el mensaje pregunta sobre precios de displays.
     Si lo hace, obtiene la cotización y retorna contexto inyectable.
     """
-    # Patrones que indican pregunta sobre displays
+    # Patrones ampliados que indican pregunta sobre displays/pantallas
+    # Incluye: cotizar, presupuesto, valor, precio, costo, cuánto, cambio, reparación
     patrones_display = [
-        r'\bcuánto.*display\b',
-        r'\bcuánto.*pantalla\b',
-        r'\bcuánto.*screen\b',
-        r'\bprecio.*display\b',
-        r'\bprecio.*pantalla\b',
-        r'\bcosto.*display\b',
-        r'\bcambio de pantalla\b',
-        r'\bcambio de display\b',
+        # Palabras clave de precio + display/pantalla
+        r'\bcotizar.*(?:display|pantalla|screen)\b',
+        r'\b(?:display|pantalla|screen).*cotizar\b',
+        r'\bpresupuesto.*(?:display|pantalla|screen)\b',
+        r'\b(?:display|pantalla|screen).*presupuesto\b',
+        r'\bcuánto.*(?:display|pantalla|screen)\b',
+        r'\b(?:display|pantalla|screen).*cuánto\b',
+        r'\bprecio.*(?:display|pantalla|screen)\b',
+        r'\b(?:display|pantalla|screen).*precio\b',
+        r'\bcosto.*(?:display|pantalla|screen)\b',
+        r'\b(?:display|pantalla|screen).*costo\b',
+        r'\bvalor.*(?:display|pantalla|screen)\b',
+        r'\b(?:display|pantalla|screen).*valor\b',
+
+        # Palabras de reparación/cambio
+        r'\bcambio\s+(?:de\s+)?(?:pantalla|display|screen)\b',
+        r'\breparación\s+(?:de\s+)?(?:pantalla|display|screen)\b',
+        r'\breparar\s+(?:pantalla|display|screen)\b',
+
+        # Preguntas genéricas de precio (sin requerir display explícito si hay marca)
+        r'\bcotizar\b',
+        r'\bpresupuesto\b',
+        r'\bcuánto\s+cuesta\b',
+        r'\bcuál\s+es\s+el\s+(?:precio|costo|valor)\b',
     ]
 
     mensaje_lower = mensaje.lower()
@@ -72,28 +89,34 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
     # Verificar si pregunta sobre precios
     es_pregunta_precio = any(re.search(p, mensaje_lower) for p in patrones_display)
 
+    logger.debug(f"[BRAIN] Análisis de mensaje: '{mensaje_lower[:60]}...' | ¿Pregunta de precio? {es_pregunta_precio}")
+
     if not es_pregunta_precio:
+        logger.debug(f"[BRAIN] Mensaje no coincide con patrones de precio")
         return ""
 
-    # Extraer marca y modelo (ej: "iPhone 16", "Samsung S24")
-    patron_modelo = r'(iPhone|Samsung|Google Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG)\s+(\w+\s*\w*)'
+    # Extraer marca y modelo (ej: "iPhone 16", "Samsung S24", "Moto Edge 50 Fusion")
+    patron_modelo = r'(iPhone|Samsung|Google Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG)\s+(\w+[\s\w]*)'
     match = re.search(patron_modelo, mensaje, re.IGNORECASE)
 
     if not match:
+        logger.debug(f"[BRAIN] Pregunta de precio detectada pero sin modelo identificable")
         return ""
 
     marca = match.group(1)
     modelo = match.group(2).strip()
 
-    logger.info(f"[BRAIN] Pregunta sobre precios detectada: {marca} {modelo}")
+    logger.info(f"[BRAIN] ✓ Pregunta sobre precios detectada: {marca} {modelo}")
 
     # Obtener cotización
     cotizacion = await obtener_cotizacion_display(marca, modelo)
 
     if cotizacion:
         contexto = f"PRECIO ENCONTRADO PARA {marca.upper()} {modelo.upper()}:\n{cotizacion}"
+        logger.info(f"[BRAIN] ✓ Cotización obtenida: {marca} {modelo}")
         return contexto
 
+    logger.debug(f"[BRAIN] Cotización no encontrada para: {marca} {modelo}")
     return ""
 
 
