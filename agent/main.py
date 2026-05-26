@@ -9,6 +9,7 @@ Funciona con cualquier proveedor (Whapi, Meta, Meta Inbox, Twilio) gracias a la 
 import os
 import logging
 import random
+import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -36,6 +37,7 @@ from agent.tools import (
 )
 from agent.commands import procesar_comando_grupo, esta_bloqueado, inicializar_sistema_cupones
 from agent.pricing import inicializar_cotizador
+from agent.followup import iniciar_scheduler as iniciar_scheduler_followup
 
 load_dotenv()
 
@@ -67,6 +69,11 @@ async def lifespan(app: FastAPI):
     # Inicializar sistema de cupones (crea hoja ClientePerfil en Google Sheets)
     await inicializar_sistema_cupones()
     logger.info("Sistema de cupones inicializado")
+
+    # CRÍTICO: Inicializar scheduler de seguimiento de leads
+    # (Seguimientos automáticos cada 30 min, retomas, alertas, etc.)
+    asyncio.create_task(iniciar_scheduler_followup())
+    logger.info("✅ Scheduler de seguimiento de leads ACTIVO")
 
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")
     logger.info(f"Proveedor de WhatsApp: {proveedor.__class__.__name__}")
@@ -251,7 +258,7 @@ async def webhook_handler(request: Request):
                         logger.debug("ℹ️  Usando respuesta post-ambiguo")
                         respuesta = generar_respuesta_post_ambiguo()
                     else:
-                        # 🔒 Pasar contexto de cliente (teléfono y nombre) para inyección segura
+                        # Pasar contexto de cliente (teléfono y nombre) para inyección segura
                         respuesta = await generar_respuesta(
                             msg.texto,
                             historial,
