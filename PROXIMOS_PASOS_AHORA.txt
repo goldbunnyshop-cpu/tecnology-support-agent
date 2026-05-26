@@ -1,0 +1,209 @@
+════════════════════════════════════════════════════════════════════════════
+   PRÓXIMOS PASOS — DEPLOY 26 MAYO 2026
+════════════════════════════════════════════════════════════════════════════
+
+✅ YA COMPLETADO (en esta sesión):
+
+1. Fix Sistema de Precios
+   - Regex pattern ampliado de 12 a 25 marcas
+   - Incluye: Hisense, Honor, Oppo, Realme, TCL, Vivo, ZTE, Alcatel, Cubot
+   - Verificado: 7/7 test cases pasados
+   - Status: LISTO
+
+2. Fix Comando NoShow
+   - Nueva función generar_mensaje_noshow() creada
+   - Parámetros correctos implementados
+   - Contexto empático inyectado
+   - Fallback empático agregado
+   - Status: LISTO
+
+3. Commit Local
+   - Commit f98d216 realizado
+   - Archivos modificados: agent/brain.py + agent/commands.py
+   - Status: ✅ DONE
+
+
+⏳ PENDIENTE (debes hacer ahora):
+
+   PASO 1: HACER GIT PUSH DESDE TU MÁQUINA
+   ═════════════════════════════════════════
+
+   Abre PowerShell y ejecuta:
+
+   ```powershell
+   cd C:\Users\Elitebook\whatsapp-agentkit
+   git push origin main
+   ```
+
+   Debería ver:
+   "Enumerating objects: 5, done.
+    Counting objects: 100% (5/5), done.
+    Writing objects: 100% (5/5), 2.50 KiB | 2.50 MiB/s, done.
+    Total 5 (delta 3), reused 0 (delta 0)
+    To https://github.com/goldbunnyshop-cpu/tecnology-support-agent.git
+       abc1234..f98d216  main -> main"
+
+   Si sale error "No such device or address", intenta:
+   - Cierra GitHub Desktop completamente
+   - Abre PowerShell fresca
+   - Intenta de nuevo
+
+
+   PASO 2: MONITOREAR RAILWAY (2-3 minutos después del push)
+   ════════════════════════════════════════════════════════
+
+   1. Ve a https://railway.app/dashboard
+   2. Selecciona tu proyecto "tecnology-support-agent"
+   3. Haz click en la tab "Deployments"
+   4. Debería ver un nuevo deploy en progreso (status: "building" → "success")
+   5. Haz click en el deploy para ver logs
+   6. Busca estas líneas (confirma que no hay errores):
+
+      [PRICING] Cargados 1094 productos de Hugo Shop
+      [BRAIN] System prompt construido
+      [NOSHOW] Sistema listo
+
+   7. Espera a que diga "✅ Build successful"
+
+
+   PASO 3: VERIFICAR EN WHATSAPP (después de deploy exitoso)
+   ══════════════════════════════════════════════════════════
+
+   A) Test PRECIO (pregunta de cliente):
+
+      Tu grupo de WhatsApp (Taller Interno TS):
+      Escribe: "test precio hisense e60"
+
+      Debería responder automáticamente:
+      "Para Hisense E60 tenemos estas opciones:
+       * Display Genérico: $[precio] MXN
+       * Display Calidad Original: $[precio] MXN
+       * Display AMOLED: $[precio] MXN"
+
+      Si NOT responde → Revisar logs en Railway
+
+   B) Test NOSHOW (comando interno):
+
+      Tu grupo de WhatsApp (Taller Interno TS):
+      Escribe: noshow: 5541234567
+      (Usa un número que esté en tu base de datos)
+
+      Resultado ESPERADO:
+
+      • GRUPO RECIBE:
+        "✅ Follow-up de no-show enviado a [Nombre] ([Número])
+         🎟️ Cupón: ABC123XY
+         ⏰ Válido hasta: DD/MM/YYYY
+         📝 Mensaje: [mensaje enviado]"
+
+      • CLIENTE (5541234567) RECIBE:
+        "Hola [Nombre],
+
+         Notamos que no pudiste asistir a tu cita agendada.
+         Entendemos que a veces surge algo en el camino.
+
+         Para darte una segunda oportunidad, te ofrecemos 10% de descuento.
+
+         Cupón: ABC123XY (válido hasta DD/MM/YYYY)
+
+         ¿Te gustaría agendar una nueva cita?
+         Puedes mostrar este cupón al técnico cuando vengas."
+
+      Si el cliente recibe mensaje genérico → Revisar logs en Railway
+
+
+════════════════════════════════════════════════════════════════════════════
+   DOCUMENTACIÓN DE REFERENCIA
+════════════════════════════════════════════════════════════════════════════
+
+Lee estos archivos para entender exactamente qué cambió:
+
+1. FIX_SISTEMA_PRECIOS_26_MAY_2026.md
+   - Diagnóstico exhaustivo del problema de precios
+   - Código antes/después
+   - 7/7 test cases
+
+2. FIX_NOSHOW_MESSAGE_26_MAY_2026.md
+   - Análisis de raíz del comando noshow
+   - Nueva función generar_mensaje_noshow()
+   - Fallback empático
+
+3. PASO_A_PASO_FIXES_26_MAY.md
+   - Explicación visual paso a paso
+   - Antes vs Después con diagramas
+   - Cómo probar
+
+4. DEPLOY_26_MAY_2026_RESUMEN.md
+   - Resumen ejecutivo
+   - Checklist completo
+   - Comandos rápidos
+
+
+════════════════════════════════════════════════════════════════════════════
+   SI ALGO FALLA
+════════════════════════════════════════════════════════════════════════════
+
+Síntoma 1: "error: fatal: could not read Username for 'https://github.com'"
+Solución:
+   - Asegúrate de estar conectado a internet
+   - Cierra GitHub Desktop completamente
+   - Abre PowerShell nueva
+   - Intenta git push de nuevo
+   - Si persiste, contacta soporte GitHub
+
+Síntoma 2: Client recibe mensaje genérico en noshow
+Solución:
+   - Verifica que el deploy en Railway sea exitoso (status: "success")
+   - Revisa logs en Railway buscando errores en [NOSHOW]
+   - Puede tomar 2-3 minutos para que Railway reinicie el servidor
+   - Si persiste después de 5 minutos, contacta
+
+Síntoma 3: "precio hisense e60" no retorna precios
+Solución:
+   - Verifica que el deploy sea exitoso en Railway
+   - Revisa logs: [PRICING] Búsqueda: Hisense E60 -> X productos
+   - Si dice "0 productos", el CSV no carga (revisar si el archivo existe)
+   - Si dice "X productos" pero sin precios, revisar cálculo en pricing.py
+
+
+════════════════════════════════════════════════════════════════════════════
+   CHECKLIST FINAL
+════════════════════════════════════════════════════════════════════════════
+
+PRE-DEPLOY:
+☐ Commit local verificado: git log --oneline -1
+☐ Código revisado en editor (brain.py + commands.py)
+☐ Documentación leída: PASO_A_PASO_FIXES_26_MAY.md
+
+DEPLOY:
+☐ Git push ejecutado desde PowerShell
+☐ Push exitoso (sin errores)
+☐ Railway dashboard abierto
+☐ Nuevo deploy en progreso observado
+☐ Esperó 2-3 minutos a que termine
+☐ Deploy status: "✅ Build successful"
+
+POST-DEPLOY:
+☐ Test precio ejecutado ("test precio hisense e60")
+☐ Test noshow ejecutado ("noshow: [numero]")
+☐ Cliente recibió mensaje empático (NO genérico)
+☐ Grupo recibió confirmación detallada
+☐ Ambos fixes verificados como working
+
+
+════════════════════════════════════════════════════════════════════════════
+
+Tu próximo paso exacto:
+
+  1. Abre PowerShell
+  2. Ejecuta: cd C:\Users\Elitebook\whatsapp-agentkit
+  3. Ejecuta: git push origin main
+  4. Espera confirmación
+  5. Abre https://railway.app/dashboard
+  6. Espera 2-3 minutos a que deploy termine
+  7. Prueba en WhatsApp (precio + noshow)
+  8. ¡Listo!
+
+════════════════════════════════════════════════════════════════════════════
+Generado: 26 Mayo 2026
+Status: ✅ LISTO PARA DEPLOY

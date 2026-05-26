@@ -101,10 +101,9 @@ def buscar_productos_en_csv(marca, modelo):
             if numeros_modelo:
                 numero = numeros_modelo[0]
                 if re.search(r'x' + numero, descripcion):
-                    palabras_modelo = [p for p in modelo_lower.split() if not p.isdigit()]
-                    if not palabras_modelo:
-                        modelo_encontrado = True
-                    elif any(palabra in descripcion for palabra in palabras_modelo):
+                    usuario_pidio_max = 'max' in modelo_lower
+                    descripcion_tiene_max = 'max' in descripcion
+                    if usuario_pidio_max == descripcion_tiene_max:
                         modelo_encontrado = True
         elif 'samsung' in marca_lower:
             numeros_modelo = re.findall(r'\d+', modelo_lower)
@@ -215,13 +214,13 @@ async def obtener_cotizacion_display(marca, modelo):
         precio_usd_promedio = sum(precios_usd) / len(precios_usd)
         precio_mxn = int(precio_usd_promedio * MULTIPLICADOR_USD_A_MXN)
         if categoria == 'GENERICO':
-            nombre_categoria = "Display Genérico"
+            nombre_categoria = "Calidad Generica"
         elif categoria == 'ORIGINAL':
-            nombre_categoria = "Display Calidad Original"
+            nombre_categoria = "Calidad Original"
         elif categoria == 'AMOLED':
-            nombre_categoria = "Display AMOLED"
+            nombre_categoria = "AMOLED"
         else:
-            nombre_categoria = f"Display {categoria}"
+            nombre_categoria = categoria
         respuesta += f"* {nombre_categoria}: ${precio_mxn:,} MXN"
         colores_unicos = agrupar_por_color(productos_cat)
         if len(colores_unicos) > 1:

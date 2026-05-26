@@ -1,0 +1,109 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     ⚡ GUÍA RÁPIDA — PRÓXIMOS 10 MINUTOS                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+¿QUÉ SE HIZO?
+═════════════
+✅ Se repararon 2 bugs críticos (precios + noshow)
+✅ El código está commiteado localmente
+✅ Todo está documentado
+✅ Listo para deploy a producción
+
+
+¿DÓNDE ESTAMOS?
+═══════════════
+Commit local: ✅ LISTO
+Push a GitHub: ⏳ PENDIENTE (TÚ DEBES HACERLO AHORA)
+Railway redeploy: ⏳ AUTOMÁTICO (2-3 min después del push)
+Verificación: ⏳ MANUAL (5 min, tú en WhatsApp)
+
+
+TU MISIÓN PARA HOY (3 PASOS)
+═════════════════════════════
+
+PASO 1 (Ahora, 30 segundos)
+──────────────────────────
+  1. Abre PowerShell
+  2. Escribe:
+
+     cd C:\Users\Elitebook\whatsapp-agentkit
+     git push origin main
+
+  3. Espera a ver: "successful"
+
+
+PASO 2 (2-3 minutos después)
+──────────────────────────────
+  1. Abre: https://railway.app/dashboard
+  2. Busca tu proyecto
+  3. Ve a "Deployments"
+  4. Espera a que status diga: "✅ Build successful"
+
+
+PASO 3 (5 minutos después)
+──────────────────────────
+  1. Abre WhatsApp
+  2. En tu grupo (Taller Interno TS), escribe:
+
+     test precio hisense e60
+
+  3. Espera respuesta con precios
+
+  4. Luego escribe:
+
+     noshow: 5541234567
+     (Usa un número que esté en tu base de datos)
+
+  5. Verifica:
+     • Grupo recibe confirmación detallada
+     • Cliente recibe mensaje empático
+
+
+¿CÓMO SABER SI FUNCIONÓ?
+═════════════════════════
+
+✓ "test precio hisense e60" → Responde con precios
+✓ "noshow: [numero]" → Cliente recibe: "Hola [nombre], notamos que no pudiste
+                        asistir... Cupón: ABC123XY..."
+
+
+¿SI NO FUNCIONA?
+════════════════
+
+Opción 1: Espera más (a veces Railway tarda 3-5 min)
+
+Opción 2: Revisa logs en Railway
+  1. https://railway.app/dashboard
+  2. Click en tu deploy
+  3. Busca: [PRICING] o [NOSHOW] tags
+  4. Si ves errores, reporta
+
+
+¿CUÁNTO TIEMPO TOTAL?
+═════════════════════
+
+Paso 1 (git push):           1 minuto
+Espera Railway redeploy:     3 minutos
+Paso 3 (verificación):       5 minutos
+────────────────────────────
+TOTAL:                       ~10 minutos
+
+
+DOCUMENTACIÓN DISPONIBLE SI NECESITAS ENTENDER MÁS
+═══════════════════════════════════════════════════
+
+• PASO_A_PASO_FIXES_26_MAY.md → Explicación visual con diagramas
+• DASHBOARD_FIXES_26_MAY.txt → Resumen visual ejecutivo
+• FIX_SISTEMA_PRECIOS_26_MAY_2026.md → Detalles técnicos
+• FIX_NOSHOW_MESSAGE_26_MAY_2026.md → Detalles técnicos
+
+(Puedes leerlas mientras esperas el redeploy)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+¡AHORA MISMO!
+
+  PowerShell: git push origin main
+
+═══════════════════════════════════════════════════════════════════════════════
