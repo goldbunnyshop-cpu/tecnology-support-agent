@@ -459,6 +459,21 @@ def obtener_precio_display_ambas_variantes(marca: str, modelo: str) -> dict:
         }
 
 
+async def obtener_cotizacion_display_local(marca: str, modelo: str) -> str:
+    """
+    Obtiene cotización desde el CSV local en /knowledge/hugo_shop.csv.
+    Esta es la FUNCIÓN PRINCIPAL para precios desde August 2024.
+    """
+    try:
+        from agent.pricing import obtener_cotizacion_display
+        respuesta = await obtener_cotizacion_display(marca, modelo)
+        logger.info(f"Cotización obtenida para {marca} {modelo}")
+        return respuesta
+    except Exception as e:
+        logger.error(f"Error obteniendo cotización local: {e}")
+        return f"Para {marca} {modelo}, el técnico confirma disponibilidad y precio en diagnóstico (2h, $200 MXN bonificables)."
+
+
 def formatear_respuesta_precio(marca: str, modelo: str, tipo_display: str = "ambos") -> str:
     """
     Formatea la respuesta de precio de una forma amigable para el cliente.

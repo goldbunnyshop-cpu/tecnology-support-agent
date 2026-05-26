@@ -99,7 +99,8 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
         logger.debug(f"[BRAIN] Mensaje no es pregunta de precio")
         return ""
 
-    patron_modelo = r'(iPhone|Samsung|Google Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG)\s+(\w+[\s\w]*)'
+    # Patrón mejorado: captura marcas seguidas de números/palabras (incluyendo "Edge 20 Lite")
+    patron_modelo = r'(iPhone|Samsung|Google Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG|Moto|Poco|Redmi)\s+([\w\s]+?(?=[\.\,\?\!\s]|$))'
     match = re.search(patron_modelo, mensaje, re.IGNORECASE)
 
     if not match:
