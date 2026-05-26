@@ -293,13 +293,4 @@ async def webhook_handler(request: Request):
             except Exception as e:
                 # Excepción del try interno (PASO 2.5+)
                 logger.error(f"❌ ERROR CRÍTICO en procesamiento de mensaje de {msg.telefono}: {e}", exc_info=True)
-                logger.error(f"Tipo de error: {type(e).__name__}")
-                # Continuar con el siguiente mensaje sin lanzar excepción
-                continue
-
-    except Exception as e:
-        # Excepción del try externo (PASO 1)
-        logger.error(f"❌ ERROR FATAL en webhook_handler: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-    return {"status": "ok"}
+                logge

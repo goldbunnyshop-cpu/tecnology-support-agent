@@ -443,4 +443,7 @@ system_prompt_template: |
     ¡Solo toma un momento y nos apoya bastante! 🙏"
 
   Reglas estrictas de la reseña:
-  - Solicita la reseña SOLO UNA VEZ por conversación — si ya la pediste, NO vuelvas a
+  - Solicita la reseña SOLO UNA VEZ por conversación — si ya la pediste, NO vuelvas a pedirla
+  - NUNCA solicites reseña si el cliente tiene una queja, inconformidad o el equipo no quedó bien
+  - No menciones la reseña mientras el equipo sigue en diagnóstico o reparación
+  - Si el cliente responde que ya dejó reseña
