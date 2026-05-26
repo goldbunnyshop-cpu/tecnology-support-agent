@@ -1,0 +1,77 @@
+╔════════════════════════════════════════════════════════════╗
+║                   PRICING SYSTEM — HAZLO AHORA              ║
+║                      (5 MINUTOS MAX)                        ║
+╚════════════════════════════════════════════════════════════╝
+
+PASO 1: Abre PowerShell en tu Windows
+────────────────────────────────────
+
+PASO 2: Copia y pega ESTO:
+
+    cd C:\Users\Elitebook\whatsapp-agentkit
+    & ".\PUSH_PRICING_SYSTEM.ps1"
+
+PASO 3: Cuando pida credenciales de GitHub:
+────────────────────────────────────────────
+
+    Usuario: tu email de GitHub (o goldbunnyshop)
+
+    Contraseña: Tu Personal Access Token de GitHub
+
+    ← Si no tienes token:
+      Abre: https://github.com/settings/tokens
+      New token (classic)
+      Copia el token y úsalo aquí
+
+PASO 4: Espera a que termine
+──────────────────────────────
+
+LISTO. Railway lo redeploya automáticamente en 2-3 minutos.
+
+────────────────────────────────────────────────────────────
+
+✅ QUÉ SE VA A DESPLEGAR:
+   • pricing.py (motor de cotización)
+   • pausa_manager.py (comando @pausa)
+   • pricing_scheduler.py (scheduler)
+   • brain_enhanced.py (system prompt mejorado)
+   • main.py (sleep mode deshabilitado para testing)
+
+✅ TESTING LOCAL: 12 test suites PASSED
+
+✅ PRÓXIMO PASO: Envía un mensaje en WhatsApp
+   "¿Cuánto cuesta reparar iPhone 13 pantalla rota?"
+
+   Deberías recibir precio aproximado
+
+────────────────────────────────────────────────────────────
+
+⚠️ PROBLEMAS:
+
+  Q: "fatal: could not read Username for 'https://github.com'"
+  A: Usa tu GitHub Personal Access Token en la contraseña
+     (https://github.com/settings/tokens)
+
+  Q: "La carpeta ya existe"
+  A: El script va a renombrar .git a .git_old_backup
+     Eso es correcto. El script crea uno nuevo.
+
+  Q: Railway no desploya después de 5 minutos
+  A: En PowerShell ejecuta:
+     git commit --allow-empty -m "trigger: redeploy"
+     git push origin main
+
+────────────────────────────────────────────────────────────
+
+📁 DOCUMENTACIÓN (si necesitas):
+
+   README_PUSH_HOY.md ........... Resumen completo
+   PUSH_PRICING_SYSTEM.ps1 ..... Script (RECOMENDADO)
+   PUSH_INSTRUCCIONES.md ....... Pasos manuales
+   ESTADO_PUSH.md .............. Detalles técnicos
+
+────────────────────────────────────────────────────────────
+
+TIEMPO: ~5 minutos
+
+¡Adelante! 🚀

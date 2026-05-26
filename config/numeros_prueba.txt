@@ -1,0 +1,9 @@
+# Números de prueba/testing — Sin restricciones de horarios ni detección de espías
+# Formato: un número por línea
+# Características:
+# - No se detectan como "espías de precios"
+# - Pueden conversar 24/7 (sin restricción de horario nocturno)
+# - Acceso completo a todas las funciones del bot
+# - Ideal para QA, desarrollo y demostraciones
+
+5627557362
