@@ -100,7 +100,10 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
         return ""
 
     # Patrón mejorado: captura marcas seguidas de números/palabras (incluyendo "Edge 20 Lite")
-    patron_modelo = r'(iPhone|Samsung|Google Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG|Moto|Poco|Redmi)\s+([\w\s]+?(?=[\.\,\?\!\s]|$))'
+    # ⚠️ CRÍTICO: incluye TODAS las marcas del CSV de Hugo Shop para evitar gaps
+    # Captura hasta 4 palabras después de marca (cubre: "Edge 60", "Galaxy S24 Ultra", "12 mini", etc.)
+    # Los casos edge como "honor 70 precio" son mínimos y buscar_productos_en_csv() los validará
+    patron_modelo = r'(iPhone|Samsung|Google Pixel|Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG|Moto|Poco|Redmi|Hisense|Honor|Oppo|Realme|TCL|Vivo|ZTE|Alcatel|Cubot)\s+([\w]+(?:\s+[\w]+){0,3})'
     match = re.search(patron_modelo, mensaje, re.IGNORECASE)
 
     if not match:
