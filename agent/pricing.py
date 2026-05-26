@@ -79,7 +79,6 @@ def buscar_productos_en_csv(marca, modelo):
         # 2. Verificar que el modelo está presente de forma muy específica
         modelo_encontrado = False
 
-        # BÚSQUEDA LITERAL: El modelo debe estar en la descripción
         if modelo_lower in descripcion:
             modelo_encontrado = True
         elif modelo_lower.replace(' ', '') in descripcion:
@@ -162,11 +161,11 @@ async def obtener_cotizacion_display(marca, modelo):
         precio_usd_promedio = sum(precios_usd) / len(precios_usd)
         precio_mxn = int(precio_usd_promedio * MULTIPLICADOR_USD_A_MXN)
         if categoria == 'GENERICO':
-            nombre_categoria = "Display Generico (Incell/COG)"
+            nombre_categoria = "Display Genérico"
         elif categoria == 'ORIGINAL':
-            nombre_categoria = "Display Calidad original"
+            nombre_categoria = "Display Calidad Original"
         elif categoria == 'AMOLED':
-            nombre_categoria = "Display AMOLED original"
+            nombre_categoria = "Display AMOLED"
         else:
             nombre_categoria = f"Display {categoria}"
         respuesta += f"* {nombre_categoria}: ${precio_mxn:,} MXN"
