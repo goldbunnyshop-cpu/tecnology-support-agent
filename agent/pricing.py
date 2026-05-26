@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from collections import defaultdict
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
@@ -38,8 +39,8 @@ def cargar_csv_hugo() -> list[dict]:
     Lee el CSV de Hugo Shop y retorna lista de diccionarios.
     Estructura esperada:
     - Columna A: CÓDIGO
-    - Columna B: DESCRIPCIÓN
-    - Columna C: CALIDAD (INCELL, COG, COF, ORIG, OLED, CARTAN, AMOLED)
+    - Columna B: DESCRIPCIÓN (búsqueda: marca + modelo)
+    - Columna C: CALIDAD (INCELL, COG, COF, ORIG, OLED, CARTAN, AMOLED, etc.)
     - Columna D: COLOR
     - Columna E: PRECIO_1 (precio en USD - USAR ESTE)
     - Columna F: PRECIO_2
@@ -52,32 +53,19 @@ def cargar_csv_hugo() -> list[dict]:
 
     try:
         with open(RUTA_CSV_HUGO, 'r', encoding='utf-8') as f:
-            # Detectar si tiene headers
-            muestra = f.read(1000)
-            f.seek(0)
+            reader = csv.DictReader(f)
 
-            # Intentar con DictReader (con headers)
-            try:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    if row and any(row.values()):  # Ignorar filas vacías
-                        datos.append(row)
-            except:
-                # Si falla, intentar sin headers
-                f.seek(0)
-                reader = csv.reader(f)
-                for idx, row in enumerate(reader):
-                    if idx == 0 and any(x.lower() in str(row).lower() for x in ['código', 'descripción', 'precio']):
-                        continue  # Ignorar encabezado
-                    if row and len(row) >= 5:
-                        datos.append({
-                            'codigo': row[0],
-                            'descripcion': row[1],
-                            'calidad': row[2],
-                            'color': row[3],
-                            'precio_1': row[4],
-                            'precio_2': row[5] if len(row) > 5 else None,
-                        })
+            for idx, row in enumerate(reader):
+                # Ignorar filas vacías o que no tengan datos
+                if not row or not any(row.values()):
+                    continue
+
+                # Ignorar filas que parecen ser encabezados o metadata
+                descripcion = str(row.get('DESCRIPCIÓN', '') or row.get('descripcion', '')).strip()
+                if not descripcion or 'HUGO SHOP' in descripcion or 'COTIZACIONES' in descripcion:
+                    continue
+
+                datos.append(row)
 
         logger.info(f"[PRICING] Cargados {len(datos)} productos de Hugo Shop")
         return datos
@@ -94,29 +82,32 @@ def cargar_csv_hugo() -> list[dict]:
 def buscar_productos_en_csv(marca: str, modelo: str) -> list[dict]:
     """
     Busca todos los productos que coincidan con marca y modelo.
-    Retorna lista de diccionarios con los resultados.
+    La búsqueda se hace en la columna DESCRIPCIÓN.
+
+    Ejemplo: buscar("Samsung", "S24") → busca "Samsung S24" en DESCRIPCIÓN
     """
     datos = cargar_csv_hugo()
     resultados = []
 
     marca_lower = marca.lower().strip()
     modelo_lower = modelo.lower().strip()
-    consulta = f"{marca_lower} {modelo_lower}"
 
     for producto in datos:
-        descripcion = str(producto.get('descripcion', '')).lower()
+        # La descripción está en la columna "DESCRIPCIÓN" (con mayúscula en el CSV)
+        descripcion = str(producto.get('DESCRIPCIÓN', '') or producto.get('descripcion', '')).lower()
 
-        # Búsqueda: debe contener marca Y modelo en la descripción
+        # Búsqueda flexible: coincide si ambos términos están en la descripción
         if marca_lower in descripcion and modelo_lower in descripcion:
             resultados.append(producto)
 
-    # Si no hay coincidencias exactas, intentar búsqueda más flexible
+    # Si no hay match exacto, buscar solo por marca (menos restrictivo)
     if not resultados:
         for producto in datos:
-            descripcion = str(producto.get('descripcion', '')).lower()
+            descripcion = str(producto.get('DESCRIPCIÓN', '') or producto.get('descripcion', '')).lower()
             if marca_lower in descripcion:
                 resultados.append(producto)
 
+    logger.info(f"[PRICING] Búsqueda: {marca} {modelo} → {len(resultados)} productos encontrados")
     return resultados
 
 
@@ -128,19 +119,33 @@ def obtener_categoria(calidad_str: str) -> str | None:
     """
     Determina la categoría basándose en el valor de CALIDAD (columna C).
     Retorna: 'GENERICO', 'ORIGINAL', 'AMOLED' o None si no coincide.
+
+    El CSV puede tener valores como:
+    - "ORIG S/M" (sin marco), "ORIG C/M" (con marco)
+    - "OLED S/M"
+    - "INCELL", "COG", "COF", etc.
+
+    Nota: El " S/M" o " C/M" se ignora, solo importa la categoría base.
     """
     if not calidad_str:
         return None
 
-    calidad_upper = str(calidad_str).strip().upper()
+    # Limpiar: quitar espacios extras y variantes (S/M, C/M, etc.)
+    calidad_limpia = str(calidad_str).strip().upper()
 
-    if calidad_upper in CATEGORIAS_GENERICO:
+    # Remover sufijos como " S/M", " C/M", etc.
+    for sufijo in [' S/M', ' C/M', ' SIN MARCO', ' CON MARCO']:
+        calidad_limpia = calidad_limpia.replace(sufijo, '')
+
+    # Buscar coincidencia
+    if any(cat in calidad_limpia for cat in CATEGORIAS_GENERICO):
         return 'GENERICO'
-    elif calidad_upper in CATEGORIAS_ORIGINAL:
+    elif any(cat in calidad_limpia for cat in CATEGORIAS_ORIGINAL):
         return 'ORIGINAL'
-    elif calidad_upper in CATEGORIAS_AMOLED:
+    elif any(cat in calidad_limpia for cat in CATEGORIAS_AMOLED):
         return 'AMOLED'
 
+    logger.debug(f"[PRICING] Calidad no reconocida: {calidad_str}")
     return None
 
 
@@ -151,16 +156,22 @@ def obtener_categoria(calidad_str: str) -> str | None:
 def extraer_precio_usd(precio_str: str) -> float | None:
     """
     Extrae valor numérico del precio (columna E - PRECIO_1).
-    Maneja formatos como "100", "100.50", "$100", "100 USD", etc.
+    Maneja formatos como:
+    - "100", "100.50"
+    - "$100", "$100.50"
+    - "$ 100.00"
+    - "$ 1,200.00" (con coma para miles)
     """
     if not precio_str:
         return None
 
     try:
-        # Limpiar: remover símbolos de moneda, espacios, texto
-        limpio = str(precio_str).replace('$', '').replace('USD', '').strip()
-        return float(limpio)
+        # Limpiar: remover símbolos de moneda, espacios, comas, texto
+        limpio = str(precio_str).replace('$', '').replace('USD', '').replace(',', '').strip()
+        valor = float(limpio)
+        return valor if valor > 0 else None
     except (ValueError, TypeError):
+        logger.warning(f"[PRICING] No se pudo parsear precio: {precio_str}")
         return None
 
 
@@ -172,12 +183,15 @@ def agrupar_por_color(productos: list[dict]) -> dict[str, list[dict]]:
     """
     Agrupa los productos por color (columna D).
     Retorna: {color: [lista de productos con ese color]}
+
+    Ejemplo: Si hay Negro, Blanco, Azul → retorna 3 claves
     """
     agrupados = defaultdict(list)
 
     for producto in productos:
-        color = str(producto.get('color', 'Sin especificar')).strip()
-        if not color or color.upper() == 'NONE':
+        # Puede venir como "COLOR" (mayúsculas) o "color" (minúsculas) en el CSV
+        color = str(producto.get('COLOR', '') or producto.get('color', '')).strip()
+        if not color or color.upper() == 'NONE' or color.upper() == '':
             color = 'Sin especificar'
         agrupados[color].append(producto)
 
@@ -215,9 +229,9 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     productos_por_categoria = defaultdict(list)
 
     for producto in productos:
-        categoria = obtener_categoria(producto.get('calidad', ''))
+        categoria = obtener_categoria(producto.get('CALIDAD', ''))
         if not categoria:
-            logger.debug(f"[PRICING] Calidad desconocida: {producto.get('calidad')}")
+            logger.debug(f"[PRICING] Calidad desconocida: {producto.get('CALIDAD')}")
             continue
         productos_por_categoria[categoria].append(producto)
 
@@ -236,7 +250,7 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
         # Calcular precio promedio para esta categoría (pueden haber variantes de color)
         precios_usd = []
         for prod in productos_cat:
-            precio_usd = extraer_precio_usd(prod.get('precio_1', ''))
+            precio_usd = extraer_precio_usd(prod.get('PRECIO_1', ''))
             if precio_usd:
                 precios_usd.append(precio_usd)
 
@@ -268,7 +282,7 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
             for color, prods in colores_unicos.items():
                 precios_color = []
                 for prod in prods:
-                    precio = extraer_precio_usd(prod.get('precio_1', ''))
+                    precio = extraer_precio_usd(prod.get('PRECIO_1', ''))
                     if precio:
                         precios_color.append(precio)
                 if precios_color:

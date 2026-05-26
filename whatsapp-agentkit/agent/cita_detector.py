@@ -112,11 +112,6 @@ def _parsear_fecha_hora_flexible(fecha_str: str) -> Optional[datetime]:
     """
     Parsea fechas en español con mayor flexibilidad.
     Soporta formatos como: "Sábado 18 de mayo, 10:00 a.m."
-
-    VALIDACIONES:
-    - NUNCA agendar citas en el pasado
-    - Máximo 365 días en el futuro
-    - NUNCA agendar con años anteriores al actual
     """
     if not fecha_str or "NO ESPECIFICADO" in fecha_str:
         return None
@@ -152,39 +147,16 @@ def _parsear_fecha_hora_flexible(fecha_str: str) -> Optional[datetime]:
         elif "a" in ampm and hora == 12:
             hora = 0
 
-        # Resolver año (VALIDACIÓN: NUNCA años pasados)
+        # Resolver año (actual o anterior si ya pasó)
         ahora = datetime.now(ZONA_CDMX)
         año = ahora.year
 
         try:
             fecha = datetime(año, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
-
-            # 🐛 FIX CRÍTICO: Si la fecha propuesta ya pasó este año, usar el PRÓXIMO año
             if fecha < ahora:
-                fecha = datetime(año + 1, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
-
-            # VALIDACIÓN ADICIONAL: Máximo 365 días en el futuro (evitar errores de entrada)
-            fecha_maxima = ahora + timedelta(days=365)
-            if fecha > fecha_maxima:
-                logger.warning(
-                    f"[CITA_DETECTOR] Fecha rechazada (más de 365 días): {fecha.isoformat()}. "
-                    f"Ahora: {ahora.isoformat()}"
-                )
-                return None
-
-            # VALIDACIÓN FINAL: Asegurar que NO sea en el pasado
-            if fecha < ahora:
-                logger.error(
-                    f"[CITA_DETECTOR] ❌ BUG DETECTADO: Fecha resultó en el pasado. "
-                    f"Fecha: {fecha.isoformat()}, Ahora: {ahora.isoformat()}"
-                )
-                return None
-
-            logger.info(f"[CITA_DETECTOR] Fecha parseada correctamente: {fecha.isoformat()}")
+                fecha = datetime(año - 1, mes_num, dia_num, hora, minuto, 0, tzinfo=ZONA_CDMX)
             return fecha
-
-        except ValueError as ve:
-            logger.warning(f"[CITA_DETECTOR] Fecha inválida (ValueError): {ve}")
+        except ValueError:
             return None
 
     except Exception as e:
