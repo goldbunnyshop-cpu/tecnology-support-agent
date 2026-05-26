@@ -1,0 +1,206 @@
+════════════════════════════════════════════════════════════════════════════
+   DIAGNÓSTICO DE PRECIOS EN RAILWAY — Paso a Paso
+════════════════════════════════════════════════════════════════════════════
+
+CONTEXTO:
+─────────
+El agente está retornando $7,040 para ambas categorías de iPhone 14 Pro
+(GENERICO y ORIGINAL) cuando debería retornar precios diferentes.
+
+Localmente funciona perfectamente:
+- GENERICO: $2,082 MXN
+- ORIGINAL: $4,508 MXN
+- AMOLED: $5,216 MXN
+
+Esto sugiere que el problema está en Railway, probablemente en cómo se
+cargó el CSV o en los datos que tiene el servidor remoto.
+
+
+OPCIÓN 1: Ejecutar Script de Diagnóstico en Railway
+═════════════════════════════════════════════════════
+
+Paso 1: Instala Railway CLI en tu máquina
+──────────────────────────────────────────
+URL: https://docs.railway.app/cli/install
+
+Windows:
+  - Descarga el ejecutable desde el link
+  - O usa: scoop install railway
+
+Mac:
+  brew install railway
+
+Linux:
+  curl -fsSL https://cli.railway.app/install.sh | sh
+
+
+Paso 2: Conéctate a Railway
+───────────────────────────
+  railway login
+
+  (Se abrirá tu navegador para autorizar)
+
+
+Paso 3: Selecciona tu proyecto
+──────────────────────────────
+  cd C:\Users\Elitebook\whatsapp-agentkit
+  railway link
+
+  (Te pedirá que selecciones tu proyecto de la lista)
+
+
+Paso 4: Ejecuta el diagnóstico
+──────────────────────────────
+  railway run python diagnostic_pricing.py
+
+  Esto ejecutará el script EN TU SERVIDOR REMOTO y mostrará los resultados.
+
+  ESPERA: El output será algo como:
+
+  ══════════════════════════════════════════════════════════════════════
+  DIAGNÓSTICO DEL SISTEMA DE PRECIOS — iPhone 14 Pro
+  ══════════════════════════════════════════════════════════════════════
+
+  1. CARGANDO CSV...
+     Total de productos en CSV: XXXX
+
+  2. BÚSQUEDA: marca='iphone', modelo='14 pro'
+     Productos encontrados: XX
+
+  3. MAPEO DE CATEGORÍAS
+     [GENERICO] X14 PRO...
+     [ORIGINAL] X14PRO (MOVIL IC)...
+     [AMOLED] X14PRO-(Diagnostico)...
+
+  4. CÁLCULO DE PRECIOS
+     GENERICO:
+        $520.67 USD = $2,082 MXN
+     ORIGINAL:
+        $1,127 USD = $4,508 MXN
+     AMOLED:
+        $1,304 USD = $5,216 MXN
+
+  5. RESPUESTA COMPLETA DEL AGENTE:
+  ──────────────────────────────────
+  Para iphone 14 pro tenemos estas opciones...
+  ══════════════════════════════════════════════════════════════════════
+
+
+OPCIÓN 2: Ver Logs en Railway Dashboard
+═════════════════════════════════════════
+
+Paso 1: Abre Railway Dashboard
+──────────────────────────────
+  https://railway.app/dashboard
+
+
+Paso 2: Selecciona tu proyecto
+──────────────────────────────
+  Click en "tecnology-support-agent"
+
+
+Paso 3: Ve a la tab de Logs
+───────────────────────────
+  Click en "Logs" (al lado de "Monitoring")
+
+
+Paso 4: Busca errores de PRICING
+─────────────────────────────────
+  En la barra de filtro (arriba), escribe:
+  [PRICING]
+
+  Esto mostrará solo los logs relacionados con el sistema de precios.
+
+
+Paso 5: Busca líneas sospechosas
+───────────────────────────────
+  Mira especialmente:
+
+  [PRICING] Busqueda: iphone 14 pro -> X productos encontrados
+  [PRICING] Cotizacion generada para iphone 14 pro
+  [PRICING] Sin precios válidos para...
+  [PRICING] CSV no encontrado...
+  [PRICING] Error inicializando cotizador...
+
+
+OPCIÓN 3: Añadir Logging Temporal (Para debug más detallado)
+═════════════════════════════════════════════════════════════
+
+Paso 1: Abre agent/pricing.py
+──────────────────────────────
+  En tu editor, busca la función buscar_productos_en_csv()
+  (alrededor de línea 140)
+
+
+Paso 2: Añade debug logging
+───────────────────────────
+  Encuentra esta línea (aprox. línea 140):
+
+  logger.info(f"[PRICING] Busqueda: {marca} {modelo} -> {len(resultados)} productos encontrados")
+
+  Y agrega ANTES de esa línea:
+
+  for i, prod in enumerate(resultados[:5]):
+      logger.debug(f"[PRICING] DEBUG #{i}: DESC='{prod.get('DESCRIPCION')}' CALIDAD='{prod.get('CALIDAD')}' PRECIO='{prod.get('PRECIO_1')}'")
+
+
+Paso 3: Cambia a DEBUG level en Railway
+────────────────────────────────────────
+  Ve a Railway → tu proyecto → Variables
+  Añade:    LOG_LEVEL=DEBUG
+
+  Luego haz git push para que se redeploy
+
+
+Paso 4: Prueba en WhatsApp
+───────────────────────────
+  Escribe: test precio iphone 14 pro
+
+  En Railway Logs, verás toda la información detallada de cada producto encontrado.
+
+
+════════════════════════════════════════════════════════════════════════════
+   QUÉ BUSCAR EN LOS RESULTADOS
+════════════════════════════════════════════════════════════════════════════
+
+✓ SI VES ESTO: Todo está bien, es un caché antiguo
+  - Total productos en CSV: 1094
+  - Productos encontrados para iphone 14 pro: 12
+  - GENERICO: $520 USD = $2,082 MXN
+  - ORIGINAL: $1,127 USD = $4,508 MXN
+  - AMOLED: $1,304 USD = $5,216 MXN
+
+  SOLUCIÓN: Limpia el caché de Railway (es un bug de Railway, no del código)
+
+
+✗ SI VES ESTO: El CSV no se cargó correctamente
+  - Total productos en CSV: 0
+  - Productos encontrados para iphone 14 pro: 0
+  - [PRICING] CSV no encontrado en knowledge/hugo_shop.csv
+
+  SOLUCIÓN: Ver "Reinstalar CSV en Railway" en DIAGNOSTICO_PRECIOS_26_MAY_2026.md
+
+
+✗ SI VES ESTO: Los datos están duplicados o corrompidos
+  - Total productos en CSV: > 2000
+  - GENERICO: $7,040 MXN (demasiado alto)
+  - ORIGINAL: $7,040 MXN (igual al GENERICO — incorrecto)
+
+  SOLUCIÓN: El CSV en Railway tiene datos diferentes. Descarga el CSV local,
+           limpialo, y sube una versión nueva.
+
+
+════════════════════════════════════════════════════════════════════════════
+   PRÓXIMOS PASOS
+════════════════════════════════════════════════════════════════════════════
+
+1. Ejecuta una de las 3 opciones arriba (recomiendo OPCIÓN 1 — es más rápido)
+2. Comparte conmigo los resultados completos que genere
+3. Basado en eso, decidiremos si:
+   - Es un caché que solo necesita limpiar
+   - Hay que recargar el CSV
+   - Hay que hacer un fix en el código
+
+════════════════════════════════════════════════════════════════════════════
+Generado: 26 Mayo 2026
+Status: 🔍 En investigación
