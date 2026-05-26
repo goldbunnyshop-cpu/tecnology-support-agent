@@ -22,25 +22,36 @@ def cargar_csv_hugo():
         logger.warning(f"[PRICING] CSV no encontrado en {RUTA_CSV_HUGO}")
         return datos
     try:
-        with open(RUTA_CSV_HUGO, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            if reader.fieldnames is None:
-                logger.error("[PRICING] DictReader no pudo leer el encabezado del CSV")
-                return datos
-            for idx, row in enumerate(reader):
-                if not row:
-                    continue
-                valores_no_vacios = [v for v in row.values() if v and str(v).strip()]
-                if not valores_no_vacios:
-                    continue
-                codigo = str(row.get('CODIGO', '')).strip()
-                descripcion = str(row.get('DESCRIPCION', '')).strip()
-                if 'HUGO SHOP' in codigo or 'COTIZACIONES' in codigo:
-                    continue
-                precio_1 = str(row.get('PRECIO_1', '')).strip()
-                if not precio_1:
-                    continue
-                datos.append(row)
+        lineas_procesadas = []
+        with open(RUTA_CSV_HUGO, 'rb') as f:
+            for linea_bytes in f:
+                linea_limpia = linea_bytes.replace(b'\x00', b'')
+                lineas_procesadas.append(linea_limpia.decode('utf-8'))
+
+        from io import StringIO
+        csv_contenido = ''.join(lineas_procesadas)
+        csv_file = StringIO(csv_contenido)
+        reader = csv.DictReader(csv_file)
+
+        if reader.fieldnames is None:
+            logger.error("[PRICING] DictReader no pudo leer el encabezado del CSV")
+            return datos
+
+        for idx, row in enumerate(reader):
+            if not row:
+                continue
+            valores_no_vacios = [v for v in row.values() if v and str(v).strip()]
+            if not valores_no_vacios:
+                continue
+            codigo = str(row.get('CODIGO', '')).strip()
+            descripcion = str(row.get('DESCRIPCION', '')).strip()
+            if 'HUGO SHOP' in codigo or 'COTIZACIONES' in codigo:
+                continue
+            precio_1 = str(row.get('PRECIO_1', '')).strip()
+            if not precio_1:
+                continue
+            datos.append(row)
+
         logger.info(f"[PRICING] Cargados {len(datos)} productos de Hugo Shop")
         return datos
     except Exception as e:
@@ -48,6 +59,7 @@ def cargar_csv_hugo():
         return datos
 
 def buscar_productos_en_csv(marca, modelo):
+    import re
     datos = cargar_csv_hugo()
     resultados = []
     marca_lower = marca.lower().strip()
@@ -57,16 +69,22 @@ def buscar_productos_en_csv(marca, modelo):
         descripcion = str(producto.get('DESCRIPCION', '')).lower()
         codigo = str(producto.get('CODIGO', '')).lower()
 
-        # 1. Verificar que la marca está presente
         marca_encontrada = False
-        if 'google pixel' in marca_lower or 'pixel' in marca_lower:
+
+        if 'iphone' in marca_lower:
+            if re.search(r'x\d+', descripcion):
+                marca_encontrada = True
+        elif 'google pixel' in marca_lower or 'pixel' in marca_lower:
             if 'pixel' in descripcion:
                 marca_encontrada = True
         elif 'motorola' in marca_lower or 'moto' in marca_lower:
             if 'edge' in descripcion:
                 marca_encontrada = True
         elif 'samsung' in marca_lower:
-            if 'samsung' in descripcion:
+            if re.search(r's\d+', descripcion):
+                marca_encontrada = True
+        elif 'hisense' in marca_lower:
+            if any(pattern in descripcion for pattern in ['e50', 'e60', 'e30', 'e40', 'v60', 'h50', 'g85', 'c51', 'c53', 'c36', 'c60']):
                 marca_encontrada = True
         else:
             primera_palabra = marca_lower.split()[0]
@@ -76,15 +94,45 @@ def buscar_productos_en_csv(marca, modelo):
         if not marca_encontrada:
             continue
 
-        # 2. Verificar que el modelo está presente de forma muy específica
         modelo_encontrado = False
 
-        if modelo_lower in descripcion:
-            modelo_encontrado = True
-        elif modelo_lower.replace(' ', '') in descripcion:
-            modelo_encontrado = True
-        elif modelo_lower.replace(' ', '/') in descripcion:
-            modelo_encontrado = True
+        if 'iphone' in marca_lower:
+            numeros_modelo = re.findall(r'\d+', modelo_lower)
+            if numeros_modelo:
+                numero = numeros_modelo[0]
+                if re.search(r'x' + numero, descripcion):
+                    palabras_modelo = [p for p in modelo_lower.split() if not p.isdigit()]
+                    if not palabras_modelo:
+                        modelo_encontrado = True
+                    elif any(palabra in descripcion for palabra in palabras_modelo):
+                        modelo_encontrado = True
+        elif 'samsung' in marca_lower:
+            numeros_modelo = re.findall(r'\d+', modelo_lower)
+            if numeros_modelo:
+                numero = numeros_modelo[0]
+                if re.search(r's' + numero, descripcion):
+                    palabras_modelo = [p for p in modelo_lower.split() if not p.isdigit()]
+                    if not palabras_modelo:
+                        modelo_encontrado = True
+                    elif any(palabra in descripcion for palabra in palabras_modelo):
+                        modelo_encontrado = True
+        elif 'hisense' in marca_lower:
+            modelo_upper = modelo_lower.upper()
+            if modelo_upper in descripcion.upper():
+                modelo_encontrado = True
+            else:
+                numeros = re.findall(r'\d+', modelo_lower)
+                if numeros:
+                    numero = numeros[0]
+                    if re.search(r'[a-z]' + numero, descripcion):
+                        modelo_encontrado = True
+        else:
+            if modelo_lower in descripcion:
+                modelo_encontrado = True
+            elif modelo_lower.replace(' ', '') in descripcion:
+                modelo_encontrado = True
+            elif modelo_lower.replace(' ', '/') in descripcion:
+                modelo_encontrado = True
 
         if modelo_encontrado:
             resultados.append(producto)
@@ -96,14 +144,20 @@ def obtener_categoria(calidad_str):
     if not calidad_str:
         return None
     calidad_limpia = str(calidad_str).strip().upper()
+
+    if 'DIAGNOSTICO' in calidad_limpia:
+        return 'AMOLED'
+
     for sufijo in [' S/M', ' C/M', ' SIN MARCO', ' CON MARCO']:
         calidad_limpia = calidad_limpia.replace(sufijo, '')
+
     if any(cat in calidad_limpia for cat in CATEGORIAS_GENERICO):
         return 'GENERICO'
     elif any(cat in calidad_limpia for cat in CATEGORIAS_ORIGINAL):
         return 'ORIGINAL'
     elif any(cat in calidad_limpia for cat in CATEGORIAS_AMOLED):
         return 'AMOLED'
+
     logger.debug(f"[PRICING] Calidad no reconocida: {calidad_str}")
     return None
 
