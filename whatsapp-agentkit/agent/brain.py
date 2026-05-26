@@ -123,12 +123,12 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
     return ""
 
 
-async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
-    """Genera una respuesta usando Claude API."""
+async def generar_respuesta(mensaje: str, historial: list[dict], asesor: str = "Valentina") -> str:
+    """Genera una respuesta usando Claude API con personalidad del asesor."""
     if not mensaje or len(mensaje.strip()) < 2:
         return obtener_mensaje_fallback()
 
-    system_prompt = construir_system_prompt()
+    system_prompt = construir_system_prompt(asesor=asesor)
 
     contexto_precios = await detectar_y_obtener_precios(mensaje)
     if contexto_precios:
