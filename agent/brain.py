@@ -275,70 +275,72 @@ def _generar_horarios_disponibles(ahora) -> str:
     return "\n".join(disponibilidad)
 
 
-def _procesar_tag_agendar(respuesta: str, telefono: str) -> str:
+async def generar_mensaje_noshow(telefono: str, nombre_cliente: str, historial: list[dict], cupon: str, fecha_expira: str) -> str:
     """
-    Extrae el tag [[AGENDAR:...]] de la respuesta de Claude y lo procesa en backend.
-    Retorna la respuesta limpia (sin el tag visible para el cliente).
+    Genera un mensaje empático de noshow para un cliente que agendó pero no se presentó.
 
-    NUNCA debe haber variables técnicas visibles en la respuesta final.
+    Args:
+        telefono: Número del cliente
+        nombre_cliente: Nombre del cliente
+        historial: Historial de conversación
+        cupon: Código de cupón generado
+        fecha_expira: Fecha de expiración del cupón (formato DD/MM/YYYY)
+
+    Returns:
+        Mensaje personalizado de noshow con oferta de cupón
     """
-    import re
+    system_prompt = construir_system_prompt(asesor="Valentina")
 
-    # Buscar el tag [[AGENDAR:...]]
-    patron_agendar = r"\[\[AGENDAR:(.*?)\]\]"
-    match = re.search(patron_agendar, respuesta)
+    # Inyectar contexto de noshow en el system prompt
+    contexto_noshow = f"""
+## CONTEXTO ESPECIAL — NO-SHOW
 
-    if match:
-        datos_str = match.group(1)
-        logger.info(f"[BRAIN] 🎯 Tag AGENDAR detectado: {datos_str[:80]}")
+Este es un mensaje de reconexión para un cliente que agendó una cita pero no se presentó.
 
-        # Parsear los datos del tag (formato: nombre=X|telefono=Y|dispositivo=Z|problema=W|fecha=YYYY-MM-DD|hora=HH:MM)
-        datos = {}
-        for par in datos_str.split("|"):
-            if "=" in par:
-                clave, valor = par.split("=", 1)
-                datos[clave.strip()] = valor.strip()
+**Cliente**: {nombre_cliente}
+**Cupón**: {cupon} (10% descuento, válido hasta {fecha_expira})
 
-        # Procesar automáticamente
-        try:
-            from agent.cita_detector import guardar_cita_automatica
-            from datetime import datetime
+**Instrucciones**:
+1. Inicia con EMPATÍA — pregunta con comprensión por qué no pudo asistir (sin juzgar)
+2. Reconoce su situación sin hacer sentir mal al cliente
+3. Ofrece una SEGUNDA OPORTUNIDAD con 10% de descuento
+4. Menciona el cupón: {cupon}
+5. Explica cómo usar el cupón: "Muestra este cupón al técnico cuando agendes de nuevo"
+6. Mantén un tono CÁLIDO y COMPRENSIVO, no acusatorio
+7. NO menciones datos técnicos o tags — sé conversacional
 
-            nombre = datos.get("nombre", "Cliente")
-            dispositivo = datos.get("dispositivo", "Dispositivo")
-            problema = datos.get("problema", "Reparación")
-            fecha_str = datos.get("fecha", "")
-            hora_str = datos.get("hora", "")
-            asesor = datos.get("asesor", "ASIGNADO")
+Objetivo: Recuperar la relación y re-agendar la cita.
+"""
+    system_prompt += contexto_noshow
 
-            if fecha_str and hora_str:
-                try:
-                    fecha_hora = datetime.fromisoformat(f"{fecha_str}T{hora_str}:00")
-                    from zoneinfo import ZoneInfo
-                    ZONA_CDMX = ZoneInfo("America/Mexico_City")
-                    fecha_hora = fecha_hora.replace(tzinfo=ZONA_CDMX)
+    # Construcción del mensaje
+    mensajes = []
+    for msg in historial:
+        mensajes.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
 
-                    # Agendar en background (no bloquea respuesta)
-                    import asyncio
-                    asyncio.create_task(
-                        guardar_cita_automatica(
-                            nombre=nombre,
-                            dispositivo=dispositivo,
-                            problema=problema,
-                            fecha_hora=fecha_hora,
-                            asesor=asesor,
-                            telefono=telefono,
-                        )
-                    )
-                    logger.info(f"[BRAIN] ✅ Cita agendada en background para {nombre}")
-                except Exception as dt_e:
-                    logger.warning(f"[BRAIN] ⚠️ Error parseando fecha/hora: {dt_e}")
-        except Exception as cita_e:
-            logger.warning(f"[BRAIN] ⚠️ Error guardando cita: {cita_e}")
+    # Mensaje trigger que indica al Claude que genere el mensaje de noshow
+    mensajes.append({
+        "role": "user",
+        "content": "Cliente no asistió a su cita agendada. Envía un mensaje de reconexión empático."
+    })
 
-        # Eliminar el tag de la respuesta visible
-        respuesta_limpia = respuesta.replace(match.group(0), "").strip()
-        return respuesta_limpia
-    else:
-        # No hay tag, retornar respuesta tal cual
+    try:
+        response = await client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system_prompt,
+            messages=mensajes
+        )
+
+        respuesta = response.content[0].text
+        logger.info(f"[BRAIN] ✓ Mensaje de noshow generado para {nombre_cliente}")
         return respuesta
+
+    except Exception as e:
+        logger.error(f"[BRAIN] Error generando mensaje de noshow: {e}")
+        # Fallback si falla Claude
+        return (
+            f"Hola {nombre_cliente}
