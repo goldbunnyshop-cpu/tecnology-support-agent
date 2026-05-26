@@ -75,13 +75,16 @@ def buscar_productos_en_csv(marca, modelo):
             if re.search(r'x\d+', descripcion):
                 marca_encontrada = True
         elif 'google pixel' in marca_lower or 'pixel' in marca_lower:
-            if 'pixel' in descripcion:
+            # Buscar Pixel por nombre O números (7, 7a, 8, 8a, etc.)
+            if 'pixel' in descripcion or re.search(r'\d+[a-z]?', descripcion):
                 marca_encontrada = True
         elif 'motorola' in marca_lower or 'moto' in marca_lower:
-            if 'edge' in descripcion:
+            # Buscar Motorola por nombre O números (E21, E21S, G42, etc.)
+            if 'edge' in descripcion or re.search(r'[a-z]\d+', descripcion):
                 marca_encontrada = True
         elif 'samsung' in marca_lower:
-            if re.search(r's\d+', descripcion):
+            # Buscar variantes: A21, A21S, A21A, S21, S22, etc.
+            if re.search(r'[a-z]\d+', descripcion):
                 marca_encontrada = True
         elif 'hisense' in marca_lower:
             if any(pattern in descripcion for pattern in ['e50', 'e60', 'e30', 'e40', 'v60', 'h50', 'g85', 'c51', 'c53', 'c36', 'c60']):
@@ -109,13 +112,29 @@ def buscar_productos_en_csv(marca, modelo):
             numeros_modelo = re.findall(r'\d+', modelo_lower)
             if numeros_modelo:
                 numero = numeros_modelo[0]
-                if re.search(r's' + numero, descripcion):
+                # Buscar número + variantes: A21, A21S, A217, A21A, etc.
+                patron = r'[a-z]?' + numero + r'[a-z\d]*'
+                if re.search(patron, descripcion):
+                    palabras_modelo = [p for p in modelo_lower.split() if not p.isdigit()]
+                    if not palabras_modelo:
+                        modelo_encontrado = True
+                    elif any(palabra in descripcion for palabra in palabras_modelo):
+                        modelo_encontrado = True
+        elif 'google pixel' in marca_lower or 'pixel' in marca_lower:
+            # Buscar modelo Pixel por número + variantes opcionales (7, 7a, 7 pro, 8, 8a, etc.)
+            numeros_modelo = re.findall(r'\d+', modelo_lower)
+            if numeros_modelo:
+                numero = numeros_modelo[0]
+                # Buscar número + variantes opcionales (7, 7a, 7pro, etc.)
+                patron = numero + r'[a-z\s]*'
+                if re.search(patron, descripcion):
                     palabras_modelo = [p for p in modelo_lower.split() if not p.isdigit()]
                     if not palabras_modelo:
                         modelo_encontrado = True
                     elif any(palabra in descripcion for palabra in palabras_modelo):
                         modelo_encontrado = True
         elif 'hisense' in marca_lower:
+            # Buscar modelo Hisense por nombre exacto O número + variantes
             modelo_upper = modelo_lower.upper()
             if modelo_upper in descripcion.upper():
                 modelo_encontrado = True
@@ -123,7 +142,9 @@ def buscar_productos_en_csv(marca, modelo):
                 numeros = re.findall(r'\d+', modelo_lower)
                 if numeros:
                     numero = numeros[0]
-                    if re.search(r'[a-z]' + numero, descripcion):
+                    # Buscar número + variantes opcionales (e60, e60s, etc.)
+                    patron = r'[a-z]?' + numero + r'[a-z\d]*'
+                    if re.search(patron, descripcion):
                         modelo_encontrado = True
         else:
             if modelo_lower in descripcion:
