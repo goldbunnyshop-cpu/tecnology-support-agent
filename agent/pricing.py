@@ -1,251 +1,314 @@
-# agent/pricing.py — Motor de cotización con Hugo Shop
+# agent/pricing.py — Motor de cotización con Hugo Shop (CSV + categorización por CALIDAD)
 import os
+import csv
 import logging
-from anthropic import AsyncAnthropic
+from pathlib import Path
+from collections import defaultdict
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
-client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+# ════════════════════════════════════════════════════════════════════
+# CONSTANTES: Categorización por CALIDAD (columna C del CSV)
+# ════════════════════════════════════════════════════════════════════
+
+# CATEGORÍA 1: Genérico (económico, compatible)
+CATEGORIAS_GENERICO = {'INCELL', 'COG', 'COF'}
+
+# CATEGORÍA 2: Calidad Original (piezas originales estándar)
+CATEGORIAS_ORIGINAL = {'ORIG', 'OLED', 'CARTAN'}
+
+# CATEGORÍA 3: AMOLED (piezas premium originales)
+CATEGORIAS_AMOLED = {'AMOLED'}
+
+# Multiplicador universal para TODAS las categorías
+MULTIPLICADOR_USD_A_MXN = 4
+
+# Ruta del CSV de Hugo Shop
+RUTA_CSV_HUGO = "knowledge/hugo_shop.csv"
 
 
 # ════════════════════════════════════════════════════════════════════
-# MAPEO DE PANTALLAS: Determina qué tipo de pantalla tiene cada modelo
+# FUNCIÓN: Cargar CSV de Hugo Shop
 # ════════════════════════════════════════════════════════════════════
 
-def determinar_tipo_pantalla(marca: str, modelo: str) -> str:
+def cargar_csv_hugo() -> list[dict]:
     """
-    Determina el tipo de pantalla REAL del dispositivo.
-    Retorna: 'AMOLED', 'OLED', 'LCD', 'IPS' o 'DESCONOCIDO'
+    Lee el CSV de Hugo Shop y retorna lista de diccionarios.
+    Estructura esperada:
+    - Columna A: CÓDIGO
+    - Columna B: DESCRIPCIÓN
+    - Columna C: CALIDAD (INCELL, COG, COF, ORIG, OLED, CARTAN, AMOLED)
+    - Columna D: COLOR
+    - Columna E: PRECIO_1 (precio en USD - USAR ESTE)
+    - Columna F: PRECIO_2
+    """
+    datos = []
+
+    if not os.path.exists(RUTA_CSV_HUGO):
+        logger.warning(f"[PRICING] CSV no encontrado en {RUTA_CSV_HUGO}")
+        return datos
+
+    try:
+        with open(RUTA_CSV_HUGO, 'r', encoding='utf-8') as f:
+            # Detectar si tiene headers
+            muestra = f.read(1000)
+            f.seek(0)
+
+            # Intentar con DictReader (con headers)
+            try:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row and any(row.values()):  # Ignorar filas vacías
+                        datos.append(row)
+            except:
+                # Si falla, intentar sin headers
+                f.seek(0)
+                reader = csv.reader(f)
+                for idx, row in enumerate(reader):
+                    if idx == 0 and any(x.lower() in str(row).lower() for x in ['código', 'descripción', 'precio']):
+                        continue  # Ignorar encabezado
+                    if row and len(row) >= 5:
+                        datos.append({
+                            'codigo': row[0],
+                            'descripcion': row[1],
+                            'calidad': row[2],
+                            'color': row[3],
+                            'precio_1': row[4],
+                            'precio_2': row[5] if len(row) > 5 else None,
+                        })
+
+        logger.info(f"[PRICING] Cargados {len(datos)} productos de Hugo Shop")
+        return datos
+
+    except Exception as e:
+        logger.error(f"[PRICING] Error cargando CSV: {e}")
+        return datos
+
+
+# ════════════════════════════════════════════════════════════════════
+# FUNCIÓN: Buscar marca+modelo en el CSV
+# ════════════════════════════════════════════════════════════════════
+
+def buscar_productos_en_csv(marca: str, modelo: str) -> list[dict]:
+    """
+    Busca todos los productos que coincidan con marca y modelo.
+    Retorna lista de diccionarios con los resultados.
+    """
+    datos = cargar_csv_hugo()
+    resultados = []
+
+    marca_lower = marca.lower().strip()
+    modelo_lower = modelo.lower().strip()
+    consulta = f"{marca_lower} {modelo_lower}"
+
+    for producto in datos:
+        descripcion = str(producto.get('descripcion', '')).lower()
+
+        # Búsqueda: debe contener marca Y modelo en la descripción
+        if marca_lower in descripcion and modelo_lower in descripcion:
+            resultados.append(producto)
+
+    # Si no hay coincidencias exactas, intentar búsqueda más flexible
+    if not resultados:
+        for producto in datos:
+            descripcion = str(producto.get('descripcion', '')).lower()
+            if marca_lower in descripcion:
+                resultados.append(producto)
+
+    return resultados
+
+
+# ════════════════════════════════════════════════════════════════════
+# FUNCIÓN: Categorizar por CALIDAD
+# ════════════════════════════════════════════════════════════════════
+
+def obtener_categoria(calidad_str: str) -> str | None:
+    """
+    Determina la categoría basándose en el valor de CALIDAD (columna C).
+    Retorna: 'GENERICO', 'ORIGINAL', 'AMOLED' o None si no coincide.
+    """
+    if not calidad_str:
+        return None
+
+    calidad_upper = str(calidad_str).strip().upper()
+
+    if calidad_upper in CATEGORIAS_GENERICO:
+        return 'GENERICO'
+    elif calidad_upper in CATEGORIAS_ORIGINAL:
+        return 'ORIGINAL'
+    elif calidad_upper in CATEGORIAS_AMOLED:
+        return 'AMOLED'
+
+    return None
+
+
+# ════════════════════════════════════════════════════════════════════
+# FUNCIÓN: Extraer precio en USD y convertir a MXN
+# ════════════════════════════════════════════════════════════════════
+
+def extraer_precio_usd(precio_str: str) -> float | None:
+    """
+    Extrae valor numérico del precio (columna E - PRECIO_1).
+    Maneja formatos como "100", "100.50", "$100", "100 USD", etc.
+    """
+    if not precio_str:
+        return None
+
+    try:
+        # Limpiar: remover símbolos de moneda, espacios, texto
+        limpio = str(precio_str).replace('$', '').replace('USD', '').strip()
+        return float(limpio)
+    except (ValueError, TypeError):
+        return None
+
+
+# ════════════════════════════════════════════════════════════════════
+# FUNCIÓN: Agrupar productos por color y detectar variantes
+# ════════════════════════════════════════════════════════════════════
+
+def agrupar_por_color(productos: list[dict]) -> dict[str, list[dict]]:
+    """
+    Agrupa los productos por color (columna D).
+    Retorna: {color: [lista de productos con ese color]}
+    """
+    agrupados = defaultdict(list)
+
+    for producto in productos:
+        color = str(producto.get('color', 'Sin especificar')).strip()
+        if not color or color.upper() == 'NONE':
+            color = 'Sin especificar'
+        agrupados[color].append(producto)
+
+    return dict(agrupados)
+
+
+# ════════════════════════════════════════════════════════════════════
+# FUNCIÓN: Construir respuesta de cotización
+# ════════════════════════════════════════════════════════════════════
+
+async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
+    """
+    Obtiene cotización de displays basándose en Hugo Shop CSV.
 
     LÓGICA:
-    - AMOLED: Samsung Galaxy S/Z series, flagship Motorola
-    - OLED: iPhone Pro, Google Pixel Pro, OnePlus Pro
-    - LCD/IPS: Budget/Mid-range, A-series Samsung, Edge Lite, etc.
+    1. Busca marca+modelo en CSV
+    2. Agrupa por CALIDAD (columna C) → 3 categorías
+    3. Agrupa por COLOR (columna D) → solo mostrar si hay variantes de precio
+    4. Multiplica PRECIO_1 × 4 para todas las categorías
+    5. Retorna respuesta formateada con opciones disponibles
     """
-    marca_lower = marca.lower()
-    modelo_lower = modelo.lower()
 
-    # ═══════════════════════════════════════════════════════════════
-    # SAMSUNG
-    # ═══════════════════════════════════════════════════════════════
-    if 'samsung' in marca_lower:
-        # Galaxy S/Z Series: AMOLED (premium)
-        if any(x in modelo_lower for x in ['s21', 's22', 's23', 's24', 's25', 'z fold', 'z flip']):
-            return 'AMOLED'
-        # Galaxy A/M/F Series: LCD (presupuesto)
-        if any(x in modelo_lower for x in ['galaxy a', 'a12', 'a21', 'a22', 'a32', 'a52', 'a55', 'galaxy m', 'fe']):
-            return 'LCD'
-        # Por defecto Samsung premium
-        return 'AMOLED'
+    # Paso 1: Buscar productos
+    productos = buscar_productos_en_csv(marca, modelo)
 
-    # ═══════════════════════════════════════════════════════════════
-    # IPHONE
-    # ═══════════════════════════════════════════════════════════════
-    if 'iphone' in marca_lower:
-        # iPhone Pro: OLED
-        if 'pro' in modelo_lower:
-            return 'OLED'
-        # iPhone 14+: OLED (incluso base)
-        if any(x in modelo_lower for x in ['14', '15', '16']):
-            return 'OLED'
-        # iPhone SE, 11, 12, 13: LCD (base)
-        if any(x in modelo_lower for x in ['se', '11', '12', '13']):
-            return 'LCD'
-        # Default para otros
-        return 'OLED'
+    if not productos:
+        logger.warning(f"[PRICING] No se encontraron productos para: {marca} {modelo}")
+        return (
+            f"Disculpa, no tengo en inventario displays para {marca} {modelo}.\n"
+            "¿Podrías verificar el modelo exacto? O puedo conectarte con un técnico "
+            "para asesorarte sobre alternativas compatibles."
+        )
 
-    # ═══════════════════════════════════════════════════════════════
-    # GOOGLE PIXEL
-    # ═══════════════════════════════════════════════════════════════
-    if 'pixel' in marca_lower:
-        # Pixel Pro/Fold: OLED
-        if any(x in modelo_lower for x in ['pro', 'fold', 'a']):
-            return 'OLED'
-        return 'OLED'
+    # Paso 2: Agrupar por CALIDAD (categoría) y COLOR
+    productos_por_categoria = defaultdict(list)
 
-    # ═══════════════════════════════════════════════════════════════
-    # MOTOROLA
-    # ═══════════════════════════════════════════════════════════════
-    if 'motorola' in marca_lower or 'moto' in marca_lower:
-        # Edge Premium: AMOLED
-        if any(x in modelo_lower for x in ['edge 50', 'edge 40', 'edge 40 pro', 'edge 40 ultra']):
-            return 'AMOLED'
-        # Edge Mid/Lite: LCD
-        if any(x in modelo_lower for x in ['edge 20', 'edge lite', 'edge 30', 'g']):
-            return 'LCD'
-        # Moto G: LCD
-        return 'LCD'
+    for producto in productos:
+        categoria = obtener_categoria(producto.get('calidad', ''))
+        if not categoria:
+            logger.debug(f"[PRICING] Calidad desconocida: {producto.get('calidad')}")
+            continue
+        productos_por_categoria[categoria].append(producto)
 
-    # ═══════════════════════════════════════════════════════════════
-    # ONEPLUS
-    # ═══════════════════════════════════════════════════════════════
-    if 'oneplus' in marca_lower or 'one plus' in modelo_lower:
-        # OnePlus Pro/Ultra: AMOLED
-        if any(x in modelo_lower for x in ['pro', 'ultra', 'find']):
-            return 'AMOLED'
-        # OnePlus regular: AMOLED (mayoría)
-        return 'AMOLED'
+    # Paso 3: Construir respuesta
+    respuesta = f"Para {marca} {modelo} tenemos estas opciones:\n\n"
 
-    # ═══════════════════════════════════════════════════════════════
-    # XIAOMI
-    # ═══════════════════════════════════════════════════════════════
-    if 'xiaomi' in marca_lower:
-        # Xiaomi 13/14: AMOLED
-        if any(x in modelo_lower for x in ['13', '14', '15']):
-            return 'AMOLED'
-        # Xiaomi budget: LCD
-        return 'LCD'
+    # Orden de presentación: Genérico → Original → AMOLED
+    categorias_orden = ['GENERICO', 'ORIGINAL', 'AMOLED']
 
-    # ═══════════════════════════════════════════════════════════════
-    # OTROS
-    # ═══════════════════════════════════════════════════════════════
-    # Por defecto: LCD (conservador)
-    return 'LCD'
+    for categoria in categorias_orden:
+        if categoria not in productos_por_categoria:
+            continue
+
+        productos_cat = productos_por_categoria[categoria]
+
+        # Calcular precio promedio para esta categoría (pueden haber variantes de color)
+        precios_usd = []
+        for prod in productos_cat:
+            precio_usd = extraer_precio_usd(prod.get('precio_1', ''))
+            if precio_usd:
+                precios_usd.append(precio_usd)
+
+        if not precios_usd:
+            logger.warning(f"[PRICING] Sin precios válidos para {categoria}")
+            continue
+
+        precio_usd_promedio = sum(precios_usd) / len(precios_usd)
+        precio_mxn = int(precio_usd_promedio * MULTIPLICADOR_USD_A_MXN)
+
+        # Nombrar categoría según tipo
+        if categoria == 'GENERICO':
+            nombre_categoria = "Display Genérico (Incell/COG)"
+        elif categoria == 'ORIGINAL':
+            nombre_categoria = "Display Calidad original"
+        elif categoria == 'AMOLED':
+            nombre_categoria = "Display AMOLED original"
+        else:
+            nombre_categoria = f"Display {categoria}"
+
+        respuesta += f"• {nombre_categoria}: ${precio_mxn:,} MXN"
+
+        # Paso 4: Mostrar variantes de COLOR solo si hay diferencia de precio
+        colores_unicos = agrupar_por_color(productos_cat)
+
+        if len(colores_unicos) > 1:
+            # Detectar si hay variación de precio entre colores
+            precios_por_color = {}
+            for color, prods in colores_unicos.items():
+                precios_color = []
+                for prod in prods:
+                    precio = extraer_precio_usd(prod.get('precio_1', ''))
+                    if precio:
+                        precios_color.append(precio)
+                if precios_color:
+                    precios_por_color[color] = int((sum(precios_color) / len(precios_color)) * MULTIPLICADOR_USD_A_MXN)
+
+            # Si hay variación de precio, listar colores disponibles
+            if len(set(precios_por_color.values())) > 1:
+                respuesta += " — Disponible en: "
+                colores_lista = ", ".join(sorted(precios_por_color.keys()))
+                respuesta += colores_lista
+
+        respuesta += "\n"
+
+    respuesta += (
+        "\nCada display incluye: diagnóstico, garantía 90 días y cambio el mismo día.\n"
+        "¿Cuál opción te interesa? O si tu color no aparece, verifica con nuestro técnico."
+    )
+
+    logger.info(
+        f"[PRICING] Cotización generada para {marca} {modelo} — "
+        f"Categorías encontradas: {', '.join(productos_por_categoria.keys())}"
+    )
+
+    return respuesta
 
 
 async def inicializar_cotizador():
     """
-    Inicializa el sistema de cotización de precios.
-    En versión actual: carga datos precargados. En futuro: podría descargar de Google Drive.
+    Inicializa el sistema de cotización.
+    Verifica que el CSV está disponible.
     """
     try:
         logger.info("[PRICING] Inicializando cotizador de precios...")
-        # Verificar que tenemos acceso a la función de obtención
-        logger.debug("[PRICING] Cotizador listo con 739 productos de Hugo Shop")
-        logger.info("[PRICING] ✅ Cotizador inicializado correctamente")
+
+        if os.path.exists(RUTA_CSV_HUGO):
+            datos = cargar_csv_hugo()
+            logger.info(f"[PRICING] ✅ Sistema listo con {len(datos)} productos de Hugo Shop")
+        else:
+            logger.warning(f"[PRICING] ⚠️  CSV no encontrado en {RUTA_CSV_HUGO}")
+            logger.warning("[PRICING] Asegúrate de que 'hugo_shop.csv' está en la carpeta /knowledge")
+
     except Exception as e:
         logger.error(f"[PRICING] Error inicializando cotizador: {e}", exc_info=True)
-        # No es crítico — fallback a diccionario local
-        logger.warning("[PRICING] Fallback a precios hardcoded")
-
-
-async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
-    """Obtiene cotización de displays para un dispositivo con 739 precios de Hugo Shop"""
-
-    # 739 productos de Hugo Shop - precios base en USD
-    # Multiplicador universal: 4x para todas las variantes
-    precios_fallback = {
-        # Samsung Galaxy S Series
-        'samsung galaxy s21': 950, 's21': 950,
-        'samsung s21': 950, 'samsung s21 plus': 1050, 'samsung s21 ultra': 1150,
-        'samsung s21 fe': 750, 'samsung galaxy s21 plus': 1050,
-        'samsung galaxy s21 ultra': 1150, 'samsung galaxy s21 fe': 750,
-        's21 plus': 1050, 's21 ultra': 1150, 's21 fe': 750,
-        
-        # Samsung Galaxy S22 Series
-        'samsung galaxy s22': 1100, 'samsung s22': 1100, 's22': 1100,
-        'samsung galaxy s22 plus': 1210, 'samsung s22 plus': 1210, 's22 plus': 1210,
-        'samsung galaxy s22 ultra': 1320, 'samsung s22 ultra': 1320, 's22 ultra': 1320,
-        'samsung galaxy s22 fe': 880, 'samsung s22 fe': 880, 's22 fe': 880,
-        
-        # Samsung Galaxy S23 Series
-        'samsung galaxy s23': 1200, 'samsung s23': 1200, 's23': 1200,
-        'samsung galaxy s23 plus': 1320, 'samsung s23 plus': 1320, 's23 plus': 1320,
-        'samsung galaxy s23 ultra': 1440, 'samsung s23 ultra': 1440, 's23 ultra': 1440,
-        'samsung galaxy s23 fe': 960, 'samsung s23 fe': 960, 's23 fe': 960,
-        
-        # Samsung Galaxy S24 Series
-        'samsung galaxy s24': 1300, 'samsung s24': 1300, 's24': 1300,
-        'samsung galaxy s24 plus': 1430, 'samsung s24 plus': 1430, 's24 plus': 1430,
-        'samsung galaxy s24 ultra': 1560, 'samsung s24 ultra': 1560, 's24 ultra': 1560,
-        'samsung galaxy s24 fe': 1040, 'samsung s24 fe': 1040, 's24 fe': 1040,
-        
-        # Samsung Galaxy A Series
-        'samsung galaxy a12': 280, 'samsung a12': 280,
-        'samsung galaxy a21': 280, 'samsung a21': 280,
-        'samsung galaxy a22': 320, 'samsung a22': 320,
-        'samsung galaxy a32': 350, 'samsung a32': 350,
-        'samsung galaxy a52': 400, 'samsung a52': 400,
-        'samsung galaxy a55': 420, 'samsung a55': 420,
-        
-        # Samsung Galaxy S10/S20
-        'samsung galaxy s10': 500, 'samsung s10': 500,
-        'samsung galaxy s20': 800, 'samsung s20': 800,
-        
-        # iPhone Series
-        'iphone 6': 400, 'iphone 7': 450, 'iphone 8': 500,
-        'iphone x': 800, 'iphone xs': 850, 'iphone xr': 900,
-        'iphone 11': 900, 'iphone 12': 1200, 'iphone 13': 1400,
-        'iphone 14': 1600, 'iphone 14 pro': 1760, 'iphone 14 pro max': 1920, 'iphone 14 plus': 1760,
-        'iphone 14pro': 1760, 'iphone 14promax': 1920, 'iphone 14plus': 1760,
-        'iphone 15': 1800, 'iphone 15 pro': 1980, 'iphone 15 pro max': 2160, 'iphone 15 plus': 1980,
-        'iphone 15pro': 1980, 'iphone 15promax': 2160, 'iphone 15plus': 1980,
-        'iphone 16': 2000, 'iphone 16 pro': 2200, 'iphone 16 pro max': 2400, 'iphone 16 plus': 2100,
-        'iphone 16pro': 2200, 'iphone 16promax': 2400, 'iphone 16plus': 2100,
-        'iphone se': 600,
-        
-        # Google Pixel
-        'google pixel': 600, 'pixel 6': 600, 'pixel 7': 650,
-        'pixel 8': 700, 'pixel 8 pro': 800,
-        
-        # Motorola
-        'motorola moto edge 50 fusion': 450, 'motorola moto g': 300,
-        'motorola': 280, 'moto edge 50': 450, 'moto g': 300,
-        
-        # Xiaomi / Redmi
-        'xiaomi': 250, 'redmi': 220,
-        
-        # OnePlus
-        'oneplus': 400,
-        
-        # OPPO / VIVO
-        'oppo': 280, 'vivo': 280,
-        
-        # Huawei / Honor
-        'huawei': 320, 'honor': 300,
-        
-        # Nokia / LG
-        'nokia': 200, 'lg': 280,
-        
-        # Tablets
-        'ipad': 500, 'ipad air': 600, 'ipad pro': 800, 'ipad mini': 450,
-        'samsung tab': 400, 'galaxy tab': 400,
-    }
-
-    # Buscar precio base (búsqueda case-insensitive)
-    consulta = f"{marca} {modelo}".lower()
-    precio_base = None
-
-    # Búsqueda ordenada por longitud (más específicas primero)
-    # IMPORTANTE: Buscar primero variantes específicas (Plus, Ultra, Pro)
-    for clave in sorted(precios_fallback.keys(), key=len, reverse=True):
-        if clave in consulta:
-            precio_base = precios_fallback[clave]
-            break
-
-    # Fallback si no se encuentra
-    if precio_base is None:
-        precio_base = 350
-
-    # ════════════════════════════════════════════════════════════════════
-    # CÁLCULO DE PRECIOS CON DIFERENCIACIÓN
-    # ════════════════════════════════════════════════════════════════════
-    # Genérico (económico, compatible): 4x base
-    # Original (calidad premium): 6x base (50% más caro)
-    precio_generico = int(precio_base * 4)
-    precio_original = int(precio_base * 6)
-
-    # Determinar tipo de pantalla REAL
-    tipo_pantalla = determinar_tipo_pantalla(marca, modelo)
-
-    # Generar respuesta basada en el tipo REAL de pantalla
-    respuesta = f"Para {marca} {modelo} tenemos estas opciones:\n"
-
-    if tipo_pantalla == 'AMOLED':
-        respuesta += f"• Display Genérico (Incell/LCD): ${precio_generico:,} MXN\n"
-        respuesta += f"• Display Original AMOLED: ${precio_original:,} MXN\n"
-        logger.info(f"[PRICING] {marca} {modelo} → AMOLED")
-    elif tipo_pantalla == 'OLED':
-        respuesta += f"• Display Genérico (LCD): ${precio_generico:,} MXN\n"
-        respuesta += f"• Display Original OLED: ${precio_original:,} MXN\n"
-        logger.info(f"[PRICING] {marca} {modelo} → OLED")
-    else:  # LCD o IPS
-        respuesta += f"• Display Genérico (LCD/IPS económico): ${precio_generico:,} MXN\n"
-        respuesta += f"• Display Original (LCD/IPS calidad): ${precio_original:,} MXN\n"
-        logger.info(f"[PRICING] {marca} {modelo} → {tipo_pantalla}")
-
-    respuesta += "\nAmbos con diagnóstico, garantía 90 días y cambio el mismo día. ¿Cuál te interesa?"
-
-    logger.info(f"[PRICING] Cotización: {marca} {modelo} ({tipo_pantalla}) → Genérico: ${precio_generico:,}, Original: ${precio_original:,}")
-    return respuesta
