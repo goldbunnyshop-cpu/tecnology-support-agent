@@ -9,6 +9,101 @@ logger = logging.getLogger("agentkit")
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
+# ════════════════════════════════════════════════════════════════════
+# MAPEO DE PANTALLAS: Determina qué tipo de pantalla tiene cada modelo
+# ════════════════════════════════════════════════════════════════════
+
+def determinar_tipo_pantalla(marca: str, modelo: str) -> str:
+    """
+    Determina el tipo de pantalla REAL del dispositivo.
+    Retorna: 'AMOLED', 'OLED', 'LCD', 'IPS' o 'DESCONOCIDO'
+
+    LÓGICA:
+    - AMOLED: Samsung Galaxy S/Z series, flagship Motorola
+    - OLED: iPhone Pro, Google Pixel Pro, OnePlus Pro
+    - LCD/IPS: Budget/Mid-range, A-series Samsung, Edge Lite, etc.
+    """
+    marca_lower = marca.lower()
+    modelo_lower = modelo.lower()
+
+    # ═══════════════════════════════════════════════════════════════
+    # SAMSUNG
+    # ═══════════════════════════════════════════════════════════════
+    if 'samsung' in marca_lower:
+        # Galaxy S/Z Series: AMOLED (premium)
+        if any(x in modelo_lower for x in ['s21', 's22', 's23', 's24', 's25', 'z fold', 'z flip']):
+            return 'AMOLED'
+        # Galaxy A/M/F Series: LCD (presupuesto)
+        if any(x in modelo_lower for x in ['galaxy a', 'a12', 'a21', 'a22', 'a32', 'a52', 'a55', 'galaxy m', 'fe']):
+            return 'LCD'
+        # Por defecto Samsung premium
+        return 'AMOLED'
+
+    # ═══════════════════════════════════════════════════════════════
+    # IPHONE
+    # ═══════════════════════════════════════════════════════════════
+    if 'iphone' in marca_lower:
+        # iPhone Pro: OLED
+        if 'pro' in modelo_lower:
+            return 'OLED'
+        # iPhone 14+: OLED (incluso base)
+        if any(x in modelo_lower for x in ['14', '15', '16']):
+            return 'OLED'
+        # iPhone SE, 11, 12, 13: LCD (base)
+        if any(x in modelo_lower for x in ['se', '11', '12', '13']):
+            return 'LCD'
+        # Default para otros
+        return 'OLED'
+
+    # ═══════════════════════════════════════════════════════════════
+    # GOOGLE PIXEL
+    # ═══════════════════════════════════════════════════════════════
+    if 'pixel' in marca_lower:
+        # Pixel Pro/Fold: OLED
+        if any(x in modelo_lower for x in ['pro', 'fold', 'a']):
+            return 'OLED'
+        return 'OLED'
+
+    # ═══════════════════════════════════════════════════════════════
+    # MOTOROLA
+    # ═══════════════════════════════════════════════════════════════
+    if 'motorola' in marca_lower or 'moto' in marca_lower:
+        # Edge Premium: AMOLED
+        if any(x in modelo_lower for x in ['edge 50', 'edge 40', 'edge 40 pro', 'edge 40 ultra']):
+            return 'AMOLED'
+        # Edge Mid/Lite: LCD
+        if any(x in modelo_lower for x in ['edge 20', 'edge lite', 'edge 30', 'g']):
+            return 'LCD'
+        # Moto G: LCD
+        return 'LCD'
+
+    # ═══════════════════════════════════════════════════════════════
+    # ONEPLUS
+    # ═══════════════════════════════════════════════════════════════
+    if 'oneplus' in marca_lower or 'one plus' in modelo_lower:
+        # OnePlus Pro/Ultra: AMOLED
+        if any(x in modelo_lower for x in ['pro', 'ultra', 'find']):
+            return 'AMOLED'
+        # OnePlus regular: AMOLED (mayoría)
+        return 'AMOLED'
+
+    # ═══════════════════════════════════════════════════════════════
+    # XIAOMI
+    # ═══════════════════════════════════════════════════════════════
+    if 'xiaomi' in marca_lower:
+        # Xiaomi 13/14: AMOLED
+        if any(x in modelo_lower for x in ['13', '14', '15']):
+            return 'AMOLED'
+        # Xiaomi budget: LCD
+        return 'LCD'
+
+    # ═══════════════════════════════════════════════════════════════
+    # OTROS
+    # ═══════════════════════════════════════════════════════════════
+    # Por defecto: LCD (conservador)
+    return 'LCD'
+
+
 async def inicializar_cotizador():
     """
     Inicializa el sistema de cotización de precios.
@@ -127,10 +222,26 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     precio_generico = int(precio_base * 4)
     precio_original = int(precio_base * 4)
 
+    # Determinar tipo de pantalla REAL
+    tipo_pantalla = determinar_tipo_pantalla(marca, modelo)
+
+    # Generar respuesta basada en el tipo REAL de pantalla
     respuesta = f"Para {marca} {modelo} tenemos estas opciones:\n"
-    respuesta += f"• Display Genérico (Incell): ${precio_generico:,} MXN\n"
-    respuesta += f"• Display Original: ${precio_original:,} MXN\n"
+
+    if tipo_pantalla == 'AMOLED':
+        respuesta += f"• Display Genérico (Incell/LCD): ${precio_generico:,} MXN\n"
+        respuesta += f"• Display Original AMOLED: ${precio_original:,} MXN\n"
+        logger.info(f"[PRICING] {marca} {modelo} → AMOLED")
+    elif tipo_pantalla == 'OLED':
+        respuesta += f"• Display Genérico (LCD): ${precio_generico:,} MXN\n"
+        respuesta += f"• Display Original OLED: ${precio_original:,} MXN\n"
+        logger.info(f"[PRICING] {marca} {modelo} → OLED")
+    else:  # LCD o IPS
+        respuesta += f"• Display Genérico (LCD/IPS económico): ${precio_generico:,} MXN\n"
+        respuesta += f"• Display Original (LCD/IPS calidad): ${precio_original:,} MXN\n"
+        logger.info(f"[PRICING] {marca} {modelo} → {tipo_pantalla}")
+
     respuesta += "\nAmbos con diagnóstico, garantía 90 días y cambio el mismo día. ¿Cuál te interesa?"
 
-    logger.info(f"[PRICING] Cotización: {marca} {modelo} → Genérico: ${precio_generico:,}, Original: ${precio_original:,}")
+    logger.info(f"[PRICING] Cotización: {marca} {modelo} ({tipo_pantalla}) → Genérico: ${precio_generico:,}, Original: ${precio_original:,}")
     return respuesta
