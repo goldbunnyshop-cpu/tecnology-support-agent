@@ -1,0 +1,36 @@
+# Forzar todos los archivos de codigo a texto UTF-8 con line endings LF.
+# Previene corrupcion por editores que guardan en UTF-16 (que mete null bytes).
+
+* text=auto eol=lf
+
+# Codigo Python: SIEMPRE texto, nunca tratado como binario
+*.py text eol=lf working-tree-encoding=UTF-8
+*.pyi text eol=lf working-tree-encoding=UTF-8
+
+# Configuracion y docs
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.csv text eol=lf
+
+# Shell / docker
+*.sh text eol=lf
+Dockerfile text eol=lf
+.env* text eol=lf
+
+# Binarios reales (NO tocar)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
