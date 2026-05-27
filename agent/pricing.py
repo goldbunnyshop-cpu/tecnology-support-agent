@@ -217,39 +217,53 @@ def obtener_categoria(calidad_str: str) -> str | None:
 SUFIJOS_LETRA_SAMSUNG = set('abcdefghijklmnopqrstuvwxyz')
 
 
-def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> tuple[str | None, str | None]:
-    """De la descripcion del CSV extrae (base, variante).
+def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> list[tuple[str | None, str | None]]:
+    """De la descripcion del CSV extrae TODAS las parejas (base, variante) que cubre.
+
+    Un mismo display suele ser compatible con varios modelos separados por '/'.
+    Cada chunk se parsea por separado segun la marca.
 
     Ejemplos:
-      iPhone:    'X14 PRO'             -> ('14', 'pro')
-                 'X14 PRO MAX'         -> ('14', 'pro max')
-                 'X14'                 -> ('14', None)
-      Samsung:   'A21S'                -> ('a21', 's')
-                 'A21S/A217'           -> ('a21', 's')   (multi-codigo: tomo el primero)
-                 'S21'                 -> ('s21', None)
-                 'S21 FE'              -> ('s21', 'fe')
-                 'S21 PLUS'            -> ('s21', 'plus')
-      Sufijos en parentesis (ej "(ACTUALIZACION AUTOMATICA)") se descartan.
+      iPhone:    'X14 PRO'                -> [('14','pro')]
+                 'X14/X14 PLUS'           -> [('14',None),('14','plus')]
+                 'X12/12PRO'              -> [('12',None),('12','pro')]
+      Samsung:   'A21S/A217'              -> [('a21','s'),('a21','7')]
+                 'S21 PLUS'               -> [('s21','plus')]
+      Hisense:   'V60/E60'                -> [('v60',None),('e60',None)]
+                 'H40 LITE/E40/V40'       -> [('h40','lite'),('e40',None),('v40',None)]
+      Motorola:  'EDGE 40/EDGE 40 NEO/EDGE 2023' -> [('edge','40'),('edge','40 neo'),('edge','2023')]
+      Generico:  'X12/12PRO (MOVIL IC)'   -> parentesis se descarta -> [('12',None),('12','pro')]
     """
     if not descripcion:
-        return None, None
+        return []
 
-    # Quitar parentesis y su contenido
+    # Quitar parentesis (notas como "(MOVIL IC)", "(BOUTIQUE)", etc.)
     d = re.sub(r'\([^)]*\)', '', descripcion).strip().lower()
-    # Multi-codigo: A21S/A217 -> solo el primero
-    d = d.split('/')[0].strip()
-    tokens = d.split()
-    if not tokens:
-        return None, None
+    chunks = [c.strip() for c in d.split('/') if c.strip()]
 
+    pares: list[tuple[str | None, str | None]] = []
+    vistos: set[tuple[str | None, str | None]] = set()
+    for chunk in chunks:
+        par = _parsear_chunk_descripcion(chunk, marca_header)
+        if par and par not in vistos:
+            pares.append(par)
+            vistos.add(par)
+    return pares
+
+
+def _parsear_chunk_descripcion(chunk: str, marca_header: str) -> tuple[str | None, str | None] | None:
+    """Aplica reglas por marca a un solo chunk (texto entre dos '/' o el unico)."""
+    tokens = chunk.split()
+    if not tokens:
+        return None
     primer = tokens[0]
     resto = ' '.join(tokens[1:]).strip() or None
     marca = (marca_header or '').upper()
 
-    # iPhone: prefijo X seguido del numero del modelo
+    # iPhone: prefijo X opcional (en el CSV alternan X14 y 14 cuando hay multi-codigo)
     if marca == 'IPHONE':
-        m = re.match(r'^x(\d+)([a-z]*)$', primer)
-        if m:
+        m = re.match(r'^x?(\d+)([a-z]*)$', primer)
+        if m and m.group(1):
             base = m.group(1)
             sufijo_letra = m.group(2) or None
             variante = ' '.join(filter(None, [sufijo_letra, resto])).strip() or None
@@ -261,11 +275,11 @@ def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> tuple[
         variante = ' '.join(filter(None, [m.group(2), resto])).strip() or None
         return m.group(1), variante
 
-    # Patron letra + digitos sin sufijo (S21, A21)
+    # Letra + digitos sin sufijo (S21, A21, V60, E60, H40)
     if re.match(r'^[a-z]\d+$', primer):
         return primer, resto
 
-    # Patron numero puro (Pixel 7, Moto G42 -> el "g42" cae en el patron de arriba)
+    # Numero puro (Pixel 7, iPhone 12, Moto G42 cae en patron de arriba)
     m = re.match(r'^(\d+)([a-z]*)$', primer)
     if m:
         base = m.group(1)
@@ -273,7 +287,7 @@ def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> tuple[
         variante = ' '.join(filter(None, [sufijo, resto])).strip() or None
         return base, variante
 
-    # Fallback: usar primer token como base, el resto como variante
+    # Fallback: primer token como base, resto como variante (ej "EDGE 40")
     return primer, resto
 
 
@@ -485,36 +499,39 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     if not base_q:
         return _mensaje_no_disponible(marca, modelo)
 
-    # Mapear cada producto a (base, variante) y filtrar por base
-    matches = []
+    # Mapear cada producto a las variantes que cubre para el base solicitado.
+    # Un producto multi-modelo (ej "V60/E60") puede cubrir varias variantes; cada
+    # producto aparece UNA vez en `matches` con la lista de variantes aplicables.
+    base_q_lower = base_q.lower()
+    matches: list[tuple[dict, list[str | None]]] = []
     for p in productos_marca:
-        base_p, var_p = normalizar_modelo_descripcion(p['DESCRIPCION'], marca_csv)
-        if base_p and base_p.lower() == base_q.lower():
-            matches.append((p, var_p))
+        pares = normalizar_modelo_descripcion(p['DESCRIPCION'], marca_csv)
+        variantes_aplicables = [v for b, v in pares if b and b.lower() == base_q_lower]
+        if variantes_aplicables:
+            matches.append((p, variantes_aplicables))
 
     if not matches:
         logger.warning(f"[PRICING] Sin coincidencias para {marca} {modelo} (base={base_q})")
         return _mensaje_no_disponible(marca, modelo)
 
-    # Variantes unicas presentes en el CSV para este base
-    variantes_csv = sorted({(v or '__base__').lower() for _, v in matches})
+    # Set de variantes unicas en todos los productos coincidentes
+    variantes_csv = sorted({(v or '__base__').lower() for _, vs in matches for v in vs})
 
     if var_q:
-        # Cliente especifico una variante: buscar coincidencia exacta
+        # Cliente especifico una variante: buscar productos que la cubran exactamente
         var_q_lower = var_q.lower()
-        exactos = [p for p, v in matches if v and v.lower() == var_q_lower]
+        exactos = [p for p, vs in matches if any((v or '').lower() == var_q_lower for v in vs)]
         if exactos:
             modelo_completo = _formatear_modelo(base_q, var_q)
             logger.info(f"[PRICING] Cotizando exacto: {marca} {modelo_completo} ({len(exactos)} productos)")
             return _formatear_cotizacion(marca, modelo_completo, exactos)
-        # Variante pedida no existe: ofrecer las disponibles
         logger.info(f"[PRICING] Variante '{var_q}' no existe para {marca} {base_q}. Variantes: {variantes_csv}")
         return _formatear_pregunta_variantes(marca, base_q, variantes_csv)
 
     # Cliente NO especifico variante.
-    # Si solo existe el base puro (sin variantes) -> cotizar directo
+    # Si solo existe el base puro (sin variantes) -> cotizar directo todos los productos
     if variantes_csv == ['__base__']:
-        productos_base = [p for p, v in matches if not v]
+        productos_base = [p for p, vs in matches if any(v is None for v in vs)]
         logger.info(f"[PRICING] Cotizando base sin variantes: {marca} {base_q}")
         return _formatear_cotizacion(marca, base_q, productos_base)
 
