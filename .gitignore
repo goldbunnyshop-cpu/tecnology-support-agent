@@ -1,17 +1,24 @@
-# SECRETOS — NUNCA SUBIR A GITHUB
+# SECRETOS - NUNCA SUBIR A GITHUB
 .env
 *.env
 .env.*
 creds.txt
+*creds.txt
+base64_creds*
+*-creds.txt
 credentials.json
 config/credentials.json
 *-credentials.json
 *-service-account.json
+*service_account*.json
 config/tecnology-support-*.json
 tecnology-support-*.json
 google_creds.json
+*.pem
+*.key
+private_key*
 
-# SCRIPTS CON TOKENS — NUNCA SUBIR
+# SCRIPTS CON TOKENS ï¿½ NUNCA SUBIR
 push_to_github.py
 push-changes.ps1
 push_fix.ps1
@@ -33,8 +40,12 @@ dist/
 build/
 
 # KNOWLEDGE
+# Por defecto knowledge/ esta gitignored, EXCEPTO el CSV que Railway necesita
+# para cotizar precios. Los archivos privados del negocio (PDFs, docs internos)
+# se siguen ignorando.
 knowledge/*
 !knowledge/.gitkeep
+!knowledge/hugo_shop.csv
 
 # REPORTES Y SESIONES
 reports/
