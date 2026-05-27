@@ -1,0 +1,35 @@
+════════════════════════════════════════════════════════════════════════════
+   SUBIR CAMBIOS A RAILWAY (3 pasos)
+════════════════════════════════════════════════════════════════════════════
+
+El commit local está hecho. Ahora solo necesitas hacer PUSH desde tu máquina.
+
+PASO 1: Abre PowerShell / Terminal en tu carpeta del proyecto
+─────────────────────────────────────────────────────────────
+cd C:\Users\Elitebook\whatsapp-agentkit
+
+
+PASO 2: Haz push a GitHub
+─────────────────────────
+git push origin main
+
+(Si pide usuario/contraseña, usa tu GitHub token)
+
+
+PASO 3: Espera a que Railway redeploy (2-3 minutos)
+──────────────────────────────────────────────────
+- Ve a https://railway.app/dashboard
+- Click en tu proyecto "tecnology-support-agent"
+- Verás un nuevo deployment iniciando
+- Espera a que pase a status "Success" (verde ✓)
+
+
+LISTO: Tu agente está actualizado en producción
+
+Prueba en WhatsApp:
+  test precio iphone 14 pro
+  test precio iphone 14 pro max
+
+Deberías ver precios DIFERENTES para cada modelo ahora.
+
+════════════════════════════════════════════════════════════════════════════
