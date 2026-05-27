@@ -5,6 +5,7 @@ import os
 import re
 import logging
 from datetime import datetime
+from agent.commands import parsear_orden_crm  # Importar función desde commands.py para evitar duplicación
 
 logger = logging.getLogger("agentkit")
 
@@ -299,53 +300,6 @@ _MAPA_ESTATUS = {
     "listo":      "Listo",
     "entregado":  "Entregado",
 }
-
-
-def parsear_orden_crm(payload: str) -> dict | None:
-    """
-    orden: TELÉFONO EQUIPO... TOTAL PAGO [REFACCION]
-    Ejemplo: 5541576331 PS5 2500 tarjeta 350
-    El folio ya no se pasa — se auto-asigna en el CRM (consecutivo global).
-    """
-    partes = payload.strip().split()
-    if len(partes) < 4:
-        return None
-
-    phone = re.sub(r"\D", "", partes[0])
-    if not phone:
-        return None
-
-    resto = partes[1:]
-
-    # Refacción opcional: número después de la forma de pago
-    refaccion = 0.0
-    if len(resto) >= 2 and re.match(r"^\d+(\.\d+)?$", resto[-1]) and resto[-2].lower() in _FORMAS_PAGO:
-        refaccion = float(resto[-1])
-        resto = resto[:-1]
-
-    # Forma de pago
-    if not resto or resto[-1].lower() not in _FORMAS_PAGO:
-        return None
-    forma_pago = resto[-1].lower()
-    resto = resto[:-1]
-
-    # Total
-    if not resto or not re.match(r"^\d+(\.\d+)?$", resto[-1]):
-        return None
-    total = float(resto[-1])
-    resto = resto[:-1]
-
-    equipo = " ".join(resto)
-    if not equipo:
-        return None
-
-    return {
-        "phone":      phone,
-        "equipo":     equipo,
-        "total":      total,
-        "forma_pago": forma_pago,
-        "refaccion":  refaccion,
-    }
 
 
 def parsear_estatus_crm(payload: str) -> tuple[str, str] | None:

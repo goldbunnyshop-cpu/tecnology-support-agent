@@ -1,247 +1,578 @@
-# agent/pricing.py — Motor de cotización con Hugo Shop
+# agent/pricing.py - Motor de cotizacion con Hugo Shop
+#
+# Flujo:
+#   1. cargar_csv_hugo()  -> Parser robusto que respeta las filas-header de marca
+#      del CSV (SAMSUNG,,,,, IPHONE,,,,, etc.) para anclar cada producto a su marca.
+#   2. obtener_cotizacion_display(marca, modelo)
+#         a) filtra a la marca correcta
+#         b) extrae (base, variante) del query y de cada producto
+#         c) si el modelo es ambiguo (solo hay variantes, o coexisten base + variantes)
+#            -> devuelve pregunta de variantes SIN precios
+#         d) si hay match exacto -> cotiza con promedios por categoria
+#   3. Las respuestas se devuelven con instrucciones inline para el LLM, para
+#      que NO inserte tecnicismos (INCELL, Cartan HG, etc.) ni invente precios
+#      cuando estamos pidiendo confirmar la variante.
+
 import os
+import re
+import csv
 import logging
-from anthropic import AsyncAnthropic
+from io import StringIO
+from collections import defaultdict
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
-client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+# Mapeo confirmado de calidad:
+#   GENERICO:  INCELL, COG, CARTAN INCELL (compuesto: prioridad sobre CARTAN solo)
+#   ORIGINAL:  ORIG, OLED, COF, FHD, DD SOFT, DD SOFT OLED, HG ORIG
+#   AMOLED:    AMOLED
+MULTIPLICADOR_USD_A_MXN = 4
+RUTA_CSV_HUGO = "knowledge/hugo_shop.csv"
+
+# Marcas que aparecen como filas-header en el CSV (separadoras de seccion)
+MARCAS_HEADER = {
+    'ALCATEL', 'CUBOT', 'GOOGLE', 'HISENSE', 'HONOR', 'HUAWEI',
+    'IPHONE', 'LG', 'NOKIA', 'OPPO', 'SAMSUNG', 'TCL', 'VIVO',
+    'XIAOMI', 'ZTE', 'MOTOROLA', 'MOTO', 'POCO', 'REDMI',
+    'ONEPLUS', 'REALME',
+}
+
+# Alias para mapear lo que escribe el cliente al header del CSV
+ALIAS_MARCAS = {
+    'iphone': 'IPHONE',
+    'apple': 'IPHONE',
+    'samsung': 'SAMSUNG',
+    'galaxy': 'SAMSUNG',
+    'motorola': 'MOTO',
+    'moto': 'MOTO',
+    'google': 'GOOGLE',
+    'google pixel': 'GOOGLE',
+    'pixel': 'GOOGLE',
+    'huawei': 'HUAWEI',
+    'honor': 'HONOR',
+    'hisense': 'HISENSE',
+    'xiaomi': 'XIAOMI',
+    'poco': 'XIAOMI',
+    'redmi': 'XIAOMI',
+    'oppo': 'OPPO',
+    'realme': 'REALME',
+    'oneplus': 'ONEPLUS',
+    'vivo': 'VIVO',
+    'tcl': 'TCL',
+    'zte': 'ZTE',
+    'nokia': 'NOKIA',
+    'lg': 'LG',
+    'alcatel': 'ALCATEL',
+    'cubot': 'CUBOT',
+}
 
 
-# ════════════════════════════════════════════════════════════════════
-# MAPEO DE PANTALLAS: Determina qué tipo de pantalla tiene cada modelo
-# ════════════════════════════════════════════════════════════════════
+# ============================================================
+# PARSER CSV ROBUSTO
+# ============================================================
 
-def determinar_tipo_pantalla(marca: str, modelo: str) -> str:
+def cargar_csv_hugo() -> list[dict]:
+    """Carga productos del CSV de Hugo Shop con marca anclada por seccion.
+
+    El CSV usa filas como 'SAMSUNG,,,,,' como separadores de seccion. Las
+    aprovecho para etiquetar cada producto con su MARCA correcta sin tener
+    que adivinarla por la descripcion.
     """
-    Determina el tipo de pantalla REAL del dispositivo.
-    Retorna: 'AMOLED', 'OLED', 'LCD', 'IPS' o 'DESCONOCIDO'
+    datos = []
+    if not os.path.exists(RUTA_CSV_HUGO):
+        logger.warning(f"[PRICING] CSV no encontrado en {RUTA_CSV_HUGO}")
+        return datos
 
-    LÓGICA:
-    - AMOLED: Samsung Galaxy S/Z series, flagship Motorola
-    - OLED: iPhone Pro, Google Pixel Pro, OnePlus Pro
-    - LCD/IPS: Budget/Mid-range, A-series Samsung, Edge Lite, etc.
+    try:
+        # Leer y limpiar nulos del archivo crudo
+        with open(RUTA_CSV_HUGO, 'rb') as f:
+            crudo = f.read().replace(b'\x00', b'').decode('utf-8', errors='replace')
+
+        reader = csv.reader(StringIO(crudo))
+        headers = next(reader, None)
+        if not headers:
+            logger.error("[PRICING] CSV sin encabezado")
+            return datos
+
+        marca_actual = None
+        for row in reader:
+            if not row or all(not str(c or '').strip() for c in row):
+                continue
+            # Garantizar 6 columnas (CODIGO, DESCRIPCION, CALIDAD, COLOR, PRECIO_1, PRECIO_2)
+            while len(row) < 6:
+                row.append('')
+
+            codigo = str(row[0] or '').strip()
+            descripcion = str(row[1] or '').strip()
+            calidad = str(row[2] or '').strip()
+            color = str(row[3] or '').strip()
+            precio_1 = str(row[4] or '').strip()
+
+            # Descartar header HUGO SHOP / COTIZACIONES
+            cod_upper = codigo.upper()
+            if cod_upper.startswith('HUGO SHOP') or cod_upper.startswith('COTIZACIONES'):
+                continue
+
+            # Detectar fila-header de marca: CODIGO=marca conocida y resto vacio
+            if cod_upper in MARCAS_HEADER and not descripcion and not precio_1:
+                marca_actual = cod_upper
+                continue
+            # Variante: DESCRIPCION trae la marca
+            if descripcion.upper() in MARCAS_HEADER and not codigo and not precio_1:
+                marca_actual = descripcion.upper()
+                continue
+
+            # Producto valido: necesita CODIGO + DESCRIPCION + PRECIO
+            if not codigo or not descripcion or not precio_1:
+                continue
+
+            # Ignorar baterias (no son displays). En el CSV las baterias tienen
+            # la columna CALIDAD desplazada (precio donde deberia ir la calidad).
+            if descripcion.lower().startswith('bateria') or descripcion.lower().startswith('bateri'):
+                continue
+
+            precio_usd = _extraer_precio_usd(precio_1)
+            if not precio_usd:
+                continue
+
+            # Detectar basura en la columna CALIDAD (precio, ciudades, etc.)
+            if calidad.startswith('$') or calidad.lower().startswith('cuauh') or len(calidad) > 100:
+                calidad = ''
+
+            datos.append({
+                'MARCA': marca_actual or '',
+                'CODIGO': codigo,
+                'DESCRIPCION': descripcion,
+                'CALIDAD': calidad,
+                'COLOR': color or 'Sin especificar',
+                'PRECIO_USD': precio_usd,
+                'PRECIO_1': precio_1,
+            })
+
+        logger.info(f"[PRICING] Cargados {len(datos)} productos de Hugo Shop")
+        return datos
+    except Exception as e:
+        logger.error(f"[PRICING] Error cargando CSV: {e}", exc_info=True)
+        return datos
+
+
+def _extraer_precio_usd(precio_str: str) -> float | None:
+    if not precio_str:
+        return None
+    try:
+        limpio = str(precio_str).replace('$', '').replace('USD', '').replace(',', '').strip()
+        valor = float(limpio)
+        return valor if valor > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+# ============================================================
+# CATEGORIA DE CALIDAD (mapeo confirmado por negocio)
+# ============================================================
+
+def obtener_categoria(calidad_str: str) -> str | None:
+    """Mapea la calidad cruda del CSV a una de tres categorias del cliente.
+
+    Orden de chequeo importa:
+      1. AMOLED (exclusivo)
+      2. CARTAN INCELL -> GENERICO (compuesto antes que CARTAN solo)
+      3. ORIGINAL (palabras premium)
+      4. GENERICO (INCELL/COG)
     """
-    marca_lower = marca.lower()
-    modelo_lower = modelo.lower()
+    if not calidad_str:
+        return None
+    c = str(calidad_str).strip().upper()
+    # Limpiar sufijos de marco que no aportan categoria
+    for sufijo in (' S/M', ' C/M', ' SIN MARCO', ' CON MARCO'):
+        c = c.replace(sufijo, '')
 
-    # ═══════════════════════════════════════════════════════════════
-    # SAMSUNG
-    # ═══════════════════════════════════════════════════════════════
-    if 'samsung' in marca_lower:
-        # Galaxy S/Z Series: AMOLED (premium)
-        if any(x in modelo_lower for x in ['s21', 's22', 's23', 's24', 's25', 'z fold', 'z flip']):
-            return 'AMOLED'
-        # Galaxy A/M/F Series: LCD (presupuesto)
-        if any(x in modelo_lower for x in ['galaxy a', 'a12', 'a21', 'a22', 'a32', 'a52', 'a55', 'galaxy m', 'fe']):
-            return 'LCD'
-        # Por defecto Samsung premium
+    if 'AMOLED' in c:
         return 'AMOLED'
 
-    # ═══════════════════════════════════════════════════════════════
-    # IPHONE
-    # ═══════════════════════════════════════════════════════════════
-    if 'iphone' in marca_lower:
-        # iPhone Pro: OLED
-        if 'pro' in modelo_lower:
-            return 'OLED'
-        # iPhone 14+: OLED (incluso base)
-        if any(x in modelo_lower for x in ['14', '15', '16']):
-            return 'OLED'
-        # iPhone SE, 11, 12, 13: LCD (base)
-        if any(x in modelo_lower for x in ['se', '11', '12', '13']):
-            return 'LCD'
-        # Default para otros
-        return 'OLED'
+    # Compuesto: CARTAN INCELL es generico (predomina INCELL)
+    if 'CARTAN INCELL' in c:
+        return 'GENERICO'
 
-    # ═══════════════════════════════════════════════════════════════
-    # GOOGLE PIXEL
-    # ═══════════════════════════════════════════════════════════════
-    if 'pixel' in marca_lower:
-        # Pixel Pro/Fold: OLED
-        if any(x in modelo_lower for x in ['pro', 'fold', 'a']):
-            return 'OLED'
-        return 'OLED'
+    # Original: ORIG, OLED, COF, FHD, DD SOFT, HG ORIG
+    palabras_original = ('HG ORIG', 'DD SOFT', 'OLED', 'ORIG', 'COF', 'FHD', 'CARTAN')
+    if any(p in c for p in palabras_original):
+        return 'ORIGINAL'
 
-    # ═══════════════════════════════════════════════════════════════
-    # MOTOROLA
-    # ═══════════════════════════════════════════════════════════════
-    if 'motorola' in marca_lower or 'moto' in marca_lower:
-        # Edge Premium: AMOLED
-        if any(x in modelo_lower for x in ['edge 50', 'edge 40', 'edge 40 pro', 'edge 40 ultra']):
-            return 'AMOLED'
-        # Edge Mid/Lite: LCD
-        if any(x in modelo_lower for x in ['edge 20', 'edge lite', 'edge 30', 'g']):
-            return 'LCD'
-        # Moto G: LCD
-        return 'LCD'
+    # Generico: INCELL, COG
+    if any(p in c for p in ('INCELL', 'COG')):
+        return 'GENERICO'
 
-    # ═══════════════════════════════════════════════════════════════
-    # ONEPLUS
-    # ═══════════════════════════════════════════════════════════════
-    if 'oneplus' in marca_lower or 'one plus' in modelo_lower:
-        # OnePlus Pro/Ultra: AMOLED
-        if any(x in modelo_lower for x in ['pro', 'ultra', 'find']):
-            return 'AMOLED'
-        # OnePlus regular: AMOLED (mayoría)
-        return 'AMOLED'
+    logger.debug(f"[PRICING] Calidad no reconocida: {calidad_str}")
+    return None
 
-    # ═══════════════════════════════════════════════════════════════
-    # XIAOMI
-    # ═══════════════════════════════════════════════════════════════
-    if 'xiaomi' in marca_lower:
-        # Xiaomi 13/14: AMOLED
-        if any(x in modelo_lower for x in ['13', '14', '15']):
-            return 'AMOLED'
-        # Xiaomi budget: LCD
-        return 'LCD'
 
-    # ═══════════════════════════════════════════════════════════════
-    # OTROS
-    # ═══════════════════════════════════════════════════════════════
-    # Por defecto: LCD (conservador)
-    return 'LCD'
+# ============================================================
+# NORMALIZADOR DE VARIANTES
+# ============================================================
+
+# Variantes "sufijo letra" reconocidas para Samsung (A21S, A21E, A21A)
+SUFIJOS_LETRA_SAMSUNG = set('abcdefghijklmnopqrstuvwxyz')
+
+
+def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> list[tuple[str | None, str | None]]:
+    """De la descripcion del CSV extrae TODAS las parejas (base, variante) que cubre.
+
+    Un mismo display suele ser compatible con varios modelos separados por '/'.
+    Cada chunk se parsea por separado segun la marca.
+
+    Ejemplos:
+      iPhone:    'X14 PRO'                -> [('14','pro')]
+                 'X14/X14 PLUS'           -> [('14',None),('14','plus')]
+                 'X12/12PRO'              -> [('12',None),('12','pro')]
+      Samsung:   'A21S/A217'              -> [('a21','s'),('a21','7')]
+                 'S21 PLUS'               -> [('s21','plus')]
+      Hisense:   'V60/E60'                -> [('v60',None),('e60',None)]
+                 'H40 LITE/E40/V40'       -> [('h40','lite'),('e40',None),('v40',None)]
+      Motorola:  'EDGE 40/EDGE 40 NEO/EDGE 2023' -> [('edge','40'),('edge','40 neo'),('edge','2023')]
+      Generico:  'X12/12PRO (MOVIL IC)'   -> parentesis se descarta -> [('12',None),('12','pro')]
+    """
+    if not descripcion:
+        return []
+
+    # Quitar parentesis (notas como "(MOVIL IC)", "(BOUTIQUE)", etc.)
+    d = re.sub(r'\([^)]*\)', '', descripcion).strip().lower()
+    chunks = [c.strip() for c in d.split('/') if c.strip()]
+
+    pares: list[tuple[str | None, str | None]] = []
+    vistos: set[tuple[str | None, str | None]] = set()
+    for chunk in chunks:
+        par = _parsear_chunk_descripcion(chunk, marca_header)
+        if par and par not in vistos:
+            pares.append(par)
+            vistos.add(par)
+    return pares
+
+
+def _parsear_chunk_descripcion(chunk: str, marca_header: str) -> tuple[str | None, str | None] | None:
+    """Aplica reglas por marca a un solo chunk (texto entre dos '/' o el unico)."""
+    # Limpiar sufijos de calidad/spec que ensucian el nombre del modelo
+    chunk = re.sub(r'\s*-\s*\d+hz\b', '', chunk)        # "- 120HZ" / "-120HZ"
+    chunk = re.sub(r'\bcartan\b', '', chunk)            # "CARTAN" (es calidad, no modelo)
+    chunk = re.sub(r'\bdiagnostico\b', '', chunk)       # "Diagnostico"
+    chunk = re.sub(r'-+\s*$', '', chunk).strip()        # trailing "-"
+    chunk = re.sub(r'\s+', ' ', chunk).strip()          # colapsar espacios
+    tokens = chunk.split()
+    if not tokens:
+        return None
+    primer = tokens[0]
+    resto = ' '.join(tokens[1:]).strip() or None
+    marca = (marca_header or '').upper()
+
+    # iPhone: prefijo X opcional (en el CSV alternan X14 y 14 cuando hay multi-codigo)
+    if marca == 'IPHONE':
+        m = re.match(r'^x?(\d+)([a-z]*)$', primer)
+        if m and m.group(1):
+            base = m.group(1)
+            sufijo_letra = m.group(2) or None
+            variante = ' '.join(filter(None, [sufijo_letra, resto])).strip() or None
+            return base, variante
+
+    # Patron Samsung tipo A21S, S21E (letra + digitos + letra(s) finales)
+    m = re.match(r'^([a-z]\d+)([a-z]+)$', primer)
+    if m and m.group(2)[0] in SUFIJOS_LETRA_SAMSUNG:
+        variante = ' '.join(filter(None, [m.group(2), resto])).strip() or None
+        return m.group(1), variante
+
+    # Letra + digitos sin sufijo (S21, A21, V60, E60, H40)
+    if re.match(r'^[a-z]\d+$', primer):
+        return primer, resto
+
+    # Multi-letras + digitos pegados (EDGE20, EDGE50, NOVA9, NOVA10).
+    # El CSV alterna "EDGE 20" y "EDGE20" — normalizamos a base=letras, variante=digitos+resto
+    # para que ambas formas matcheen contra el query del cliente ("edge 20 lite").
+    m = re.match(r'^([a-z]{2,})(\d+)([a-z]*)$', primer)
+    if m:
+        base = m.group(1)
+        digit_part = m.group(2) + (m.group(3) or '')
+        variante = ' '.join(filter(None, [digit_part, resto])).strip() or None
+        return base, variante
+
+    # Numero puro (Pixel 7, iPhone 12, Moto G42 cae en patron de arriba)
+    m = re.match(r'^(\d+)([a-z]*)$', primer)
+    if m:
+        base = m.group(1)
+        sufijo = m.group(2) or None
+        variante = ' '.join(filter(None, [sufijo, resto])).strip() or None
+        return base, variante
+
+    # Fallback: primer token como base, resto como variante (ej "EDGE 40")
+    return primer, resto
+
+
+def normalizar_modelo_query(modelo_str: str, marca: str) -> tuple[str | None, str | None]:
+    """Del query del cliente extrae (base, variante).
+
+    Ejemplos:
+      ('14 pro', 'iphone')        -> ('14', 'pro')
+      ('14', 'iphone')            -> ('14', None)
+      ('a21', 'samsung')          -> ('a21', None)
+      ('a21s', 'samsung')         -> ('a21', 's')
+      ('s21', 'samsung')          -> ('s21', None)
+      ('s21 plus', 'samsung')     -> ('s21', 'plus')
+    """
+    if not modelo_str:
+        return None, None
+    m = modelo_str.lower().strip()
+    # Quitar la marca si vino incluida en el modelo
+    for marca_lower in ALIAS_MARCAS:
+        m = re.sub(rf'\b{re.escape(marca_lower)}\b', '', m).strip()
+    if not m:
+        return None, None
+
+    tokens = m.split()
+    if not tokens:
+        return None, None
+    primer = tokens[0]
+    resto = ' '.join(tokens[1:]).strip() or None
+
+    marca_norm = (ALIAS_MARCAS.get(marca.lower().strip(), '') or '').upper()
+
+    # iPhone: el query es solo el numero (sin prefijo X)
+    if marca_norm == 'IPHONE':
+        m_num = re.match(r'^(\d+)([a-z]*)$', primer)
+        if m_num:
+            base = m_num.group(1)
+            sufijo = m_num.group(2) or None
+            variante = ' '.join(filter(None, [sufijo, resto])).strip() or None
+            return base, variante
+
+    # Patron A21S
+    mm = re.match(r'^([a-z]\d+)([a-z]+)$', primer)
+    if mm and mm.group(2)[0] in SUFIJOS_LETRA_SAMSUNG:
+        variante = ' '.join(filter(None, [mm.group(2), resto])).strip() or None
+        return mm.group(1), variante
+
+    # A21 / S21
+    if re.match(r'^[a-z]\d+$', primer):
+        return primer, resto
+
+    # numero
+    mm = re.match(r'^(\d+)([a-z]*)$', primer)
+    if mm:
+        base = mm.group(1)
+        sufijo = mm.group(2) or None
+        variante = ' '.join(filter(None, [sufijo, resto])).strip() or None
+        return base, variante
+
+    return primer, resto
+
+
+def _marca_canonica(marca_query: str) -> str | None:
+    mq = (marca_query or '').lower().strip()
+    if not mq:
+        return None
+    # Match directo por alias
+    if mq in ALIAS_MARCAS:
+        return ALIAS_MARCAS[mq]
+    # Match por primera palabra
+    primera = mq.split()[0]
+    if primera in ALIAS_MARCAS:
+        return ALIAS_MARCAS[primera]
+    # Match por contencion (ej 'pixel 7' -> 'pixel' esta en ALIAS)
+    for alias, canonica in ALIAS_MARCAS.items():
+        if alias in mq:
+            return canonica
+    return None
+
+
+# ============================================================
+# FORMATEO DE RESPUESTAS
+# ============================================================
+
+# Etiquetas que ve el cliente. SOLO estas tres - sin tecnicismos en parentesis.
+ETIQUETAS_CATEGORIA = {
+    'GENERICO': 'Calidad Generica',
+    'ORIGINAL': 'Calidad Original',
+    'AMOLED': 'AMOLED',
+}
+
+
+def _formatear_cotizacion(marca: str, modelo: str, productos: list[dict]) -> str:
+    """Construye la cotizacion final con promedios por categoria.
+
+    Para multiples sub-calidades dentro de la misma categoria (ej INCELL + CARTAN
+    INCELL ambos GENERICO), se promedia y se muestra UN solo precio etiquetado
+    como 'Calidad Generica'.
+    """
+    productos_por_categoria = defaultdict(list)
+    for p in productos:
+        cat = obtener_categoria(p.get('CALIDAD', ''))
+        if cat:
+            productos_por_categoria[cat].append(p)
+
+    if not productos_por_categoria:
+        return _mensaje_no_disponible(marca, modelo)
+
+    lineas = [f"Para {marca} {modelo.upper()} tenemos estas opciones:\n"]
+    for categoria in ('GENERICO', 'ORIGINAL', 'AMOLED'):
+        productos_cat = productos_por_categoria.get(categoria)
+        if not productos_cat:
+            continue
+        precios = [p['PRECIO_USD'] for p in productos_cat if p.get('PRECIO_USD')]
+        if not precios:
+            continue
+        promedio_usd = sum(precios) / len(precios)
+        precio_mxn = int(promedio_usd * MULTIPLICADOR_USD_A_MXN)
+        etiqueta = ETIQUETAS_CATEGORIA[categoria]
+        linea = f"* {etiqueta}: ${precio_mxn:,} MXN"
+
+        # Listar colores solo si hay precios distintos por color
+        precios_por_color = {}
+        for p in productos_cat:
+            color = p.get('COLOR') or 'Sin especificar'
+            precios_por_color.setdefault(color, []).append(p['PRECIO_USD'])
+        if len(precios_por_color) > 1:
+            colores = sorted(precios_por_color.keys())
+            linea += f"  (disponible en: {', '.join(colores)})"
+        lineas.append(linea)
+
+    lineas.append("")
+    lineas.append("Cada display incluye: diagnostico, garantia 90 dias y cambio el mismo dia.")
+    lineas.append("Cual opcion te interesa?")
+
+    cuerpo = "\n".join(lineas)
+    return (
+        "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
+        "'Calidad Generica', 'Calidad Original', 'AMOLED' - sin tecnicismos en parentesis):\n\n"
+        f"{cuerpo}"
+    )
+
+
+def _formatear_modelo(base: str, variante: str | None) -> str:
+    """Combina base + variante respetando convencion de naming.
+
+    - Variante de UNA letra (Samsung A21S, A21E): pegada al base sin espacio.
+    - Variante palabra (S21 PLUS, 14 PRO MAX, S21 FE): separada por espacio.
+    """
+    base_up = base.upper()
+    if not variante:
+        return base_up
+    v = variante.strip()
+    # Si la primera "palabra" de la variante es una sola letra -> pegar
+    primer = v.split()[0] if v else ''
+    if len(primer) == 1 and primer.isalpha():
+        resto = ' '.join(v.split()[1:])
+        return (base_up + primer.upper() + (' ' + resto.upper() if resto else '')).strip()
+    return f"{base_up} {v.upper()}".strip()
+
+
+def _formatear_pregunta_variantes(marca: str, base: str, variantes: list[str]) -> str:
+    """Pide al cliente que confirme la variante exacta antes de cotizar."""
+    nombres = []
+    for v in variantes:
+        if v == '__base__':
+            nombres.append(base.upper())
+        else:
+            nombres.append(_formatear_modelo(base, v))
+    lista = ", ".join(nombres)
+    cuerpo = (
+        f"Para {marca} {base.upper()} manejamos varias versiones: {lista}. "
+        f"Para cotizarte el precio correcto, necesito confirmar cual tienes. "
+        f"Cual es tu modelo exacto? Si no lo recuerdas o no estas seguro, "
+        f"te invitamos a acudir al modulo y con gusto te ayudamos a identificarlo."
+    )
+    return (
+        "INFORMACION PARA EL CLIENTE (transmitir esta pregunta tal cual; "
+        "NO ofrecer precios todavia hasta que el cliente confirme la variante exacta):\n\n"
+        f"{cuerpo}"
+    )
+
+
+def _mensaje_no_disponible(marca: str, modelo: str) -> str:
+    return (
+        f"Disculpa, no tengo en inventario displays para {marca} {modelo}.\n"
+        "Podrias verificar el modelo exacto? O puedo conectarte con un tecnico "
+        "para asesorarte sobre alternativas compatibles."
+    )
+
+
+# ============================================================
+# API PUBLICA
+# ============================================================
+
+async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
+    """Punto de entrada usado por brain.py / tools.py."""
+    marca_csv = _marca_canonica(marca)
+    if not marca_csv:
+        logger.warning(f"[PRICING] Marca no reconocida: {marca}")
+        return _mensaje_no_disponible(marca, modelo)
+
+    productos = cargar_csv_hugo()
+    productos_marca = [p for p in productos if p.get('MARCA') == marca_csv]
+    if not productos_marca:
+        logger.warning(f"[PRICING] Sin productos para marca {marca_csv}")
+        return _mensaje_no_disponible(marca, modelo)
+
+    base_q, var_q = normalizar_modelo_query(modelo, marca)
+    if not base_q:
+        return _mensaje_no_disponible(marca, modelo)
+
+    # Mapear cada producto a las variantes que cubre para el base solicitado.
+    # Un producto multi-modelo (ej "V60/E60") puede cubrir varias variantes; cada
+    # producto aparece UNA vez en `matches` con la lista de variantes aplicables.
+    base_q_lower = base_q.lower()
+    matches: list[tuple[dict, list[str | None]]] = []
+    for p in productos_marca:
+        pares = normalizar_modelo_descripcion(p['DESCRIPCION'], marca_csv)
+        variantes_aplicables = [v for b, v in pares if b and b.lower() == base_q_lower]
+        if variantes_aplicables:
+            matches.append((p, variantes_aplicables))
+
+    if not matches:
+        logger.warning(f"[PRICING] Sin coincidencias para {marca} {modelo} (base={base_q})")
+        return _mensaje_no_disponible(marca, modelo)
+
+    # Set de variantes unicas en todos los productos coincidentes
+    variantes_csv = sorted({(v or '__base__').lower() for _, vs in matches for v in vs})
+
+    if var_q:
+        # Cliente especifico una variante: buscar productos que la cubran exactamente
+        var_q_lower = var_q.lower()
+        exactos = [p for p, vs in matches if any((v or '').lower() == var_q_lower for v in vs)]
+        if exactos:
+            modelo_completo = _formatear_modelo(base_q, var_q)
+            logger.info(f"[PRICING] Cotizando exacto: {marca} {modelo_completo} ({len(exactos)} productos)")
+            return _formatear_cotizacion(marca, modelo_completo, exactos)
+        # Sin exact: si la variante del cliente es prefijo de variantes mas completas
+        # (ej "50" prefija "50 fusion", "50 neo", "50 ultra") filtramos a esas.
+        variantes_filtradas = sorted({
+            v.lower() for _, vs in matches for v in vs
+            if v and v.lower().startswith(var_q_lower)
+        })
+        if variantes_filtradas:
+            logger.info(f"[PRICING] Variante '{var_q}' parcial para {marca} {base_q}. Filtradas: {variantes_filtradas}")
+            return _formatear_pregunta_variantes(marca, base_q, variantes_filtradas)
+        logger.info(f"[PRICING] Variante '{var_q}' no existe para {marca} {base_q}. Variantes: {variantes_csv}")
+        return _formatear_pregunta_variantes(marca, base_q, variantes_csv)
+
+    # Cliente NO especifico variante.
+    # Si solo existe el base puro (sin variantes) -> cotizar directo todos los productos
+    if variantes_csv == ['__base__']:
+        productos_base = [p for p, vs in matches if any(v is None for v in vs)]
+        logger.info(f"[PRICING] Cotizando base sin variantes: {marca} {base_q}")
+        return _formatear_cotizacion(marca, base_q, productos_base)
+
+    # Hay variantes (con o sin base): preguntar antes de cotizar
+    logger.info(f"[PRICING] Pidiendo variante a cliente para {marca} {base_q}. Disponibles: {variantes_csv}")
+    return _formatear_pregunta_variantes(marca, base_q, variantes_csv)
 
 
 async def inicializar_cotizador():
-    """
-    Inicializa el sistema de cotización de precios.
-    En versión actual: carga datos precargados. En futuro: podría descargar de Google Drive.
-    """
     try:
         logger.info("[PRICING] Inicializando cotizador de precios...")
-        # Verificar que tenemos acceso a la función de obtención
-        logger.debug("[PRICING] Cotizador listo con 739 productos de Hugo Shop")
-        logger.info("[PRICING] ✅ Cotizador inicializado correctamente")
+        if os.path.exists(RUTA_CSV_HUGO):
+            datos = cargar_csv_hugo()
+            logger.info(f"[PRICING] Sistema listo con {len(datos)} productos de Hugo Shop")
+        else:
+            logger.warning(f"[PRICING] CSV no encontrado en {RUTA_CSV_HUGO}")
+            logger.warning("[PRICING] Asegurate de que 'hugo_shop.csv' este en la carpeta /knowledge")
     except Exception as e:
         logger.error(f"[PRICING] Error inicializando cotizador: {e}", exc_info=True)
-        # No es crítico — fallback a diccionario local
-        logger.warning("[PRICING] Fallback a precios hardcoded")
-
-
-async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
-    """Obtiene cotización de displays para un dispositivo con 739 precios de Hugo Shop"""
-
-    # 739 productos de Hugo Shop - precios base en USD
-    # Multiplicador universal: 4x para todas las variantes
-    precios_fallback = {
-        # Samsung Galaxy S Series
-        'samsung galaxy s21': 950, 's21': 950,
-        'samsung s21': 950, 'samsung s21 plus': 1050, 'samsung s21 ultra': 1150,
-        'samsung s21 fe': 750, 'samsung galaxy s21 plus': 1050,
-        'samsung galaxy s21 ultra': 1150, 'samsung galaxy s21 fe': 750,
-        's21 plus': 1050, 's21 ultra': 1150, 's21 fe': 750,
-        
-        # Samsung Galaxy S22 Series
-        'samsung galaxy s22': 1100, 'samsung s22': 1100, 's22': 1100,
-        'samsung galaxy s22 plus': 1210, 'samsung s22 plus': 1210, 's22 plus': 1210,
-        'samsung galaxy s22 ultra': 1320, 'samsung s22 ultra': 1320, 's22 ultra': 1320,
-        'samsung galaxy s22 fe': 880, 'samsung s22 fe': 880, 's22 fe': 880,
-        
-        # Samsung Galaxy S23 Series
-        'samsung galaxy s23': 1200, 'samsung s23': 1200, 's23': 1200,
-        'samsung galaxy s23 plus': 1320, 'samsung s23 plus': 1320, 's23 plus': 1320,
-        'samsung galaxy s23 ultra': 1440, 'samsung s23 ultra': 1440, 's23 ultra': 1440,
-        'samsung galaxy s23 fe': 960, 'samsung s23 fe': 960, 's23 fe': 960,
-        
-        # Samsung Galaxy S24 Series
-        'samsung galaxy s24': 1300, 'samsung s24': 1300, 's24': 1300,
-        'samsung galaxy s24 plus': 1430, 'samsung s24 plus': 1430, 's24 plus': 1430,
-        'samsung galaxy s24 ultra': 1560, 'samsung s24 ultra': 1560, 's24 ultra': 1560,
-        'samsung galaxy s24 fe': 1040, 'samsung s24 fe': 1040, 's24 fe': 1040,
-        
-        # Samsung Galaxy A Series
-        'samsung galaxy a12': 280, 'samsung a12': 280,
-        'samsung galaxy a21': 280, 'samsung a21': 280,
-        'samsung galaxy a22': 320, 'samsung a22': 320,
-        'samsung galaxy a32': 350, 'samsung a32': 350,
-        'samsung galaxy a52': 400, 'samsung a52': 400,
-        'samsung galaxy a55': 420, 'samsung a55': 420,
-        
-        # Samsung Galaxy S10/S20
-        'samsung galaxy s10': 500, 'samsung s10': 500,
-        'samsung galaxy s20': 800, 'samsung s20': 800,
-        
-        # iPhone Series
-        'iphone 6': 400, 'iphone 7': 450, 'iphone 8': 500,
-        'iphone x': 800, 'iphone xs': 850, 'iphone xr': 900,
-        'iphone 11': 900, 'iphone 12': 1200, 'iphone 13': 1400,
-        'iphone 14': 1600, 'iphone 14 pro': 1760, 'iphone 14 pro max': 1920, 'iphone 14 plus': 1760,
-        'iphone 14pro': 1760, 'iphone 14promax': 1920, 'iphone 14plus': 1760,
-        'iphone 15': 1800, 'iphone 15 pro': 1980, 'iphone 15 pro max': 2160, 'iphone 15 plus': 1980,
-        'iphone 15pro': 1980, 'iphone 15promax': 2160, 'iphone 15plus': 1980,
-        'iphone 16': 2000, 'iphone 16 pro': 2200, 'iphone 16 pro max': 2400, 'iphone 16 plus': 2100,
-        'iphone 16pro': 2200, 'iphone 16promax': 2400, 'iphone 16plus': 2100,
-        'iphone se': 600,
-        
-        # Google Pixel
-        'google pixel': 600, 'pixel 6': 600, 'pixel 7': 650,
-        'pixel 8': 700, 'pixel 8 pro': 800,
-        
-        # Motorola
-        'motorola moto edge 50 fusion': 450, 'motorola moto g': 300,
-        'motorola': 280, 'moto edge 50': 450, 'moto g': 300,
-        
-        # Xiaomi / Redmi
-        'xiaomi': 250, 'redmi': 220,
-        
-        # OnePlus
-        'oneplus': 400,
-        
-        # OPPO / VIVO
-        'oppo': 280, 'vivo': 280,
-        
-        # Huawei / Honor
-        'huawei': 320, 'honor': 300,
-        
-        # Nokia / LG
-        'nokia': 200, 'lg': 280,
-        
-        # Tablets
-        'ipad': 500, 'ipad air': 600, 'ipad pro': 800, 'ipad mini': 450,
-        'samsung tab': 400, 'galaxy tab': 400,
-    }
-
-    # Buscar precio base (búsqueda case-insensitive)
-    consulta = f"{marca} {modelo}".lower()
-    precio_base = None
-
-    # Búsqueda ordenada por longitud (más específicas primero)
-    for clave in sorted(precios_fallback.keys(), key=len, reverse=True):
-        if clave in consulta:
-            precio_base = precios_fallback[clave]
-            break
-
-    # Fallback si no se encuentra
-    if precio_base is None:
-        precio_base = 350
-        logger.info(f"[PRICING] Dispositivo '{marca} {modelo}' no catalogado, usando precio base $350")
-
-    # Multiplicador universal 4x
-    precio_generico = int(precio_base * 4)
-    precio_original = int(precio_base * 4)
-
-    # Determinar tipo de pantalla REAL
-    tipo_pantalla = determinar_tipo_pantalla(marca, modelo)
-
-    # Generar respuesta basada en el tipo REAL de pantalla
-    respuesta = f"Para {marca} {modelo} tenemos estas opciones:\n"
-
-    if tipo_pantalla == 'AMOLED':
-        respuesta += f"• Display Genérico (Incell/LCD): ${precio_generico:,} MXN\n"
-        respuesta += f"• Display Original AMOLED: ${precio_original:,} MXN\n"
-        logger.info(f"[PRICING] {marca} {modelo} → AMOLED")
-    elif tipo_pantalla == 'OLED':
-        respuesta += f"• Display Genérico (LCD): ${precio_generico:,} MXN\n"
-        respuesta += f"• Display Original OLED: ${precio_original:,} MXN\n"
-        logger.info(f"[PRICING] {marca} {modelo} → OLED")
-    else:  # LCD o IPS
-        respuesta += f"• Display Genérico (LCD/IPS económico): ${precio_generico:,} MXN\n"
-        respuesta += f"• Display Original (LCD/IPS calidad): ${precio_original:,} MXN\n"
-        logger.info(f"[PRICING] {marca} {modelo} → {tipo_pantalla}")
-
-    respuesta += "\nAmbos con diagnóstico, garantía 90 días y cambio el mismo día. ¿Cuál te interesa?"
-
-    logger.info(f"[PRICING] Cotización: {marca} {modelo} ({tipo_pantalla}) → Genérico: ${precio_generico:,}, Original: ${precio_original:,}")
-    return respuesta

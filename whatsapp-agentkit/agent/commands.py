@@ -854,23 +854,16 @@ async def procesar_comando_grupo(
             from agent import crm
             await crm.registrar_cupon(phone_fmt, cupon, porcentaje=10, dias_validez=8)
 
-            # Generar mensaje usando Claude: Primero explorar, luego ofrecer cupón
-            from agent.brain import generar_respuesta
+            # Generar mensaje usando Claude: Mensaje empático de reconexión con cupón
+            from agent.brain import generar_mensaje_noshow
 
-            prompt_contexto = (
-                f"Cliente: {nombre}\n"
-                f"Contexto: Agendó una cita en el taller pero NO se presentó\n"
-                f"Cupón: {cupon} (10% descuento, válido hasta {fecha_expira_fmt})\n"
-                f"Tarea: Genera un mensaje empático en dos partes:\n"
-                f"1. EXPLORACIÓN: Pregunta con empatía por qué no pudo asistir (sin juzgar)\n"
-                f"2. RECONEXIÓN: Ofrece segunda oportunidad con 10% descuento\n"
-                f"3. Cupón: {cupon}\n"
-                f"4. Instrucción: 'Si agendan de nuevo y completan la reparación, "
-                f"muestran este cupón al técnico para aplicar el descuento'\n"
-                f"Mantén un tono cálido y comprensivo, no acusatorio."
+            mensaje_noshow = await generar_mensaje_noshow(
+                telefono=phone_fmt,
+                nombre_cliente=nombre,
+                historial=historial,
+                cupon=cupon,
+                fecha_expira=fecha_expira_fmt
             )
-
-            mensaje_noshow = await generar_respuesta(prompt_contexto, historial)
 
             # Enviar mensaje al cliente
             exito = await proveedor.enviar_mensaje(phone_fmt, mensaje_noshow)

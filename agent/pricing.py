@@ -45,8 +45,8 @@ ALIAS_MARCAS = {
     'apple': 'IPHONE',
     'samsung': 'SAMSUNG',
     'galaxy': 'SAMSUNG',
-    'motorola': 'MOTOROLA',
-    'moto': 'MOTOROLA',
+    'motorola': 'MOTO',
+    'moto': 'MOTO',
     'google': 'GOOGLE',
     'google pixel': 'GOOGLE',
     'pixel': 'GOOGLE',
@@ -253,6 +253,12 @@ def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> list[t
 
 def _parsear_chunk_descripcion(chunk: str, marca_header: str) -> tuple[str | None, str | None] | None:
     """Aplica reglas por marca a un solo chunk (texto entre dos '/' o el unico)."""
+    # Limpiar sufijos de calidad/spec que ensucian el nombre del modelo
+    chunk = re.sub(r'\s*-\s*\d+hz\b', '', chunk)        # "- 120HZ" / "-120HZ"
+    chunk = re.sub(r'\bcartan\b', '', chunk)            # "CARTAN" (es calidad, no modelo)
+    chunk = re.sub(r'\bdiagnostico\b', '', chunk)       # "Diagnostico"
+    chunk = re.sub(r'-+\s*$', '', chunk).strip()        # trailing "-"
+    chunk = re.sub(r'\s+', ' ', chunk).strip()          # colapsar espacios
     tokens = chunk.split()
     if not tokens:
         return None
@@ -278,6 +284,16 @@ def _parsear_chunk_descripcion(chunk: str, marca_header: str) -> tuple[str | Non
     # Letra + digitos sin sufijo (S21, A21, V60, E60, H40)
     if re.match(r'^[a-z]\d+$', primer):
         return primer, resto
+
+    # Multi-letras + digitos pegados (EDGE20, EDGE50, NOVA9, NOVA10).
+    # El CSV alterna "EDGE 20" y "EDGE20" — normalizamos a base=letras, variante=digitos+resto
+    # para que ambas formas matcheen contra el query del cliente ("edge 20 lite").
+    m = re.match(r'^([a-z]{2,})(\d+)([a-z]*)$', primer)
+    if m:
+        base = m.group(1)
+        digit_part = m.group(2) + (m.group(3) or '')
+        variante = ' '.join(filter(None, [digit_part, resto])).strip() or None
+        return base, variante
 
     # Numero puro (Pixel 7, iPhone 12, Moto G42 cae en patron de arriba)
     m = re.match(r'^(\d+)([a-z]*)$', primer)
@@ -525,6 +541,15 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
             modelo_completo = _formatear_modelo(base_q, var_q)
             logger.info(f"[PRICING] Cotizando exacto: {marca} {modelo_completo} ({len(exactos)} productos)")
             return _formatear_cotizacion(marca, modelo_completo, exactos)
+        # Sin exact: si la variante del cliente es prefijo de variantes mas completas
+        # (ej "50" prefija "50 fusion", "50 neo", "50 ultra") filtramos a esas.
+        variantes_filtradas = sorted({
+            v.lower() for _, vs in matches for v in vs
+            if v and v.lower().startswith(var_q_lower)
+        })
+        if variantes_filtradas:
+            logger.info(f"[PRICING] Variante '{var_q}' parcial para {marca} {base_q}. Filtradas: {variantes_filtradas}")
+            return _formatear_pregunta_variantes(marca, base_q, variantes_filtradas)
         logger.info(f"[PRICING] Variante '{var_q}' no existe para {marca} {base_q}. Variantes: {variantes_csv}")
         return _formatear_pregunta_variantes(marca, base_q, variantes_csv)
 

@@ -9,6 +9,7 @@ Funciona con cualquier proveedor (Whapi, Meta, Meta Inbox, Twilio) gracias a la 
 import os
 import logging
 import random
+import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -36,6 +37,7 @@ from agent.tools import (
 )
 from agent.commands import procesar_comando_grupo, esta_bloqueado, inicializar_sistema_cupones
 from agent.pricing import inicializar_cotizador
+from agent.followup import iniciar_scheduler as iniciar_scheduler_followup
 
 load_dotenv()
 
@@ -67,6 +69,11 @@ async def lifespan(app: FastAPI):
     # Inicializar sistema de cupones (crea hoja ClientePerfil en Google Sheets)
     await inicializar_sistema_cupones()
     logger.info("Sistema de cupones inicializado")
+
+    # CRÍTICO: Inicializar scheduler de seguimiento de leads
+    # (Seguimientos automáticos cada 30 min, retomas, alertas, etc.)
+    asyncio.create_task(iniciar_scheduler_followup())
+    logger.info("✅ Scheduler de seguimiento de leads ACTIVO")
 
     logger.info(f"Servidor AgentKit corriendo en puerto {PORT}")
     logger.info(f"Proveedor de WhatsApp: {proveedor.__class__.__name__}")
@@ -251,7 +258,14 @@ async def webhook_handler(request: Request):
                         logger.debug("ℹ️  Usando respuesta post-ambiguo")
                         respuesta = generar_respuesta_post_ambiguo()
                     else:
-                        respuesta = await generar_respuesta(msg.texto, historial, asesor=asesor)
+                        # Pasar contexto de cliente (teléfono y nombre) para inyección segura
+                        respuesta = await generar_respuesta(
+                            msg.texto,
+                            historial,
+                            asesor=asesor,
+                            telefono=msg.telefono,
+                            nombre_cliente=""  # Se extraerá del historial en brain.py si está disponible
+                        )
 
                     logger.info(f"✅ Respuesta generada por {asesor} ({len(respuesta)} caracteres)")
                 except Exception as e:
@@ -284,14 +298,15 @@ async def webhook_handler(request: Request):
                 logger.info(f"✅ Ciclo completo exitoso para {msg.telefono}")
 
             except Exception as e:
+                # Excepción del try interno (PASO 2.5+)
                 logger.error(f"❌ ERROR CRÍTICO en procesamiento de mensaje de {msg.telefono}: {e}", exc_info=True)
                 logger.error(f"Tipo de error: {type(e).__name__}")
-                # Continuar con el siguiente mensaje en lugar de crashear
+                # Continuar con el siguiente mensaje sin lanzar excepción
                 continue
 
-        logger.info(f"✅ Webhook completado. Se procesaron {len(mensajes)} mensajes")
-        return {"status": "ok"}
-
     except Exception as e:
-        logger.error(f"❌ ERROR CRÍTICO en webhook: {e}", exc_info=True)
+        # Excepción del try externo (PASO 1)
+        logger.error(f"❌ ERROR FATAL en webhook_handler: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+    return {"status": "ok"}
