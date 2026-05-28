@@ -283,3 +283,14 @@ system_prompt_template: |
 
 fallback_message: "Disculpe, no entendí bien su mensaje. ¿Me lo puede explicar de otra forma?"
 error_message: "Lo siento, tuve un problema técnico. Por favor intente de nuevo en unos minutos."
+
+mensajes_operativos:
+  sleep_mode: "Hola, soy {ASESOR} de Tecnology Support. Gracias por escribirnos. En este momento estamos fuera de horario y retomamos atencion a partir de las 6:00 AM. Deje tu mensaje registrado con prioridad y te escribire en cuanto iniciemos."
+  reactivacion: "Hola de nuevo. Soy {ASESOR} de Tecnology Support. Retome tu mensaje de hace unas horas para darte seguimiento. Me confirmas si aun necesitas apoyo con tu equipo?"
+  resumen_9am: |
+    RESUMEN DIARIO - {FECHA_CDMX}
+    Nuevos leads: {NUEVOS}
+    Pendientes por atender: {PENDIENTES}
+    Retomas programadas: {RETOMAS_PROGRAMADAS}
+    Retomas ejecutadas: {RETOMAS_EJECUTADAS}
+    Citas agendadas hoy: {CITAS_HOY}

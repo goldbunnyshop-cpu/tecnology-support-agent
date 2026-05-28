@@ -16,8 +16,11 @@ logger = logging.getLogger("agentkit")
 
 ZONA = ZoneInfo("America/Mexico_City")
 CALENDAR_ID = os.getenv(
-    "CALENDAR_ID",
+    "GOOGLE_CALENDAR_ID",
+    os.getenv(
+        "CALENDAR_ID",
     "a80046be8b375f4a5b1c95f83bd23399a2dce7699d63e861ccc4fb594ae88e3d@group.calendar.google.com",
+    ),
 )
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 DURACION_MIN = 30
@@ -234,7 +237,11 @@ def _parse_credentials(raw: str) -> dict:
 
 
 def _build_service():
-    raw = os.getenv("GOOGLE_CREDENTIALS") or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    raw = (
+        os.getenv("GOOGLE_CREDENTIALS")
+        or os.getenv("GOOGLE_CREDENTIALS_JSON")
+        or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    )
     if not raw:
         raise RuntimeError("GOOGLE_CREDENTIALS no configurado en Railway")
     info = _parse_credentials(raw)

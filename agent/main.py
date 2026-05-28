@@ -84,6 +84,12 @@ log_level = logging.DEBUG if ENVIRONMENT == "development" else logging.INFO
 logging.basicConfig(level=log_level)
 logger = logging.getLogger("agentkit")
 
+# Reducir ruido de librerias en produccion
+if ENVIRONMENT != "development":
+    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
 ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
@@ -92,6 +98,7 @@ PORT = int(os.getenv("PORT", 8080))
 _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
 _NUMERO_CHRISTIAN = os.getenv("NUMERO_CHRISTIAN",  "5541576331")
 _NUMEROS_INTERNOS = {_NUMERO_NEGOCIO, _NUMERO_CHRISTIAN}
+_NUMERO_EXCEPCION_PRUEBAS = os.getenv("NUMERO_EXCEPCION_PRUEBAS", "5627557362")
 
 # PAUSA_ACTIVA = False: el bot se pausaba a sí mismo al enviar respuestas.
 # La pausa manual se activa con el comando "pausa: NÚMERO" desde el grupo.
@@ -110,6 +117,13 @@ def _obtener_lock(telefono: str) -> asyncio.Lock:
 def _es_numero_interno(telefono: str) -> bool:
     """True si el teléfono pertenece a la empresa/equipo, no a un cliente."""
     return any(telefono.endswith(n) or n.endswith(telefono) for n in _NUMEROS_INTERNOS)
+
+
+def _es_numero_excepcion_pruebas(telefono: str) -> bool:
+    """True si el telefono esta marcado para pruebas y debe saltar sleep/pausas."""
+    n = (telefono or "").strip()
+    e = (_NUMERO_EXCEPCION_PRUEBAS or "").strip()
+    return bool(e) and (n.endswith(e) or e.endswith(n))
 
 _DIAS_ES = {0: "lunes", 1: "martes", 2: "miércoles", 3: "jueves", 4: "viernes", 5: "sábado", 6: "domingo"}
 _MESES_ES = {
@@ -187,19 +201,18 @@ def es_horario_nocturno() -> bool:
 
 def calcular_hora_retoma_utc() -> datetime:
     ahora_cdmx = datetime.now(ZONA_CDMX)
-    retoma_cdmx = ahora_cdmx + timedelta(hours=8)
-    if retoma_cdmx.hour < 9:
-        retoma_cdmx = retoma_cdmx.replace(hour=9, minute=0, second=0, microsecond=0)
+    retoma_cdmx = ahora_cdmx + timedelta(hours=7)
+    min_reapertura = ahora_cdmx.replace(hour=6, minute=30, second=0, microsecond=0)
+    if retoma_cdmx < min_reapertura:
+        retoma_cdmx = min_reapertura
     return retoma_cdmx.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 async def manejar_mensaje_nocturno(telefono: str, contenido: str, asesor: str) -> None:
     respuesta = (
-        f"Hola, soy {asesor} de Tecnology Support \U0001f60a "
-        f"Recibí tu mensaje y con mucho gusto te ayudaré. "
-        f"Nuestro equipo retoma atención a partir de las 6:00 AM. "
-        f"En cuanto iniciemos operaciones serás atendido con prioridad. "
-        f"¡Que descanses!"
+        f"Hola, soy {asesor} de Tecnology Support. Gracias por escribirnos. "
+        f"En este momento estamos fuera de horario y retomamos atencion a partir de las 6:00 AM. "
+        f"Deje tu mensaje registrado con prioridad y te escribire en cuanto iniciemos."
     )
     await guardar_mensaje(telefono, "user", contenido)
     await guardar_mensaje(telefono, "assistant", respuesta)
@@ -609,7 +622,7 @@ async def webhook_handler(request: Request):
 
             # ── Modo pausa (intervención humana activa) ──
             # Siempre revisa la pausa manual (independiente de PAUSA_ACTIVA)
-            if await esta_pausada(msg.telefono):
+            if (not _es_numero_excepcion_pruebas(msg.telefono)) and await esta_pausada(msg.telefono):
                 logger.info(f"[PAUSA ACTIVA] {msg.telefono} — mensaje ignorado, Christian está atendiendo")
                 continue
 
@@ -642,7 +655,7 @@ async def webhook_handler(request: Request):
                 await cancelar_retoma(msg.telefono)
 
                 # ── Modo nocturno ──
-                if es_horario_nocturno():
+                if es_horario_nocturno() and not _es_numero_excepcion_pruebas(msg.telefono):
                     contenido = msg.texto or f"[{msg.tipo}]"
                     await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
                     continue
@@ -1696,3 +1709,6 @@ async def scheduler_citas_diarias():
 
         # Revisar cada 30 segundos
         await asyncio.sleep(30)
+
+
+
