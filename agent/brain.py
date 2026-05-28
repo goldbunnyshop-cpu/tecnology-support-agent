@@ -43,8 +43,51 @@ def _confirmar_variante_amb(modelo: str) -> tuple:
         return respuesta, True
     return "", False
 
+
+def _inferir_marca_de_modelo(modelo_str: str) -> str | None:
+    """Infiere la marca desde modelos conocidos sin necesidad de marca explícita.
+
+    Ejemplos:
+      's23' -> 'Samsung', 's21' -> 'Samsung', 'a21' -> 'Samsung'
+      'e60' -> 'Hisense', 'v60' -> 'Hisense'
+      '14' -> 'iPhone', '15 pro' -> 'iPhone'
+      'edge 20' -> 'Motorola'
+    """
+    if not modelo_str:
+        return None
+
+    m = modelo_str.lower().strip()
+
+    # Patrones Samsung: s[0-9], a[0-9], m[0-9], z[0-9], etc.
+    if re.match(r'^[sazm]\d+', m):
+        return "Samsung"
+
+    # Patrones Hisense: e[0-9], v[0-9], h[0-9]
+    if re.match(r'^[evh]\d+', m):
+        return "Hisense"
+
+    # iPhone: numeros puros o con sufijo (14, 15 pro, 15 max)
+    if re.match(r'^\d+', m) and 'iphone' not in m and 'samsung' not in m:
+        return "iPhone"
+
+    # Motorola/Moto: edge, moto g, moto e
+    if 'edge' in m or re.match(r'^g\d+|^e\d+|^gx|^ex', m):
+        return "Motorola"
+
+    # Google Pixel: pixel [0-9]
+    if 'pixel' in m:
+        return "Google"
+
+    return None
+
+
 async def detectar_y_obtener_precios(mensaje: str) -> str:
-    """Detecta precios por keywords O por marca+modelo sin importar keywords."""
+    """Detecta precios por keywords O por marca+modelo.
+
+    Flujo DUAL (optimizado):
+    1. Intentar detección explícita: marca + modelo en el mensaje
+    2. Si NO hay marca explícita pero SÍ hay pregunta de precio: buscar solo por modelo (fallback)
+    """
     patrones_display = [
         r'\bcotizar.*(?:display|pantalla|screen)\b',
         r'\b(?:display|pantalla|screen).*cotizar\b',
@@ -69,35 +112,46 @@ async def detectar_y_obtener_precios(mensaje: str) -> str:
     mensaje_lower = mensaje.lower()
     es_pregunta_precio = any(re.search(p, mensaje_lower) for p in patrones_display)
 
+    # ====== OPCION 1: Busqueda con marca explícita ======
     patron_modelo = r'(iPhone|Samsung|Google Pixel|Pixel|OnePlus|Xiaomi|Motorola|Huawei|Nokia|LG|Moto|Poco|Redmi|Hisense|Honor|Oppo|Realme|TCL|Vivo|ZTE|Alcatel|Cubot)\s+([\w]+(?:\s+[\w]+){0,3})'
     match = re.search(patron_modelo, mensaje, re.IGNORECASE)
 
+    if match:
+        marca = match.group(1)
+        modelo = match.group(2).strip()
+        logger.info(f"[BRAIN] Marca+modelo detectado explícitamente: {marca} {modelo}")
+
+        msg_confirmacion, fue_ambiguo = _confirmar_variante_amb(modelo)
+        if fue_ambiguo:
+            return msg_confirmacion
+
+        cotizacion = await obtener_cotizacion_display(marca, modelo)
+        if cotizacion:
+            contexto = f"PRECIO ENCONTRADO PARA {marca.upper()} {modelo.upper()}:\n{cotizacion}"
+            logger.info(f"[BRAIN] Cotizacion obtenida (marca explícita)")
+            return contexto
+        return ""
+
+    # ====== OPCION 2: Fallback sin marca (si es pregunta de precio) ======
     if es_pregunta_precio:
-        logger.info(f"[BRAIN] Pregunta de precio detectada (keywords)")
-    elif match:
-        logger.info(f"[BRAIN] Marca+modelo detectado sin keywords")
-    else:
-        logger.debug(f"[BRAIN] Mensaje sin precio ni marca+modelo")
-        return ""
+        logger.info(f"[BRAIN] Pregunta de precio sin marca explícita → intentando fallback")
+        # Extraer el modelo del mensaje (sin marca)
+        # Patrones: s23, a21, edge 50, pixel 8, etc.
+        patron_modelo_solo = r'([a-z]\d+(?:\s+\w+)?|edge\s+\d+|moto\s+[a-z]\d+|pixel\s+\d+|\d+\s+(?:pro|max|ultra|lite|neo|fusion))'
+        match_modelo = re.search(patron_modelo_solo, mensaje_lower)
 
-    if not match:
-        logger.debug(f"[BRAIN] Precio detectado pero sin modelo")
-        return ""
+        if match_modelo:
+            modelo = match_modelo.group(0).strip()
+            logger.info(f"[BRAIN] Modelo sin marca detectado: '{modelo}' → búsqueda dual activada")
 
-    marca = match.group(1)
-    modelo = match.group(2).strip()
-    logger.info(f"[BRAIN] Buscando: {marca} {modelo}")
+            from agent.pricing import buscar_modelo_sin_marca
+            cotizacion = await buscar_modelo_sin_marca(modelo)
+            if cotizacion:
+                contexto = f"BUSQUEDA POR MODELO (sin marca explícita):\n{cotizacion}"
+                logger.info(f"[BRAIN] Cotizacion obtenida (búsqueda por modelo)")
+                return contexto
 
-    msg_confirmacion, fue_ambiguo = _confirmar_variante_amb(modelo)
-    if fue_ambiguo:
-        return msg_confirmacion
-
-    cotizacion = await obtener_cotizacion_display(marca, modelo)
-    if cotizacion:
-        contexto = f"PRECIO ENCONTRADO PARA {marca.upper()} {modelo.upper()}:\n{cotizacion}"
-        logger.info(f"[BRAIN] Cotizacion obtenida")
-        return contexto
-
+    logger.debug(f"[BRAIN] Mensaje sin precio/modelo detectado")
     return ""
 
 async def generar_respuesta(mensaje: str, historial: list, asesor: str = "Valentina", telefono: str = "", nombre_cliente: str = "") -> str:

@@ -272,6 +272,15 @@ async def webhook_handler(request: Request):
                     logger.error(f"❌ FALLO generando respuesta: {e}", exc_info=True)
                     raise
 
+                # PASO 5.5: Actualizar registro de lead (CRÍTICO para seguimientos)
+                try:
+                    logger.debug(f"🔵 PASO 5.5: Actualizando registro de lead...")
+                    from agent.leads import crear_o_actualizar_lead
+                    await crear_o_actualizar_lead(msg.telefono, asesor_asignado=asesor)
+                    logger.debug(f"✅ Lead actualizado: último_mensaje=ahora, seguimiento_realizado=False (si estaba en seguimiento)")
+                except Exception as e:
+                    logger.warning(f"⚠️  Error actualizando lead: {e} (no es crítico, continuando)")
+
                 # PASO 6: Guardar en memoria
                 try:
                     logger.debug(f"🔵 PASO 6: Guardando en memoria...")
