@@ -248,14 +248,17 @@ async def crear_en_google_calendar(
         from googleapiclient.discovery import build
         import json
 
-        # Cargar credenciales
-        creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "config/credentials.json")
-        if not os.path.exists(creds_path):
-            logger.debug("[CITA_DETECTOR] Google credentials no configuradas, saltando Calendar")
-            return False
-
-        with open(creds_path, "r") as f:
-            creds_dict = json.load(f)
+        # Cargar credenciales (Railway: JSON inline; local: archivo)
+        json_inline = os.getenv("GOOGLE_CREDENTIALS_JSON") or os.getenv("GOOGLE_CREDENTIALS")
+        if json_inline:
+            creds_dict = json.loads(json_inline)
+        else:
+            creds_path = os.getenv("GOOGLE_CREDENTIALS_PATH", "config/credentials.json")
+            if not os.path.exists(creds_path):
+                logger.debug("[CITA_DETECTOR] Google credentials no configuradas, saltando Calendar")
+                return False
+            with open(creds_path, "r", encoding="utf-8") as f:
+                creds_dict = json.load(f)
 
         scopes = ["https://www.googleapis.com/auth/calendar"]
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
@@ -274,7 +277,7 @@ async def crear_en_google_calendar(
             "end": {"dateTime": fin.isoformat(), "timeZone": "America/Mexico_City"},
         }
 
-        calendar_id = "tecnotogysupportmx@gmail.com"
+        calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "tecnologysupportmx@gmail.com")
         service.events().insert(calendarId=calendar_id, body=body).execute()
 
         logger.info(f"[CITA_DETECTOR] 📅 Evento creado en Google Calendar: {nombre}")

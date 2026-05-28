@@ -283,6 +283,22 @@ async def inicializar_db():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Tabla legacy/operativa para citas detectadas automaticamente
+        # (la consume agent/cita_detector.py con SQL directo).
+        from sqlalchemy import text
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS citas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                telefono TEXT DEFAULT '',
+                dispositivo TEXT NOT NULL,
+                problema TEXT NOT NULL,
+                fecha_hora DATETIME NOT NULL,
+                asesor TEXT DEFAULT '',
+                fuente TEXT DEFAULT 'automatica',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """))
 
     from agent.leads import _migrar_columnas
     await _migrar_columnas()
