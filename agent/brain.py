@@ -24,7 +24,7 @@ _PATRONES_PRECIO = [
 ]
 
 _PATRON_MODELO_CORTO = re.compile(
-    r"^\s*[a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe))?\s*\??\s*$",
+    r"^\s*(?:el\s+|del\s+|de\s+)?[a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe|lite|neo|mini|se))?\s*\??\s*$",
     re.I,
 )
 
@@ -90,7 +90,7 @@ def _normalizar_consulta_pricing(texto: str) -> str:
 
 
 def _es_modelo_corto(texto: str) -> bool:
-    t = (texto or "").strip().lower()
+    t = _normalizar_consulta_pricing(texto)
     return bool(_PATRON_MODELO_CORTO.match(t))
 
 
@@ -123,7 +123,7 @@ def _buscar_ultimo_modelo_historial(historial: list[dict]) -> str | None:
 def _es_respuesta_marca(mensaje: str) -> str | None:
     t = _normalizar_consulta_pricing(mensaje)
     for alias in sorted(ALIAS_MARCAS.keys(), key=len, reverse=True):
-        if t == alias or alias in t:
+        if t == alias:
             return alias
     return None
 
@@ -161,6 +161,12 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     es_consulta_precio = any(re.search(p, m) for p in _PATRONES_PRECIO)
     es_modelo_breve = _es_modelo_corto(mensaje)
     hay_contexto_precio = _historial_en_contexto_precio(historial)
+    marca_actual, modelo_actual = _extraer_marca_modelo(mensaje)
+
+    # Si este mensaje ya trae modelo (con o sin marca), resolver con lo ACTUAL,
+    # sin arrastrar contexto viejo.
+    if modelo_actual and (es_consulta_precio or es_modelo_breve or marca_actual):
+        return await _resolver_pricing_desde_texto(mensaje)
 
     marca_suelta = _es_respuesta_marca(mensaje)
     modelo_prev = _buscar_ultimo_modelo_historial(historial)
