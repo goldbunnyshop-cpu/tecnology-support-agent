@@ -15,7 +15,7 @@ from typing import Optional, List
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
@@ -338,6 +338,48 @@ app = FastAPI(
 @app.get("/")
 async def health_check():
     return {"status": "ok", "service": "Tecnology Support AgentKit v2.1"}
+
+
+class ResetChatRequest(BaseModel):
+    telefono: str
+
+
+@app.post("/admin/reset-chat")
+async def admin_reset_chat(payload: ResetChatRequest, request: Request):
+    """Resetea historial operativo de un telefono (requiere X-Admin-Token)."""
+    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
+    token_header = request.headers.get("X-Admin-Token", "").strip()
+    if not admin_token or token_header != admin_token:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    telefono = (payload.telefono or "").strip()
+    if not telefono:
+        raise HTTPException(status_code=400, detail="telefono requerido")
+
+    like_a = f"%{telefono}%"
+    resumen: dict[str, int] = {}
+    async with async_session() as session:
+        deletes = {
+            "mensajes": "DELETE FROM mensajes WHERE telefono LIKE :like",
+            "clientes_perfil": "DELETE FROM clientes_perfil WHERE telefono LIKE :like",
+            "leads": "DELETE FROM leads WHERE telefono LIKE :like",
+            "pausas": "DELETE FROM pausas WHERE cliente_telefono LIKE :like",
+            "mensajes_procesados": "DELETE FROM mensajes_procesados WHERE telefono LIKE :like",
+            "citas_notificadas": "DELETE FROM citas_notificadas WHERE cliente_tel LIKE :like",
+            "confirmaciones_citas_enviadas": "DELETE FROM confirmaciones_citas_enviadas WHERE cliente_telefono LIKE :like",
+            "citas_recordatorio": "DELETE FROM citas_recordatorio WHERE telefono LIKE :like",
+            "citas": "DELETE FROM citas WHERE telefono LIKE :like",
+        }
+        for tabla, sql in deletes.items():
+            try:
+                r = await session.execute(text(sql), {"like": like_a})
+                resumen[tabla] = int(r.rowcount or 0)
+            except Exception:
+                resumen[tabla] = -1
+        await session.commit()
+
+    logger.info(f"[ADMIN] Reset chat aplicado para {telefono}: {resumen}")
+    return {"ok": True, "telefono": telefono, "resumen": resumen}
 
 
 @app.get("/diagnostico/grupos")
