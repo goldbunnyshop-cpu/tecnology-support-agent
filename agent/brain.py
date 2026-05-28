@@ -23,6 +23,16 @@ _PATRONES_PRECIO = [
     r"\bpantalla\b",
 ]
 
+_PATRON_MODELO_CORTO = re.compile(
+    r"^\s*[a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe))?\s*\??\s*$",
+    re.I,
+)
+
+_PATRON_MODELO_EN_TEXTO = re.compile(
+    r"\b([a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe))?)\b",
+    re.I,
+)
+
 
 def _limpiar_respuesta_pricing(texto: str) -> str:
     """Quita encabezados internos y retorna texto listo para cliente."""
@@ -46,21 +56,91 @@ def _limpiar_respuesta_pricing(texto: str) -> str:
 def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
     """Intenta extraer marca+modelo de un mensaje libre."""
     txt = (mensaje or "").lower()
+    txt_limpio = _normalizar_consulta_pricing(txt)
     # Primero marcas más largas para evitar colisiones (google pixel antes de pixel)
     for alias in sorted(ALIAS_MARCAS.keys(), key=len, reverse=True):
-        if re.search(rf"\b{re.escape(alias)}\b", txt):
+        if re.search(rf"\b{re.escape(alias)}\b", txt_limpio) or alias in txt_limpio:
             marca = alias
-            modelo = re.sub(rf".*?\b{re.escape(alias)}\b", "", txt, count=1).strip(" :,-")
+            modelo = re.sub(rf".*?\b{re.escape(alias)}\b", "", txt_limpio, count=1).strip(" :,-")
+            if not modelo and alias in txt_limpio:
+                modelo = txt_limpio.replace(alias, "").strip(" :,-")
             return marca, (modelo or None)
-    return None, None
+    # Sin marca explícita, intentar extraer modelo de la frase limpia
+    m = _PATRON_MODELO_EN_TEXTO.search(txt_limpio)
+    if m:
+        return None, m.group(1).strip()
+    return None, txt_limpio or None
 
 
-async def _intentar_respuesta_pricing(mensaje: str) -> str | None:
-    """Si es consulta de precios, devuelve respuesta directa de pricing."""
-    m = (mensaje or "").lower()
-    if not any(re.search(p, m) for p in _PATRONES_PRECIO):
+def _normalizar_consulta_pricing(texto: str) -> str:
+    t = (texto or "").lower().strip()
+    t = t.replace("¿", " ").replace("?", " ")
+    # Corrige typo común detectado en pruebas
+    t = t.replace("smsamsung", "samsung")
+    # Quita prefijos de intención de precio que contaminan el modelo
+    t = re.sub(
+        r"^(?:me\s+ayudas?\s+a\s+)?(?:cotizar|cotizacion|cotización|precio|costo|presupuesto)\s+(?:de\s+|del\s+|para\s+)?",
+        "",
+        t,
+    )
+    # Limpieza de palabras de relleno frecuentes
+    t = re.sub(r"\b(?:tipo|estimado|aprox|aproximado|pantalla|display)\b", " ", t)
+    t = re.sub(r"\s+", " ", t).strip(" ,.-")
+    return t
+
+
+def _es_modelo_corto(texto: str) -> bool:
+    t = (texto or "").strip().lower()
+    return bool(_PATRON_MODELO_CORTO.match(t))
+
+
+def _historial_en_contexto_precio(historial: list[dict]) -> bool:
+    if not historial:
+        return False
+    ultimos = historial[-6:]
+    for msg in ultimos:
+        if msg.get("role") != "user":
+            continue
+        c = (msg.get("content") or "").lower()
+        if any(re.search(p, c) for p in _PATRONES_PRECIO):
+            return True
+    return False
+
+
+def _buscar_ultimo_modelo_historial(historial: list[dict]) -> str | None:
+    if not historial:
         return None
+    for msg in reversed(historial[-12:]):
+        if msg.get("role") != "user":
+            continue
+        c = _normalizar_consulta_pricing(msg.get("content") or "")
+        m = _PATRON_MODELO_EN_TEXTO.search(c)
+        if m:
+            return m.group(1).strip()
+    return None
 
+
+def _es_respuesta_marca(mensaje: str) -> str | None:
+    t = _normalizar_consulta_pricing(mensaje)
+    for alias in sorted(ALIAS_MARCAS.keys(), key=len, reverse=True):
+        if t == alias or alias in t:
+            return alias
+    return None
+
+
+def _buscar_ultima_marca_historial(historial: list[dict]) -> str | None:
+    if not historial:
+        return None
+    for msg in reversed(historial[-12:]):
+        if msg.get("role") != "user":
+            continue
+        marca = _es_respuesta_marca(msg.get("content") or "")
+        if marca:
+            return marca
+    return None
+
+
+async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
     marca, modelo = _extraer_marca_modelo(mensaje)
     try:
         if marca and modelo:
@@ -69,12 +149,43 @@ async def _intentar_respuesta_pricing(mensaje: str) -> str | None:
         if modelo:
             r = await buscar_modelo_sin_marca(modelo)
             return _limpiar_respuesta_pricing(r)
-        # Si no hubo marca/modelo claros, intentar con el mensaje completo
         r = await buscar_modelo_sin_marca(mensaje)
         return _limpiar_respuesta_pricing(r)
     except Exception as e:
         logger.error(f"[PRICING] Error en consulta directa: {e}")
         return None
+
+
+async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[dict]) -> str | None:
+    m = (mensaje or "").lower()
+    es_consulta_precio = any(re.search(p, m) for p in _PATRONES_PRECIO)
+    es_modelo_breve = _es_modelo_corto(mensaje)
+    hay_contexto_precio = _historial_en_contexto_precio(historial)
+
+    marca_suelta = _es_respuesta_marca(mensaje)
+    modelo_prev = _buscar_ultimo_modelo_historial(historial)
+    marca_prev = _buscar_ultima_marca_historial(historial)
+
+    if not es_consulta_precio and not (es_modelo_breve and (hay_contexto_precio or marca_prev)) and not (marca_suelta and modelo_prev):
+        return None
+
+    # Caso conversacional: cliente responde solo marca después de "costo s21"
+    if marca_suelta and modelo_prev:
+        try:
+            r = await obtener_cotizacion_display(marca_suelta, modelo_prev)
+            return _limpiar_respuesta_pricing(r)
+        except Exception as e:
+            logger.error(f"[PRICING] Error resolviendo marca+modelo contextual: {e}")
+
+    # Caso conversacional inverso: cliente responde solo modelo corto tras decir marca
+    if es_modelo_breve and marca_prev:
+        try:
+            r = await obtener_cotizacion_display(marca_prev, _normalizar_consulta_pricing(mensaje))
+            return _limpiar_respuesta_pricing(r)
+        except Exception as e:
+            logger.error(f"[PRICING] Error resolviendo modelo con marca contextual: {e}")
+
+    return await _resolver_pricing_desde_texto(mensaje)
 
 
 def cargar_config_prompts() -> dict:
@@ -120,7 +231,7 @@ async def generar_respuesta(
         return obtener_mensaje_fallback()
 
     # Prioridad alta: consultas de precio/cotizacion se resuelven con motor de pricing.
-    respuesta_pricing = await _intentar_respuesta_pricing(mensaje)
+    respuesta_pricing = await _intentar_respuesta_pricing_contextual(mensaje, historial)
     if respuesta_pricing:
         logger.info(f"[{asesor}] Respuesta de pricing directa aplicada")
         return respuesta_pricing
