@@ -29,6 +29,15 @@ logger = logging.getLogger("agentkit")
 #   ORIGINAL:  ORIG, OLED, COF, FHD, DD SOFT, DD SOFT OLED, HG ORIG
 #   AMOLED:    AMOLED
 MULTIPLICADOR_USD_A_MXN = 4
+# Regla comercial confirmada:
+# - GENERICO: x4
+# - ORIGINAL: x4
+# - AMOLED:  x3
+MULTIPLICADOR_POR_CATEGORIA = {
+    'GENERICO': 4,
+    'ORIGINAL': 4,
+    'AMOLED': 3,
+}
 RUTA_CSV_HUGO = "knowledge/hugo_shop.csv"
 
 # Marcas que aparecen como filas-header en el CSV (separadoras de seccion)
@@ -354,6 +363,14 @@ def normalizar_modelo_query(modelo_str: str, marca: str) -> tuple[str | None, st
     if re.match(r'^[a-z]\d+$', primer):
         return primer, resto
 
+    # EDGE50 / NOVA9 / similares (letras+digitos pegados)
+    mm = re.match(r'^([a-z]{2,})(\d+)([a-z]*)$', primer)
+    if mm:
+        base = mm.group(1)
+        digit_part = mm.group(2) + (mm.group(3) or '')
+        variante = ' '.join(filter(None, [digit_part, resto])).strip() or None
+        return base, variante
+
     # numero
     mm = re.match(r'^(\d+)([a-z]*)$', primer)
     if mm:
@@ -420,7 +437,8 @@ def _formatear_cotizacion(marca: str, modelo: str, productos: list[dict]) -> str
         if not precios:
             continue
         promedio_usd = sum(precios) / len(precios)
-        precio_mxn = int(promedio_usd * MULTIPLICADOR_USD_A_MXN)
+        multiplicador = MULTIPLICADOR_POR_CATEGORIA.get(categoria, MULTIPLICADOR_USD_A_MXN)
+        precio_mxn = int(promedio_usd * multiplicador)
         etiqueta = ETIQUETAS_CATEGORIA[categoria]
         linea = f"* {etiqueta}: ${precio_mxn:,} MXN"
 
@@ -560,7 +578,8 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
         logger.info(f"[PRICING] Cotizando base sin variantes: {marca} {base_q}")
         return _formatear_cotizacion(marca, base_q, productos_base)
 
-    # Hay variantes (con o sin base): preguntar antes de cotizar
+    # Hay variantes (con o sin base): preguntar antes de cotizar.
+    # Regla estricta: NO cotizar hasta confirmar variante exacta.
     logger.info(f"[PRICING] Pidiendo variante a cliente para {marca} {base_q}. Disponibles: {variantes_csv}")
     return _formatear_pregunta_variantes(marca, base_q, variantes_csv)
 
@@ -606,9 +625,9 @@ async def buscar_modelo_sin_marca(modelo: str) -> str:
 
     if len(matches_por_marca) == 1:
         marca = list(matches_por_marca.keys())[0]
-        productos_encontrados = [p for p, _ in matches_por_marca[marca]]
         logger.info(f"[PRICING] Busqueda sin marca: '{modelo}' -> {marca}")
-        return _formatear_cotizacion(marca, modelo, productos_encontrados)
+        # Reusar el flujo principal para no mezclar variantes/precios por accidente.
+        return await obtener_cotizacion_display(marca, modelo)
 
     marcas_str = ", ".join(sorted(matches_por_marca.keys()))
     cuerpo = (
