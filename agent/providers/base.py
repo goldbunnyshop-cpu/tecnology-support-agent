@@ -22,6 +22,7 @@ class MensajeEntrante:
     media_thumbnail_b64: str = ""    # Thumbnail JPEG en base64 (videos de Whapi)
     media_id: str = ""               # ID de media de Whapi (fallback si URL vacía)
     media_mime_type: str = ""        # MIME type declarado por el proveedor
+    canal: str = "whatsapp"          # whatsapp | messenger | instagram
 
 
 class ProveedorWhatsApp(ABC):

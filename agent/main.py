@@ -1679,11 +1679,8 @@ async def scheduler_citas_diarias():
                     # Aquí iría el código para enviar a WhatsApp
                     # Uso el proveedor existente: proveedor.enviar_mensaje()
                     try:
-                        await proveedor.enviar_mensaje(
-                            numero=_NUMERO_NEGOCIO,  # Enviar al número del negocio
-                            texto=reporte,
-                            grupo_id=GRUPO_INTERNO  # Enviar al grupo interno
-                        )
+                        destino = GRUPO_INTERNO if GRUPO_INTERNO else _NUMERO_NEGOCIO
+                        await proveedor.enviar_mensaje(destino, reporte)
                         logger.info("[SCHEDULER-CITAS] ✅ Reporte de citas enviado al grupo")
                     except Exception as e:
                         logger.warning(f"[SCHEDULER-CITAS] No se pudo enviar a WhatsApp: {e}")
