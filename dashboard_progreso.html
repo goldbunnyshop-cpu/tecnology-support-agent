@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentKit - Dashboard de Progreso</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            color-scheme: light;
+            --primary: #3B82F6;
+            --success: #10B981;
+            --warning: #F59E0B;
+            --danger: #EF4444;
+            --gray: #6B7280;
+            --bg: #F9FAFB;
+            --border: #E5E7EB;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: #1F2937;
+            padding: 20px;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        h1 { font-size: 28px; margin-bottom: 10px; }
+        .subtitle { color: var(--gray); margin-bottom: 30px; }
+
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
+
+        .metric {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .metric-number {
+            font-size: 32px;
+            font-weight: 700;
+            margin: 10px 0;
+        }
+
+        .metric.success .metric-number { color: var(--success); }
+        .metric.warning .metric-number { color: var(--warning); }
+        .metric.danger .metric-number { color: var(--danger); }
+
+        .metric-label { font-size: 14px; color: var(--gray); }
+
+        .section {
+            background: white;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid var(--primary);
+            padding-bottom: 10px;
+        }
+
+        .task-list { list-style: none; }
+        .task-item {
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .task-item.completed {
+            background: #D1FAE5;
+            color: #065F46;
+        }
+
+        .task-item.in-progress {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+
+        .task-item.pending {
+            background: #EDE9FE;
+            color: #4C1D95;
+        }
+
+        .task-icon { font-size: 18px; }
+        .task-text { flex: 1; }
+
+        .progress-bar {
+            width: 100%;
+            height: 24px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--primary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .error-box {
+            background: #FEE2E2;
+            border: 1px solid #FECACA;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #DC2626;
+        }
+
+        .warning-box {
+            background: #FEF3C7;
+            border: 1px solid #FCD34D;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #92400E;
+        }
+
+        .info-box {
+            background: #DBEAFE;
+            border: 1px solid #93C5FD;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #1E40AF;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th { background: var(--bg); font-weight: 600; }
+        tr:hover { background: var(--bg); }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge.success { background: #D1FAE5; color: #065F46; }
+        .badge.warning { background: #FEF3C7; color: #92400E; }
+        .badge.danger { background: #FEE2E2; color: #DC2626; }
+
+        .chart-container { position: relative; height: 300px; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 AgentKit — Dashboard de Progreso</h1>
+        <p class="subtitle">Estado actual del proyecto al 2026-05-15</p>
+
+        <div class="grid">
+            <div class="metric success">
+                <div class="metric-label">Tareas Completadas</div>
+                <div class="metric-number">1</div>
+            </div>
+            <div class="metric warning">
+                <div class="metric-label">En Progreso</div>
+                <div class="metric-number">3</div>
+            </div>
+            <div class="metric danger">
+                <div class="metric-label">Pendientes</div>
+                <div class="metric-number">12</div>
+            </div>
+            <div class="metric">
+                <div class="metric-label">Progreso Total</div>
+                <div class="metric-number">11%</div>
+            </div>
+        </div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" style="width: 11%;">11%</div>
+        </div>
+
+        <!-- FASE 0: SETUP -->
+        <div class="section">
+            <h2>⚙️ FASE 0 — Setup & Configuración (✅ COMPLETADA)</h2>
+            <ul class="task-list">
+                <li class="task-item completed">
+                    <span class="task-icon">✅</span>
+                    <span class="task-text"><strong>#1 Python 3.11+ instalado y verificado</strong></span>
+                </li>
+                <li class="task-item completed">
+                    <span class="task-icon">✅</span>
+                    <span class="task-text"><strong>#2 FastAPI + Uvicorn configurados</strong></span>
+                </li>
+                <li class="task-item completed">
+                    <span class="task-icon">✅</span>
+                    <span class="task-text"><strong>#3 Whapi.cloud token activo</strong></span>
+                </li>
+                <li class="task-item completed">
+                    <span class="task-icon">✅</span>
+                    <span class="task-text"><strong>#4 Claude API key funcionando</strong></span>
+                </li>
+                <li class="task-item completed">
+                    <span class="task-icon">✅</span>
+                    <span class="task-text"><strong>#5 Base de datos PostgreSQL en Railway</strong></span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- FASE 1: PARSING DE CITAS -->
+        <div class="section">
+            <h2>📅 FASE 1 — Parser de Citas (🟡 EN PROGRESO)</h2>
+            <div class="warning-box">
+                <strong>Estado:</strong> El parsing de fechas está reparado ✅, pero hay un problema de permisos con Google Calendar API 403 (Forbidden)
+            </div>
+            <ul class="task-list">
+                <li class="task-item completed">
+                    <span class="task-icon">✅</span>
+                    <span class="task-text"><strong>#1 Parsing robusto de fechas en español</strong> — String-splitting sin regex</span>
+                </li>
+                <li class="task-item completed">
+                    <span class="task-icon">✅</span>
+                    <span class="task-text"><strong>#2 Extracción de campos de cita</strong> — Nombre, dispositivo, problema, asesor</span>
+                </li>
+                <li class="task-item in-progress">
+                    <span class="task-icon">🟡</span>
+                    <span class="task-text"><strong>#3 Importación de 17 citas a Google Calendar</strong> — Error 403: Permisos insuficientes</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#4 Testing: Validar las 17 citas importadas</strong></span>
+                </li>
+            </ul>
+            <div class="error-box">
+                <strong>🔴 Bloqueador Crítico:</strong> Google Calendar API retorna error 403 (Forbidden).
+                <br/>La service account <code>agente-calendario@tecnology-support.iam.gserviceaccount.com</code>
+                no tiene permisos de escritura en el calendario.
+                <br/><br/>
+                <strong>Acción requerida:</strong>
+                <ol style="margin-left: 20px; margin-top: 10px;">
+                    <li>Ve a Google Calendar → Configuración → Compartir calendario</li>
+                    <li>Agrega la email de la service account y dale permisos de "Editar"</li>
+                    <li>Vuelve a ejecutar: <code>python importar_citas_directo.py</code></li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- FASE 2: SINCRONIZACIÓN DE LEADS -->
+        <div class="section">
+            <h2>👥 FASE 2 — Sincronización de Leads (⏳ PENDIENTE)</h2>
+            <p style="margin-bottom: 15px; color: var(--gray);">
+                Objetivo: Sincronizar 156 leads existentes en Railway a Auto-CRM
+            </p>
+            <ul class="task-list">
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#6 Crear tabla leads en PostgreSQL</strong> con campos: nombre, teléfono, dispositivo, fuente, fecha, estado</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#7 Endpoint GET /api/leads</strong> — Retorna todos los leads con paginación</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#8 Script de sincronización</strong> — Corre cada 15 min, actualiza Auto-CRM con leads nuevos</span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- FASE 3: ENRIQUECIMIENTO DE DATOS -->
+        <div class="section">
+            <h2>📊 FASE 3 — Enriquecimiento de Datos (⏳ PENDIENTE)</h2>
+            <ul class="task-list">
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#9 Endpoint PUT /api/leads/{telefono}</strong> — Actualizar estado, asesor, presupuesto</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#10 Agregar campos a tabla leads</strong> — Email, empresa, dispositivo, problema, asesor, presupuesto</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#11 Endpoint respaldo a Google Sheets</strong> — Cada noche a las 10 PM</span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- FASE 4: OPERATIVO -->
+        <div class="section">
+            <h2>🚀 FASE 4 — Operativo (⏳ PENDIENTE)</h2>
+            <ul class="task-list">
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#12 Dashboard en Auto-CRM</strong> — Leads nuevos, conversiones, seguimientos</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#13 Filtros avanzados</strong> — Por estado, fuente, dispositivo, asesor</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>#14 Alertas inteligentes</strong> — 48h sin actividad, presupuesto sin respuesta, seguimientos vencidos</span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- CARACTERÍSTICAS FUTURAS -->
+        <div class="section">
+            <h2>🎙️ Características Futuras (ROADMAP)</h2>
+            <ul class="task-list">
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>Feature: Procesar audios de WhatsApp</strong> — Transcribir y responder en texto</span>
+                </li>
+                <li class="task-item pending">
+                    <span class="task-icon">⏳</span>
+                    <span class="task-text"><strong>Optimización: Logs y debugging en tiempo real</strong></span>
+                </li>
+            </ul>
+        </div>
+
+        <!-- RESUMEN TÉCNICO -->
+        <div class="section">
+            <h2>🔧 Estado Técnico</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Componente</th>
+                        <th>Estado</th>
+                        <th>Detalles</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>FastAPI Server</td>
+                        <td><span class="badge success">✅ OK</span></td>
+                        <td>Corriendo en puerto 8000 (local) / Railway</td>
+                    </tr>
+                    <tr>
+                        <td>PostgreSQL (Railway)</td>
+                        <td><span class="badge success">✅ OK</span></td>
+                        <td>Conectado, base datos existe</td>
+                    </tr>
+                    <tr>
+                        <td>Claude API</td>
+                        <td><span class="badge success">✅ OK</span></td>
+                        <td>Modelo claude-sonnet-4-6 activo</td>
+                    </tr>
+                    <tr>
+                        <td>Whapi.cloud</td>
+                        <td><span class="badge success">✅ OK</span></td>
+                        <td>Token activo, webhooks funcionando</td>
+                    </tr>
+                    <tr>
+                        <td>Google Calendar API</td>
+                        <td><span class="badge danger">❌ ERROR</span></td>
+                        <td>403 Forbidden - Permisos insuficientes en calendar</td>
+                    </tr>
+                    <tr>
+                        <td>Google Credentials</td>
+                        <td><span class="badge success">✅ OK</span></td>
+                        <td>credentials.json presente y válido en config/</td>
+                    </tr>
+                    <tr>
+                        <td>Parsing de Fechas</td>
+                        <td><span class="badge success">✅ OK</span></td>
+                        <td>String-splitting robusto, sin regex</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- PRÓXIMOS PASOS -->
+        <div class="section">
+            <h2>📋 Próximos Pasos Inmediatos</h2>
+            <ol style="margin-left: 20px; line-height: 1.8;">
+                <li><strong>CRÍTICO:</strong> Resolver el error 403 de Google Calendar
+                    <ul style="margin-left: 20px; margin-top: 5px;">
+                        <li>Compartir el calendario con la service account</li>
+                        <li>Validar permisos en Google Cloud Console</li>
+                    </ul>
+                </li>
+                <li>Una vez resuelto, ejecutar: <code style="background: var(--bg); padding: 2px 6px;">python importar_citas_directo.py</code></li>
+                <li>Validar que las 17 citas se importen en Google Calendar ✅</li>
+                <li>Proceder con FASE 2 (Sincronización de 156 leads a Auto-CRM)</li>
+            </ol>
+        </div>
+
+        <div class="info-box" style="margin-top: 30px;">
+            <strong>ℹ️ Última actualización:</strong> 2026-05-15 08:30 UTC-6<br/>
+            <strong>Contacto:</strong> goldbunnyshop@gmail.com
+        </div>
+    </div>
+</body>
+</html>
