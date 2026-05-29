@@ -1,0 +1,8 @@
+$token = "240502820123"
+$body = @{ telefono = "5627557362" } | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "https://tecnology-support-agent-production.up.railway.app/admin/reset-chat" `
+  -Headers @{ "X-Admin-Token" = $token; "Content-Type" = "application/json" } `
+  -Body $body

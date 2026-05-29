@@ -1,6 +1,3 @@
-# agent/pricing.py - Motor de cotizacion con Hugo Shop
-#
-# Flujo:
 #   1. cargar_csv_hugo()  -> Parser robusto que respeta las filas-header de marca
 #      del CSV (SAMSUNG,,,,, IPHONE,,,,, etc.) para anclar cada producto a su marca.
 #   2. obtener_cotizacion_display(marca, modelo)
@@ -351,6 +348,10 @@ def normalizar_modelo_query(modelo_str: str, marca: str) -> tuple[str | None, st
             base = m_num.group(1)
             sufijo = m_num.group(2) or None
             variante = ' '.join(filter(None, [sufijo, resto])).strip() or None
+            # Limpiar palabras que significan 'base sin variante'
+            PALABRAS_BASE = {'normal', 'base', 'estandar', 'regular'}
+            if variante and variante.lower() in PALABRAS_BASE:
+                variante = None
             return base, variante
 
     # Patron A21S
@@ -505,10 +506,24 @@ def _formatear_pregunta_variantes(marca: str, base: str, variantes: list[str]) -
 
 
 def _mensaje_no_disponible(marca: str, modelo: str) -> str:
+    """Mensaje inteligente: pregunta aclaraciones en lugar de rechazar."""
+    marca_limpia = marca if marca and marca != "No especificado" else ""
+    modelo_limpio = modelo if modelo and modelo != "modelo desconocido" else ""
+
+    # Si falta marca O modelo, pedir ambos
+    if not marca_limpia or not modelo_limpio:
+        return (
+            "Para cotizarte el display exacto, necesito que me digas:\n"
+            "1. Cual es la marca de tu dispositivo? (Samsung, iPhone, Motorola, etc.)\n"
+            "2. Cual es el modelo exacto? (por ejemplo: Galaxy A21, iPhone 14, Moto G42)\n\n"
+            "Si no estas seguro del modelo, verifica en Configuracion > Acerca de o acude al modulo."
+        )
+
+    # Si tenemos marca y modelo pero no existe, ofrecer alternativas
     return (
-        f"Disculpa, no tengo en inventario displays para {marca} {modelo}.\n"
-        "Podrias verificar el modelo exacto? O puedo conectarte con un tecnico "
-        "para asesorarte sobre alternativas compatibles."
+        f"Para el {marca_limpia} {modelo_limpio}, no encontre displays en nuestro inventario.\n"
+        f"Es posible que sea un modelo diferente? Verifica el numero exacto (A21, A21S, etc.)\n"
+        f"O acude al modulo y revisamos juntos — tenemos alternativas compatibles."
     )
 
 
