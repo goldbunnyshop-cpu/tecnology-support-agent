@@ -1,0 +1,4 @@
+# Artefactos generados por las corridas de evaluación
+reporte.json
+_run*.log
+__pycache__/

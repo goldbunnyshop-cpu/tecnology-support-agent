@@ -23,6 +23,30 @@ _PATRONES_PRECIO = [
     r"\bpantalla\b",
 ]
 
+# Términos inequívocos de pantalla/display. NO se incluyen "touch"/"táctil" porque
+# aparecen en quejas conversacionales de reparación ("el touch muerto") sin intención
+# de cotizar — esas las atiende Claude, no el motor de cotización.
+_PATRON_DISPLAY = re.compile(
+    r"\b(displays?|pantallas?|mica|cristal|gorilla)\b", re.I
+)
+
+# Señales de que la consulta NO es de display. El motor de cotización solo cotiza
+# PANTALLAS; si el cliente pregunta por mantenimiento de consola, costo de
+# diagnóstico, batería, centro de carga, software, o reparación de control, NO debe
+# intervenir el motor — lo atiende Claude con las reglas del prompt (precio fijo de
+# consola, invitar al módulo, Situación 5, etc.).
+_PATRON_NO_DISPLAY = re.compile(
+    r"\b("
+    r"mantenimiento|limpieza|diagn[oó]stic\w*|"
+    r"bater[ií]a|pila|centro\s+de\s+carga|puerto\s+de\s+carga|no\s+carga|"
+    r"bocina|altavoz|micr[oó]fono|c[aá]mara|bot[oó]n|botones|"
+    r"software|desbloque\w*|liberaci[oó]n|liberar|"
+    r"control|mando|joystick|palanca|drift|gatillo|"
+    r"consola|playstation|ps[345]|xbox|nintendo|switch"
+    r")\b",
+    re.I,
+)
+
 _PATRON_MODELO_CORTO = re.compile(
     r"^\s*(?:el\s+|del\s+|de\s+)?[a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe|lite|neo|mini|se))?\s*\??\s*$",
     re.I,
@@ -159,13 +183,25 @@ async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
 async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[dict]) -> str | None:
     m = (mensaje or "").lower()
     es_consulta_precio = any(re.search(p, m) for p in _PATRONES_PRECIO)
+    es_display = bool(_PATRON_DISPLAY.search(m))
+    es_no_display = bool(_PATRON_NO_DISPLAY.search(m))
     es_modelo_breve = _es_modelo_corto(mensaje)
     hay_contexto_precio = _historial_en_contexto_precio(historial)
     marca_actual, modelo_actual = _extraer_marca_modelo(mensaje)
 
-    # Si este mensaje ya trae modelo (con o sin marca), resolver con lo ACTUAL,
-    # sin arrastrar contexto viejo.
-    if modelo_actual and (es_consulta_precio or es_modelo_breve or marca_actual):
+    # EXCLUSIÓN: la consulta no es de pantalla → que la maneje Claude, no el motor.
+    if es_no_display:
+        return None
+
+    # Si este mensaje ya trae modelo y hay intención real de cotizar pantalla
+    # (mención de display, palabra de precio, o un modelo corto), resolver con lo
+    # ACTUAL. NO se enruta por la sola presencia de una marca: eso desviaba al motor
+    # consultas que no eran de pantalla.
+    if modelo_actual and (es_display or es_consulta_precio or es_modelo_breve):
+        return await _resolver_pricing_desde_texto(mensaje)
+
+    # Pidió pantalla pero sin modelo aún (ej: "cuánto cuesta la pantalla de un iphone").
+    if es_display:
         return await _resolver_pricing_desde_texto(mensaje)
 
     marca_suelta = _es_respuesta_marca(mensaje)
