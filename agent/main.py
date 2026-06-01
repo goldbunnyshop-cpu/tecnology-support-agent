@@ -50,6 +50,10 @@ from agent.reports import generar_reporte_excel
 from agent.import_chats import importar_todos_los_chats
 from agent.cita_detector import guardar_cita_automatica
 from agent.commands import procesar_comando_grupo
+from agent.commands_control import (
+    procesar_comando_control,
+    validar_numero_activo,
+)
 from agent.notifications import (
     detectar_y_notificar_christian,
     notificar_christian_vision,
@@ -654,7 +658,21 @@ async def webhook_handler(request: Request):
                     f"es_propio={msg.es_propio}"
                 )
                 if GRUPO_INTERNO.lower() in nombre_g.lower():
-                    logger.info(f"[WEBHOOK] Grupo interno detectado, ejecutando procesar_comando_grupo")
+                    logger.info(f"[WEBHOOK] Grupo interno detectado")
+
+                    # ── Intentar procesar comando stop/on PRIMERO ──
+                    es_comando_control, respuesta_control = await procesar_comando_control(
+                        msg.texto or "",
+                        remitente_g or "desconocido"
+                    )
+                    if es_comando_control:
+                        if respuesta_control:
+                            logger.info(f"[CMD] Respuesta: {respuesta_control}")
+                            await proveedor.enviar_mensaje(nombre_g, respuesta_control)
+                        continue
+
+                    # ── Si no fue comando stop/on, procesar comandos generales de Ulises ──
+                    logger.info(f"[WEBHOOK] Ejecutando procesar_comando_grupo")
                     await procesar_comando_grupo(
                         msg,
                         proveedor,
@@ -671,6 +689,12 @@ async def webhook_handler(request: Request):
             # ── Blacklist ──
             if msg.telefono in BLACKLIST:
                 logger.info(f"Blacklist: {msg.telefono}")
+                continue
+
+            # ── SISTEMA DE STOPPED NUMBERS (BLOQUEADO PERMANENTEMENTE) ──
+            numero_activo = await validar_numero_activo(msg.telefono)
+            if not numero_activo:
+                logger.warning(f"[STOP] {msg.telefono} está DETENIDO — silencio total")
                 continue
 
             # ── Modo pausa (intervención humana activa) ──

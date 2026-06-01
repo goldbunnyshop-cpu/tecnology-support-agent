@@ -154,6 +154,17 @@ class Pausa(Base):
     activa: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+class StoppedNumber(Base):
+    """Números detenidos — agente NO responde a estos números (stop permanente)."""
+    __tablename__ = "stopped_numbers"
+
+    numero: Mapped[str] = mapped_column(String(50), primary_key=True, index=True)
+    detenido_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    razon: Mapped[str] = mapped_column(String(200), default="comando_stop")
+    detenido_por: Mapped[str] = mapped_column(String(50), default="sistema")  # quién ejecutó stop
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class ServiceNote(Base):
     """Nota de servicio / orden de reparación con datos completos."""
     __tablename__ = "service_notes"
@@ -624,3 +635,114 @@ async def marcar_confirmacion_cita_enviada(cliente_telefono: str, evento_id: str
             await session.commit()
         except Exception:
             await session.rollback()  # UNIQUE constraint → ya registrada, ignorar
+
+
+# ════════════════════════════════════════════════════════════════════
+# SISTEMA DE NÚMEROS DETENIDOS (STOPPED NUMBERS)
+# ════════════════════════════════════════════════════════════════════
+
+async def numero_esta_stopped(telefono: str) -> bool:
+    """
+    Retorna True si este número está DETENIDO (stop permanente).
+    Acepta 10 o 13 dígitos — busca todas las variantes del número.
+    """
+    if not telefono:
+        return False
+    variantes = _variantes_telefono(telefono)
+    async with async_session() as session:
+        result = await session.execute(
+            select(StoppedNumber).where(
+                StoppedNumber.numero.in_(variantes),
+                StoppedNumber.activo == True,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+
+async def detener_numero(telefono: str, razon: str = "comando_stop", detenido_por: str = "sistema") -> tuple[bool, str]:
+    """
+    Detiene un número — agente NO responderá a este número (NUNCA).
+    Retorna (éxito, mensaje).
+    """
+    if not telefono:
+        return False, "❌ Número inválido"
+
+    variantes = _variantes_telefono(telefono)
+    numero_normalizado = variantes[0]  # Usar la primera variante (más larga)
+
+    async with async_session() as session:
+        # Verificar si ya está detenido
+        result = await session.execute(
+            select(StoppedNumber).where(
+                StoppedNumber.numero.in_(variantes),
+                StoppedNumber.activo == True,
+            )
+        )
+        ya_stopped = result.scalar_one_or_none()
+        if ya_stopped:
+            msg = f"⚠️ {telefono} ya estaba DETENIDO desde {ya_stopped.detenido_en.strftime('%d/%m %H:%M')}"
+            logger.info(f"[STOP] {msg}")
+            return False, msg
+
+        # Crear registro de stop
+        stopped = StoppedNumber(
+            numero=numero_normalizado,
+            razon=razon,
+            detenido_por=detenido_por,
+            activo=True,
+        )
+        session.add(stopped)
+        await session.commit()
+
+        msg = f"🛑 DETENIDO: {telefono} — AGENTE NO RESPONDERÁ A ESTE NÚMERO"
+        logger.warning(f"[STOP] {msg} | detenido_por={detenido_por}")
+        return True, msg
+
+
+async def reactivar_numero(telefono: str, reactivado_por: str = "sistema") -> tuple[bool, str]:
+    """
+    Reactiva un número detenido — agente volverá a responder.
+    Retorna (éxito, mensaje).
+    """
+    if not telefono:
+        return False, "❌ Número inválido"
+
+    variantes = _variantes_telefono(telefono)
+    async with async_session() as session:
+        result = await session.execute(
+            select(StoppedNumber).where(
+                StoppedNumber.numero.in_(variantes),
+                StoppedNumber.activo == True,
+            )
+        )
+        stopped = result.scalar_one_or_none()
+        if not stopped:
+            msg = f"⚠️ {telefono} no estaba detenido"
+            logger.info(f"[ON] {msg}")
+            return False, msg
+
+        # Desactivar el stop
+        stopped.activo = False
+        await session.commit()
+
+        msg = f"✅ REACTIVADO: {telefono} — AGENTE VOLVERÁ A RESPONDER"
+        logger.info(f"[ON] {msg} | reactivado_por={reactivado_por}")
+        return True, msg
+
+
+async def listar_numeros_stopped() -> list[dict]:
+    """Retorna lista de números actualmente detenidos."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(StoppedNumber).where(StoppedNumber.activo == True)
+        )
+        stopped_list = result.scalars().all()
+        return [
+            {
+                "numero": s.numero,
+                "detenido_en": s.detenido_en.isoformat(),
+                "razon": s.razon,
+                "detenido_por": s.detenido_por,
+            }
+            for s in stopped_list
+        ]
