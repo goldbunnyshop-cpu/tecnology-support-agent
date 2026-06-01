@@ -99,7 +99,7 @@ logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 
 ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
-PORT = int(os.getenv("PORT", 8080))
+PORT = int(os.getenv("PORT", 8000))
 
 # Números internos — la pausa NO debe activarse si el destinatario es uno de estos
 _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
@@ -308,6 +308,14 @@ async def lifespan(app: FastAPI):
             "       Los datos NO persistirán al reiniciar el contenedor.\n"
             "       Configura DATABASE_URL con PostgreSQL de Railway."
         )
+
+    # 1.5 Registrar tabla de caché de MercadoLibre ANTES de create_all (opcional).
+    #     Si Playwright no está o falla, queda desactivado sin romper el arranque.
+    try:
+        from agent.pricing_mercadolibre_v2 import _crear_tabla_cache
+        _crear_tabla_cache()
+    except Exception as e:
+        logger.warning(f"[INIT] Caché de MercadoLibre no disponible: {e}")
 
     # 2. Inicializar BD general (conversaciones, perfiles)
     await inicializar_db()

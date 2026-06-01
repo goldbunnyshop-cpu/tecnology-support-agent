@@ -151,7 +151,19 @@ class BuscadorMercadoLibreV2:
 
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                # Flags críticos para correr Chromium dentro de Docker/Railway:
+                # --no-sandbox: requerido sin privilegios de root completos
+                # --disable-dev-shm-usage: evita crash por /dev/shm pequeño en contenedores
+                # --disable-gpu: reduce uso de recursos (Railway tiene RAM limitada)
+                # NOTA: --single-process se evita a propósito: rompe la navegación de Chromium.
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-gpu",
+                    ],
+                )
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                 )
@@ -376,13 +388,23 @@ async def cotizar_refaccion_mercadolibre_v2(
     Cotiza una refacción en MercadoLibre con caché + reintentos
     Retorna None si Playwright no está disponible o si hay error crítico.
     """
+    # ── Flag de activación (default OFF) ──────────────────────────────────────
+    # ML bloquea el scraping headless y su API oficial ya no expone precios de venta
+    # (catálogo sí, precios no). Lanzar Chromium en cada consulta consume mucha RAM
+    # y arriesga OOM en Railway, sin obtener precios. Por eso ML queda DESACTIVADO por
+    # defecto. Para reactivarlo cuando haya una fuente de precios funcional:
+    #     Railway → Variables → MERCADOLIBRE_ENABLED=true
+    import os
+    if os.getenv("MERCADOLIBRE_ENABLED", "false").lower() not in ("1", "true", "yes"):
+        logger.info("[ML] Desactivado (MERCADOLIBRE_ENABLED!=true) — usando solo Hugo Shop")
+        return None
+
     if not PLAYWRIGHT_AVAILABLE:
         logger.error("[ML] Web scraping desactivado: Playwright no disponible")
         return None
 
-    if async_session is None:
-        logger.error("[ML] Web scraping desactivado: async_session no disponible")
-        return None
-
+    # NOTA: el async_session se importa dinámicamente dentro de las funciones de caché
+    # (para evitar el ciclo circular con memory.py). El caché es OPCIONAL: si no está
+    # disponible, el scraping igual funciona. Por eso NO se bloquea aquí.
     buscador = BuscadorMercadoLibreV2()
     return await buscador.obtener_precio_con_cache(refaccion, modelo)

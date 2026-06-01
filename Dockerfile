@@ -12,4 +12,7 @@ RUN python -m playwright install chromium && \
     python -m playwright install-deps chromium
 COPY . .
 EXPOSE 8000
-CMD ["uvicorn", "agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Bind al puerto que Railway inyecta en $PORT (cae a 8000 en local).
+# Forma shell para que ${PORT} se expanda. Si se hardcodea --port 8000 y
+# Railway asigna otro puerto, el proxy no encuentra la app → 502.
+CMD ["sh", "-c", "uvicorn agent.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
