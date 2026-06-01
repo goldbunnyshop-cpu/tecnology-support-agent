@@ -329,18 +329,23 @@ async def lifespan(app: FastAPI):
     # 4. Mensaje de inicio
     logger.info(f"[INIT] Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
 
-    # 5. Iniciar scheduler de seguimientos
-    scheduler_task = asyncio.create_task(iniciar_scheduler())
+    # 5. Iniciar scheduler de seguimientos — DESACTIVADO TEMPORALMENTE PARA DEBUGGING
+    # scheduler_task = asyncio.create_task(iniciar_scheduler())
+    scheduler_task = None
+    logger.warning("[INIT] ⚠️  Scheduler de seguimientos DESACTIVADO para diagnosticar crash")
 
-    # 6. Iniciar scheduler de citas diarias (9:00 AM)
-    scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
-    logger.info("[INIT] Scheduler de citas diarias (9:00 AM) iniciado ✓")
+    # 6. Iniciar scheduler de citas diarias (9:00 AM) — DESACTIVADO TEMPORALMENTE
+    # scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
+    scheduler_citas_task = None
+    logger.warning("[INIT] ⚠️  Scheduler de citas DESACTIVADO para diagnosticar crash")
 
     yield
 
     # Cleanup
-    scheduler_task.cancel()
-    scheduler_citas_task.cancel()
+    if scheduler_task:
+        scheduler_task.cancel()
+    if scheduler_citas_task:
+        scheduler_citas_task.cancel()
     logger.info("[SHUTDOWN] Servidor detenido")
 
 
