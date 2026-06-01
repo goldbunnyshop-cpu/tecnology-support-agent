@@ -329,14 +329,16 @@ async def lifespan(app: FastAPI):
     # 4. Mensaje de inicio
     logger.info(f"[INIT] Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
 
-    # 5. Iniciar scheduler de seguimientos — REACTIVADO (solución robusta de ML en place)
-    scheduler_task = asyncio.create_task(iniciar_scheduler())
-    logger.info("[INIT] ✅ Scheduler de seguimientos REACTIVADO (fallback robusto de MercadoLibre)")
+    # 5. Iniciar scheduler de seguimientos — TEMPORALMENTE DESACTIVADO PARA DIAGNOSTICAR CRASH
+    # scheduler_task = asyncio.create_task(iniciar_scheduler())
+    # logger.info("[INIT] ✅ Scheduler de seguimientos REACTIVADO (fallback robusto de MercadoLibre)")
+    scheduler_task = None
 
-    # 6. Iniciar scheduler de citas diarias (9:00 AM) — REACTIVADO
-    from agent.appointment_notifications import scheduler_citas_diarias
-    scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
-    logger.info("[INIT] ✅ Scheduler de citas REACTIVADO")
+    # 6. Iniciar scheduler de citas diarias (9:00 AM) — TEMPORALMENTE DESACTIVADO PARA DIAGNOSTICAR CRASH
+    # from agent.appointment_notifications import scheduler_citas_diarias
+    # scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
+    # logger.info("[INIT] ✅ Scheduler de citas REACTIVADO")
+    scheduler_citas_task = None
 
     yield
 
@@ -1782,4 +1784,14 @@ async def scheduler_citas_diarias():
                     # Esperar 2 minutos para no dispararse múltiples veces
                     await asyncio.sleep(120)
 
-                except 
+                except Exception as e:
+                    logger.error(f"[SCHEDULER-CITAS] Error obteniendo reporte: {e}")
+
+        except Exception as e:
+            logger.error(f"[SCHEDULER-CITAS] Error general en scheduler: {e}")
+
+        # Revisar cada 30 segundos
+        await asyncio.sleep(30)
+
+
+

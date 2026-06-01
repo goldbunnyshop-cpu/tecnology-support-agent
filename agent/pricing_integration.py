@@ -135,4 +135,5 @@ async def obtener_cotizacion_display_mejorada(marca: str, modelo: str) -> str:
 
     POR:
         r = await obtener_cotizacion_display_mejorada(marca, modelo)
-    ""
+    """
+    return await obtener_cotizacion_con_fallback(marca, modelo, "display")

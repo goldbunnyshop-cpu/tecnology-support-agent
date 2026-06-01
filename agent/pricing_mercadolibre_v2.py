@@ -352,4 +352,37 @@ class BuscadorMercadoLibreV2:
             logger.error(f"Error al guardar caché: {e}")
             return False
 
-    def _formatear_re
+    def _formatear_resultado_cache(
+        self, cache: object, fuente: str = "cache"
+    ) -> Dict:
+        """Convierte registro de caché a formato de respuesta"""
+        return {
+            "refaccion": cache.refaccion,
+            "modelo": cache.modelo,
+            "precio_generico": int(cache.precio_generico_ml * MULTIPLICADOR_MARGEN)
+            if cache.precio_generico_ml else None,
+            "precio_original": int(cache.precio_original_ml * MULTIPLICADOR_MARGEN)
+            if cache.precio_original_ml else None,
+            "timestamp": cache.timestamp.isoformat(),
+            "fuente": fuente,
+        }
+
+
+# API pública
+async def cotizar_refaccion_mercadolibre_v2(
+    refaccion: str, modelo: str
+) -> Optional[Dict]:
+    """
+    Cotiza una refacción en MercadoLibre con caché + reintentos
+    Retorna None si Playwright no está disponible o si hay error crítico.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        logger.error("[ML] Web scraping desactivado: Playwright no disponible")
+        return None
+
+    if async_session is None:
+        logger.error("[ML] Web scraping desactivado: async_session no disponible")
+        return None
+
+    buscador = BuscadorMercadoLibreV2()
+    return await buscador.obtener_precio_con_cache(refaccion, modelo)

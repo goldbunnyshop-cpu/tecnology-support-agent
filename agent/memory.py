@@ -743,4 +743,9 @@ async def listar_numeros_stopped() -> list[dict]:
         return [
             {
                 "numero": s.numero,
-                "detenido
+                "detenido_en": s.detenido_en.isoformat(),
+                "razon": s.razon,
+                "detenido_por": s.detenido_por,
+            }
+            for s in stopped_list
+        ]
