@@ -8,6 +8,7 @@ import logging
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from agent.pricing import obtener_cotizacion_display, buscar_modelo_sin_marca, ALIAS_MARCAS
+from agent.pricing_fallback import cotizar_con_fallback
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
@@ -166,9 +167,11 @@ def _buscar_ultima_marca_historial(historial: list[dict]) -> str | None:
 
 async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
     marca, modelo = _extraer_marca_modelo(mensaje)
+    # Detectar tipo de pieza para aplicar el multiplicador correcto (tapas ≠ displays)
+    refaccion = "tapa" if "tapa" in (mensaje or "").lower() else "display"
     try:
         if marca and modelo:
-            r = await obtener_cotizacion_display(marca, modelo)
+            r = await cotizar_con_fallback(marca, modelo, refaccion)
             return _limpiar_respuesta_pricing(r)
         if modelo:
             r = await buscar_modelo_sin_marca(modelo)
@@ -214,7 +217,7 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     # Caso conversacional: cliente responde solo marca después de "costo s21"
     if marca_suelta and modelo_prev:
         try:
-            r = await obtener_cotizacion_display(marca_suelta, modelo_prev)
+            r = await cotizar_con_fallback(marca_suelta, modelo_prev)
             return _limpiar_respuesta_pricing(r)
         except Exception as e:
             logger.error(f"[PRICING] Error resolviendo marca+modelo contextual: {e}")
@@ -222,7 +225,7 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     # Caso conversacional inverso: cliente responde solo modelo corto tras decir marca
     if es_modelo_breve and marca_prev:
         try:
-            r = await obtener_cotizacion_display(marca_prev, _normalizar_consulta_pricing(mensaje))
+            r = await cotizar_con_fallback(marca_prev, _normalizar_consulta_pricing(mensaje))
             return _limpiar_respuesta_pricing(r)
         except Exception as e:
             logger.error(f"[PRICING] Error resolviendo modelo con marca contextual: {e}")
