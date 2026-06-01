@@ -304,6 +304,17 @@ async def _migrar_clientes_perfil():
 
 async def inicializar_db():
     """Crea las tablas si no existen y aplica migraciones seguras."""
+    # Crear tabla de caché de MercadoLibre dinámicamente (evita ciclo circular)
+    try:
+        from agent.pricing_mercadolibre_v2 import _crear_tabla_cache, PrecioMercadoLibreCache
+        _crear_tabla_cache()
+        if PrecioMercadoLibreCache is not None:
+            logger.debug("[BD] ✅ Tabla PrecioMercadoLibreCache registrada")
+        else:
+            logger.warning("[BD] ⚠️  Tabla PrecioMercadoLibreCache NO se creó (dependencias unavailable)")
+    except Exception as e:
+        logger.warning(f"[BD] ⚠️  Error al crear tabla caché: {e}")
+
     if _USANDO_SQLITE:
         ruta_sqlite = DATABASE_URL.replace("sqlite+aiosqlite://", "")
         persistente = "/data/" in ruta_sqlite
@@ -340,7 +351,7 @@ async def inicializar_db():
     from agent.leads import _migrar_columnas
     await _migrar_columnas()
     await _migrar_clientes_perfil()
-    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio, mensajes_procesados, citas_notificadas, pausas")
+    logger.info("[BD] Tablas listas: mensajes, leads, clientes_perfil, citas_recordatorio, mensajes_procesados, citas_notificadas, pausas, precios_ml_cache")
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):

@@ -21,12 +21,10 @@ except ImportError:
     logger.error("[ML] ❌ Playwright no instalado. Web scraping de MercadoLibre desactivado.")
     PLAYWRIGHT_AVAILABLE = False
 
-try:
-    from agent.memory import Base, async_session
-except ImportError as e:
-    logger.error(f"[ML] Error importando memory: {e}")
-    Base = None
-    async_session = None
+# NO importar Base/async_session aquí — causa ciclo circular con memory.py
+# Se importan dinámicamente cuando se usan
+Base = None
+async_session = None
 
 # Configuración
 MULTIPLICADOR_MARGEN = 4.0  # Tu multiplicador: costo ML × 4 = precio cliente
@@ -36,30 +34,47 @@ MAX_REINTENTOS = 3
 RETRY_DELAY = 2             # segundos entre reintentos
 
 
-# Clase de caché solo si Playwright y memory están disponibles
-if PLAYWRIGHT_AVAILABLE and Base is not None:
-    class PrecioMercadoLibreCache(Base):
-        """Tabla para cachear precios de MercadoLibre"""
-        __tablename__ = "precios_ml_cache"
+# Clase de caché — se define dinámicamente para evitar importación circular
+PrecioMercadoLibreCache = None
 
-        id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-        refaccion: Mapped[str] = mapped_column(String(200), index=True)
-        modelo: Mapped[str] = mapped_column(String(200), index=True)
-        precio_generico_ml: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-        precio_original_ml: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-        timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-        datos_crudos: Mapped[Optional[str]] = mapped_column(String(2000))  # JSON con detalles
+def _crear_tabla_cache():
+    """Crea la clase PrecioMercadoLibreCache dinámicamente para evitar ciclo circular."""
+    global PrecioMercadoLibreCache
+    if PrecioMercadoLibreCache is not None:
+        return  # Ya creada
 
-        def esta_vigente(self) -> bool:
-            """Verifica si el caché sigue siendo válido"""
-            vencimiento = self.timestamp + timedelta(hours=CACHE_DURACION_HORAS)
-            return datetime.utcnow() < vencimiento
+    if not PLAYWRIGHT_AVAILABLE:
+        logger.warning("[ML] Playwright no disponible, caché desactivado")
+        return
 
-        def __repr__(self):
-            return f"<Cache ML: {self.refaccion} {self.modelo} @ {self.timestamp}>"
-else:
-    logger.warning("[ML] Tabla PrecioMercadoLibreCache no se creará (dependencies unavailable)")
-    PrecioMercadoLibreCache = None  # type: ignore
+    try:
+        from agent.memory import Base as _Base
+
+        class _PrecioMercadoLibreCache(_Base):
+            """Tabla para cachear precios de MercadoLibre"""
+            __tablename__ = "precios_ml_cache"
+
+            id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+            refaccion: Mapped[str] = mapped_column(String(200), index=True)
+            modelo: Mapped[str] = mapped_column(String(200), index=True)
+            precio_generico_ml: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+            precio_original_ml: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+            timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+            datos_crudos: Mapped[Optional[str]] = mapped_column(String(2000))
+
+            def esta_vigente(self) -> bool:
+                """Verifica si el caché sigue siendo válido"""
+                vencimiento = self.timestamp + timedelta(hours=CACHE_DURACION_HORAS)
+                return datetime.utcnow() < vencimiento
+
+            def __repr__(self):
+                return f"<Cache ML: {self.refaccion} {self.modelo} @ {self.timestamp}>"
+
+        PrecioMercadoLibreCache = _PrecioMercadoLibreCache
+        logger.debug("[ML] Tabla PrecioMercadoLibreCache creada dinámicamente")
+    except ImportError as e:
+        logger.warning(f"[ML] No se pudo crear tabla caché: {e}")
+        PrecioMercadoLibreCache = None
 
 
 class BuscadorMercadoLibreV2:
@@ -284,11 +299,12 @@ class BuscadorMercadoLibreV2:
         self, refaccion: str, modelo: str
     ) -> Optional[object]:
         """Obtiene precio del caché si existe"""
-        if async_session is None or PrecioMercadoLibreCache is None:
+        if PrecioMercadoLibreCache is None:
             return None
 
         try:
-            async with async_session() as session:
+            from agent.memory import async_session as _async_session
+            async with _async_session() as session:
                 query = select(PrecioMercadoLibreCache).where(
                     (PrecioMercadoLibreCache.refaccion == refaccion)
                     & (PrecioMercadoLibreCache.modelo == modelo)
@@ -303,11 +319,12 @@ class BuscadorMercadoLibreV2:
         self, refaccion: str, modelo: str, resultado: Dict
     ) -> bool:
         """Guarda precio en caché"""
-        if async_session is None or PrecioMercadoLibreCache is None:
+        if PrecioMercadoLibreCache is None:
             return False
 
         try:
-            async with async_session() as session:
+            from agent.memory import async_session as _async_session
+            async with _async_session() as session:
                 cache = PrecioMercadoLibreCache(
                     refaccion=refaccion,
                     modelo=modelo,
