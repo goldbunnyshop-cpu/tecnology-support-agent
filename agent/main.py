@@ -660,7 +660,6 @@ async def webhook_handler(request: Request):
                         proveedor,
                         guardar_mensaje,
                         obtener_historial,
-                        marcar_presupuesto_enviado,
                     )
                 else:
                     logger.info(

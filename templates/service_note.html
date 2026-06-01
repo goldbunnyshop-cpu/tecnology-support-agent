@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+@page { size: 136mm 197mm; margin: 0; padding: 0; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10px;
+    color: #222;
+    width: 136mm; height: 197mm;
+    padding: 0;
+}
+.header-bar {
+    background: #f78c02;
+    color: white;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.header-bar img { height: 28px; }
+.header-bar h1 { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
+.folio-badge {
+    margin-left: auto;
+    background: rgba(255,255,255,0.2);
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: bold;
+}
+.content { padding: 8px 12px; }
+.section-title {
+    background: #eee;
+    padding: 3px 8px;
+    font-size: 9px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: #555;
+    margin: 6px 0 3px 0;
+}
+.field-row {
+    display: flex;
+    padding: 2px 0;
+    border-bottom: 1px dotted #ddd;
+}
+.field-label {
+    width: 50px;
+    font-weight: bold;
+    font-size: 8px;
+    color: #888;
+    flex-shrink: 0;
+}
+.field-value {
+    flex: 1;
+    font-size: 10px;
+}
+.row-2 { display: flex; gap: 8px; }
+.row-2 > div { flex: 1; }
+.checkboxes { margin: 6px 0; }
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 0;
+    font-size: 9px;
+}
+.check-row input { margin: 0; }
+.auth-box {
+    background: #3598db;
+    color: white;
+    padding: 8px;
+    margin: 8px 0;
+    border-radius: 4px;
+    font-size: 9px;
+    text-align: center;
+}
+.auth-box .sig-line {
+    border-bottom: 1px solid rgba(255,255,255,0.5);
+    height: 24px;
+    margin: 6px 40px;
+}
+.footer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    padding: 6px 12px;
+    font-size: 7px;
+    color: #999;
+    border-top: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+}
+</style>
+</head>
+<body>
+
+<div class="header-bar">
+    <h1>TECNOLOGY SUPPORT</h1>
+    <div class="folio-badge">#{{folio}}</div>
+</div>
+
+<div class="content">
+
+<div class="section-title">Datos del cliente</div>
+<div class="field-row">
+    <span class="field-label">Cliente:</span>
+    <span class="field-value">{{cliente}}</span>
+</div>
+<div class="row-2">
+    <div class="field-row">
+        <span class="field-label">Tel&eacute;fono:</span>
+        <span class="field-value">{{telefono}}</span>
+    </div>
+    <div class="field-row">
+        <span class="field-label">Domicilio:</span>
+        <span class="field-value">{{domicilio}}</span>
+    </div>
+</div>
+
+<div class="section-title">Equipo</div>
+<div class="row-2">
+    <div class="field-row">
+        <span class="field-label">Tipo:</span>
+        <span class="field-value">{{equipo_tipo}}</span>
+    </div>
+    <div class="field-row">
+        <span class="field-label">Marca:</span>
+        <span class="field-value">{{marca}}</span>
+    </div>
+</div>
+<div class="row-2">
+    <div class="field-row">
+        <span class="field-label">Modelo:</span>
+        <span class="field-value">{{modelo}}</span>
+    </div>
+    <div class="field-row">
+        <span class="field-label">IMEI/Serie:</span>
+        <span class="field-value">{{imei}}</span>
+    </div>
+</div>
+
+<div class="section-title">Falla reportada</div>
+<div class="field-row" style="min-height: 24px;">
+    <span class="field-value">{{falla}}</span>
+</div>
+
+<div class="section-title">Diagn&oacute;stico</div>
+<div class="field-row" style="min-height: 24px;">
+    <span class="field-value">{{diagnostico}}</span>
+</div>
+
+<div class="section-title">Servicio / Refacci&oacute;n</div>
+<div class="checkboxes">
+    <div class="check-row"><input type="checkbox" {{checked_mant}}> Mantenimiento</div>
+    <div class="check-row"><input type="checkbox" {{checked_refac}}> Refacci&oacute;n: {{tipo_refaccion}}</div>
+    <div class="check-row"><input type="checkbox" {{checked_soft}}> Software</div>
+    <div class="check-row"><input type="checkbox" {{checked_otro}}> Otro: {{otro_servicio}}</div>
+</div>
+
+<div class="section-title">Pago</div>
+<div class="row-2">
+    <div class="field-row">
+        <span class="field-label">Total:</span>
+        <span class="field-value">${{total}}</span>
+    </div>
+    <div class="field-row">
+        <span class="field-label">Anticipo:</span>
+        <span class="field-value">${{anticipo}}</span>
+    </div>
+</div>
+<div class="row-2">
+    <div class="field-row">
+        <span class="field-label">Saldo:</span>
+        <span class="field-value">${{saldo}}</span>
+    </div>
+    <div class="field-row">
+        <span class="field-label">Forma pago:</span>
+        <span class="field-value">{{forma_pago}}</span>
+    </div>
+</div>
+
+<div class="auth-box">
+    <strong>AUTORIZACI&Oacute;N DE REPARACI&Oacute;N</strong><br><br>
+    Autorizo a Tecnology Support a realizar el servicio descrito.<br>
+    Entiendo que el presupuesto fue explicado y aceptado.<br><br>
+    <div class="sig-line"></div>
+    <em>Nombre y firma del cliente</em>
+</div>
+
+</div>
+
+<div class="footer">
+    <span>Tecnology Support &mdash; Plazuela de la Fama 1, Col. La Fama, Tlalpan, CDMX</span>
+    <span>Tel: 55 9730 7793</span>
+</div>
+
+</body>
+</html>

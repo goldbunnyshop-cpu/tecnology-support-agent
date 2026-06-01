@@ -8,7 +8,7 @@ import re as _re
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Boolean, String, Text, DateTime, select, update, Integer, or_, UniqueConstraint
+from sqlalchemy import Boolean, String, Text, DateTime, select, update, Integer, Float, or_, UniqueConstraint
 from dotenv import load_dotenv
 
 logger = logging.getLogger("agentkit")
@@ -152,6 +152,32 @@ class Pausa(Base):
     duracion_minutos: Mapped[int] = mapped_column(Integer, default=120)
     razon: Mapped[str] = mapped_column(String(100), default="intervencion_manual")
     activa: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ServiceNote(Base):
+    """Nota de servicio / orden de reparación con datos completos."""
+    __tablename__ = "service_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    folio: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    telefono: Mapped[str] = mapped_column(String(50))
+    cliente: Mapped[str] = mapped_column(String(200), default="")
+    equipo_tipo: Mapped[str] = mapped_column(String(100), default="")
+    marca: Mapped[str] = mapped_column(String(100), default="")
+    modelo: Mapped[str] = mapped_column(String(100), default="")
+    imei: Mapped[str] = mapped_column(String(50), default="")
+    falla: Mapped[str] = mapped_column(Text, default="")
+    diagnostico: Mapped[str] = mapped_column(Text, default="")
+    anticipo: Mapped[float] = mapped_column(Float, default=0.0)
+    saldo: Mapped[float] = mapped_column(Float, default=0.0)
+    total: Mapped[float] = mapped_column(Float, default=0.0)
+    forma_pago: Mapped[str] = mapped_column(String(30), default="")
+    tipo_refaccion: Mapped[str] = mapped_column(String(30), default="")
+    estatus: Mapped[str] = mapped_column(String(30), default="recibido")
+    fotos: Mapped[str] = mapped_column(Text, default="[]")
+    pdf_url: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 async def obtener_perfil(telefono: str) -> ClientePerfil | None:
