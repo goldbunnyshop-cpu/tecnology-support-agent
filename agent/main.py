@@ -90,6 +90,9 @@ if ENVIRONMENT != "development":
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
+# Silenciar warning del cache de discovery de Google API
+logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
+
 ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8080))
@@ -293,7 +296,16 @@ async def lifespan(app: FastAPI):
     # Importar y crear tablas
     from agent.leads import Lead, _migrar_columnas  # noqa: F401
 
-    # 1. Inicializar BD general (conversaciones, perfiles)
+    # 1. Verificar Railway + SQLite
+    from agent.memory import DATABASE_URL as _db_url
+    if "sqlite" in _db_url and os.getenv("RAILWAY_SERVICE_ID"):
+        logger.warning(
+            "[INIT] ⚠️ RAILWAY DETECTADO pero DATABASE_URL apunta a SQLite local.\n"
+            "       Los datos NO persistirán al reiniciar el contenedor.\n"
+            "       Configura DATABASE_URL con PostgreSQL de Railway."
+        )
+
+    # 2. Inicializar BD general (conversaciones, perfiles)
     await inicializar_db()
     logger.info("[INIT] Base de datos de conversaciones lista")
 

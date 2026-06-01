@@ -9,6 +9,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from google.oauth2.service_account import Credentials
 
 logger = logging.getLogger("agentkit")
@@ -469,6 +470,12 @@ def _subir_reporte_a_drive_sync(ruta_local: str) -> str:
         link = f"https://drive.google.com/file/d/{file_id}/view"
         logger.info(f"[CRM] Reporte subido a Drive: {link}")
         return link
+    except HttpError as e:
+        if e.resp.status == 403:
+            logger.warning("[CRM] Google Drive quota excedido — subida omitida")
+        else:
+            logger.error(f"[CRM] Error Google Drive: {e}")
+        return ""
     except Exception as e:
         logger.error(f"[CRM] Error subiendo reporte a Drive: {e}")
         return ""
