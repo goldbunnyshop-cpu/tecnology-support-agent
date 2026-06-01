@@ -8,7 +8,8 @@ import logging
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from agent.pricing import obtener_cotizacion_display, buscar_modelo_sin_marca, ALIAS_MARCAS
-from agent.pricing_integration import obtener_cotizacion_display_mejorada
+# NO importar pricing_integration aquí — causa ciclo circular con memory.py
+# Se importa dinámicamente donde se usa
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
@@ -166,6 +167,7 @@ def _buscar_ultima_marca_historial(historial: list[dict]) -> str | None:
 
 
 async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
+    from agent.pricing_integration import obtener_cotizacion_display_mejorada
     marca, modelo = _extraer_marca_modelo(mensaje)
     try:
         if marca and modelo:
@@ -182,6 +184,7 @@ async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
 
 
 async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[dict]) -> str | None:
+    from agent.pricing_integration import obtener_cotizacion_display_mejorada
     m = (mensaje or "").lower()
     es_consulta_precio = any(re.search(p, m) for p in _PATRONES_PRECIO)
     es_display = bool(_PATRON_DISPLAY.search(m))
