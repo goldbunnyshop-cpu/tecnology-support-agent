@@ -114,6 +114,9 @@ PAUSA_ACTIVA = False
 # Locks por número de teléfono — evita procesar dos mensajes del mismo cliente en paralelo
 _locks: dict[str, asyncio.Lock] = {}
 
+# Referencias a tareas de procesamiento en segundo plano (evita que el GC las elimine)
+_tareas_fondo: set[asyncio.Task] = set()
+
 
 def _obtener_lock(telefono: str) -> asyncio.Lock:
     if telefono not in _locks:
@@ -626,16 +629,26 @@ async def messenger_handler(request: Request):
 @app.post("/webhook/messages")
 @app.post("/webhook/messages/messages")
 async def webhook_handler(request: Request):
+    # ⚠️ Responder 200 a Whapi de INMEDIATO y procesar en segundo plano.
+    # Si se procesa inline, la llamada a Claude (5-15s) agota el timeout del webhook
+    # de Whapi → marca el webhook como fallido y reintenta (duplicados + lentitud).
     try:
-        # ⚠️ CRÍTICO: No leer request.body() aquí — el provider necesita leerlo con request.json()
-        # request.body() y request.json() NO pueden ambas ejecutarse en el mismo request
-        # (el stream se consume en la primera lectura)
-
+        # No leer request.body() aquí — el provider lo lee con request.json()
         mensajes = await proveedor.parsear_webhook(request)
+    except Exception as e:
+        logger.error(f"[WEBHOOK] Error parseando webhook: {e}")
+        return {"status": "ok"}
 
-        if not mensajes:
-            return {"status": "ok"}
+    if mensajes:
+        tarea = asyncio.create_task(_procesar_lote_mensajes(mensajes))
+        _tareas_fondo.add(tarea)
+        tarea.add_done_callback(_tareas_fondo.discard)
+    return {"status": "ok"}
 
+
+async def _procesar_lote_mensajes(mensajes):
+    """Procesa los mensajes del webhook en segundo plano (no bloquea la respuesta 200)."""
+    try:
         for msg in mensajes:
             # ── Deduplicación rápida: Whapi puede reenviar el mismo webhook varias veces ──
             if msg.mensaje_id and await mensaje_ya_procesado(msg.mensaje_id):
@@ -956,11 +969,8 @@ async def webhook_handler(request: Request):
 
                 logger.info(f"[{asesor}] → {msg.telefono}: {respuesta[:80]}...")
 
-        return {"status": "ok"}
-
     except Exception as e:
-        logger.error(f"Error en webhook: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[WEBHOOK] Error procesando lote en segundo plano: {e}")
 
 
 # ==================================================================================
