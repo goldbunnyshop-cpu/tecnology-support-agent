@@ -5,7 +5,7 @@
 import logging
 from typing import Optional, Dict
 from agent.pricing import obtener_cotizacion_display
-from agent.pricing_mercadolibre import cotizar_refaccion_mercadolibre
+# from agent.pricing_mercadolibre import cotizar_refaccion_mercadolibre  # DESACTIVADO: causaba crash Railway
 
 logger = logging.getLogger("agentkit")
 
@@ -40,24 +40,28 @@ async def obtener_cotizacion_con_fallback(marca: str, modelo: str, refaccion: st
         return respuesta_hugo
 
     # Paso 2: Hugo Shop no tiene → intentar MercadoLibre
-    logger.info(f"[PRICING] No en Hugo Shop. Buscando en MercadoLibre: {refaccion} {marca} {modelo}...")
-    resultado_ml = await cotizar_refaccion_mercadolibre(refaccion, modelo)
+    # DESACTIVADO TEMPORALMENTE POR CRASH EN RAILWAY (bs4 y web scraping inestable)
+    # TODO: Reactivar después de implementar API estable (ej: Amazon, API de precios)
+    logger.warning(f"[PRICING] MercadoLibre desactivado temporalmente. Devolviendo respuesta de Hugo Shop.")
+    return respuesta_hugo
 
-    if not resultado_ml:
-        # MercadoLibre tampoco encontró → devolver respuesta de Hugo Shop
-        logger.warning(f"[PRICING] No encontrado en Hugo Shop ni MercadoLibre: {marca} {modelo}")
-        return respuesta_hugo
-
-    # Paso 3: MercadoLibre encontró → formatear respuesta combinada
-    respuesta_combinada = _formatear_respuesta_combinada(
-        marca=marca,
-        modelo=modelo,
-        resultado_hugo=None,  # No hay en Hugo
-        resultado_ml=resultado_ml
-    )
-
-    logger.info(f"[PRICING] Cotización MercadoLibre encontrada: {marca} {modelo}")
-    return respuesta_combinada
+    # --- CÓDIGO ANTIGUO (comentado) ---
+    # logger.info(f"[PRICING] No en Hugo Shop. Buscando en MercadoLibre: {refaccion} {marca} {modelo}...")
+    # resultado_ml = await cotizar_refaccion_mercadolibre(refaccion, modelo)
+    #
+    # if not resultado_ml:
+    #     logger.warning(f"[PRICING] No encontrado en Hugo Shop ni MercadoLibre: {marca} {modelo}")
+    #     return respuesta_hugo
+    #
+    # respuesta_combinada = _formatear_respuesta_combinada(
+    #     marca=marca,
+    #     modelo=modelo,
+    #     resultado_hugo=None,
+    #     resultado_ml=resultado_ml
+    # )
+    #
+    # logger.info(f"[PRICING] Cotización MercadoLibre encontrada: {marca} {modelo}")
+    # return respuesta_combinada
 
 
 def _es_mensaje_no_disponible(respuesta: str) -> bool:
