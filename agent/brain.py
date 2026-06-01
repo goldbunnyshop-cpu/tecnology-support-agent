@@ -297,9 +297,4 @@ async def generar_respuesta(
             messages=mensajes,
         )
         respuesta = response.content[0].text
-        logger.info(f"[{asesor}] Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
-        return respuesta
-
-    except Exception as e:
-        logger.error(f"Error Claude API: {e}")
-        return obtener_mensaje_error()
+        logger.info(f"[{asesor}] Respuesta generada ({response.

@@ -304,16 +304,8 @@ async def _migrar_clientes_perfil():
 
 async def inicializar_db():
     """Crea las tablas si no existen y aplica migraciones seguras."""
-    # Crear tabla de caché de MercadoLibre dinámicamente (evita ciclo circular)
-    try:
-        from agent.pricing_mercadolibre_v2 import _crear_tabla_cache, PrecioMercadoLibreCache
-        _crear_tabla_cache()
-        if PrecioMercadoLibreCache is not None:
-            logger.debug("[BD] ✅ Tabla PrecioMercadoLibreCache registrada")
-        else:
-            logger.warning("[BD] ⚠️  Tabla PrecioMercadoLibreCache NO se creó (dependencias unavailable)")
-    except Exception as e:
-        logger.warning(f"[BD] ⚠️  Error al crear tabla caché: {e}")
+    # NOTA: PrecioMercadoLibreCache se omite para evitar ciclo circular en imports
+    # El caché funcionará con lógica simple sin ORM si es necesario
 
     if _USANDO_SQLITE:
         ruta_sqlite = DATABASE_URL.replace("sqlite+aiosqlite://", "")
@@ -751,9 +743,4 @@ async def listar_numeros_stopped() -> list[dict]:
         return [
             {
                 "numero": s.numero,
-                "detenido_en": s.detenido_en.isoformat(),
-                "razon": s.razon,
-                "detenido_por": s.detenido_por,
-            }
-            for s in stopped_list
-        ]
+                "detenido

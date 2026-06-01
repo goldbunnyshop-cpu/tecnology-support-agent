@@ -88,16 +88,20 @@ class BuscadorMercadoLibreV2:
     ) -> Optional[Dict]:
         """
         Obtiene precio: primero intenta caché, luego scraping con reintentos
+        NOTA: Caché es opcional — si falla, simplemente continúa sin él
         """
         if not PLAYWRIGHT_AVAILABLE:
             logger.error("[ML] Playwright no disponible, scraping desactivado")
             return None
 
-        # 1. Intentar caché primero
-        cache = await self._obtener_del_cache(refaccion, modelo)
-        if cache and cache.esta_vigente():
-            logger.info(f"[ML CACHE VÁLIDO] {refaccion} {modelo}")
-            return self._formatear_resultado_cache(cache, fuente="cache")
+        # 1. Intentar caché primero (OPCIONAL — si falla, continuar)
+        try:
+            cache = await self._obtener_del_cache(refaccion, modelo)
+            if cache and cache.esta_vigente():
+                logger.info(f"[ML CACHE VÁLIDO] {refaccion} {modelo}")
+                return self._formatear_resultado_cache(cache, fuente="cache")
+        except Exception as e:
+            logger.warning(f"[ML] Caché no disponible ({e}) — continuando sin él")
 
         # 2. Caché expirado o no existe → scraping con reintentos
         logger.info(f"[ML SCRAPE INICIO] {refaccion} {modelo} (reintentos: {MAX_REINTENTOS})")
@@ -106,8 +110,12 @@ class BuscadorMercadoLibreV2:
             try:
                 resultado = await self._scrape_mercadolibre_playwright(refaccion, modelo)
                 if resultado:
-                    # Guardar en caché
-                    await self._guardar_en_cache(refaccion, modelo, resultado)
+                    # Guardar en caché (OPCIONAL — si falla, continuar)
+                    try:
+                        await self._guardar_en_cache(refaccion, modelo, resultado)
+                    except Exception as cache_err:
+                        logger.debug(f"[ML] Caché no guardado ({cache_err}) — continuando")
+
                     logger.info(f"[ML ÉXITO] {refaccion} {modelo} en intento {intento}")
                     return resultado
 
@@ -116,10 +124,13 @@ class BuscadorMercadoLibreV2:
                 if intento < MAX_REINTENTOS:
                     await asyncio.sleep(RETRY_DELAY)
 
-        # 3. Scraping falló completamente → fallback a caché expirado
-        if cache:
-            logger.warning(f"[ML FALLBACK] Usando caché expirado para {refaccion} {modelo}")
-            return self._formatear_resultado_cache(cache, fuente="cache_expirado")
+        # 3. Scraping falló completamente → fallback a caché expirado (si existe)
+        try:
+            if cache:
+                logger.warning(f"[ML FALLBACK] Usando caché expirado para {refaccion} {modelo}")
+                return self._formatear_resultado_cache(cache, fuente="cache_expirado")
+        except Exception as e:
+            logger.warning(f"[ML] No se pudo usar caché expirado ({e})")
 
         # 4. Nada funcionó
         logger.error(f"[ML FALLO TOTAL] No se encontró {refaccion} {modelo}")
@@ -341,37 +352,4 @@ class BuscadorMercadoLibreV2:
             logger.error(f"Error al guardar caché: {e}")
             return False
 
-    def _formatear_resultado_cache(
-        self, cache: object, fuente: str = "cache"
-    ) -> Dict:
-        """Convierte registro de caché a formato de respuesta"""
-        return {
-            "refaccion": cache.refaccion,
-            "modelo": cache.modelo,
-            "precio_generico": int(cache.precio_generico_ml * MULTIPLICADOR_MARGEN)
-            if cache.precio_generico_ml else None,
-            "precio_original": int(cache.precio_original_ml * MULTIPLICADOR_MARGEN)
-            if cache.precio_original_ml else None,
-            "timestamp": cache.timestamp.isoformat(),
-            "fuente": fuente,
-        }
-
-
-# API pública
-async def cotizar_refaccion_mercadolibre_v2(
-    refaccion: str, modelo: str
-) -> Optional[Dict]:
-    """
-    Cotiza una refacción en MercadoLibre con caché + reintentos
-    Retorna None si Playwright no está disponible o si hay error crítico.
-    """
-    if not PLAYWRIGHT_AVAILABLE:
-        logger.error("[ML] Web scraping desactivado: Playwright no disponible")
-        return None
-
-    if async_session is None:
-        logger.error("[ML] Web scraping desactivado: async_session no disponible")
-        return None
-
-    buscador = BuscadorMercadoLibreV2()
-    return await buscador.obtener_precio_con_cache(refaccion, modelo)
+    def _formatear_re
