@@ -68,7 +68,16 @@ class ProveedorWhapi(ProveedorWhatsApp):
         return "organico", ""
 
     async def parsear_webhook(self, request: Request) -> list[MensajeEntrante]:
-        body = await request.json()
+        try:
+            body = await request.json()
+        except Exception as e:
+            logger.error(f"[WHAPI] Error parseando JSON del webhook: {e}")
+            return []
+
+        if not body or not isinstance(body, dict):
+            logger.warning("[WHAPI] Payload vacío o no es diccionario")
+            return []
+
         mensajes = []
 
         for msg in body.get("messages", []):

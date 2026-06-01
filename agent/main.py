@@ -633,11 +633,14 @@ async def messenger_handler(request: Request):
 @app.post("/webhook/messages/messages")
 async def webhook_handler(request: Request):
     try:
-        body = await request.body()
-        if not body or body.strip() in (b"", b"null", b"{}"):
-            return {"status": "ok"}
+        # ⚠️ CRÍTICO: No leer request.body() aquí — el provider necesita leerlo con request.json()
+        # request.body() y request.json() NO pueden ambas ejecutarse en el mismo request
+        # (el stream se consume en la primera lectura)
 
         mensajes = await proveedor.parsear_webhook(request)
+
+        if not mensajes:
+            return {"status": "ok"}
 
         for msg in mensajes:
             # ── Deduplicación rápida: Whapi puede reenviar el mismo webhook varias veces ──
