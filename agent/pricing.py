@@ -45,6 +45,24 @@ MARCAS_HEADER = {
     'ONEPLUS', 'REALME',
 }
 
+# Typos y alias de variantes — normaliza lo que escribe el cliente → variante real en CSV
+ALIAS_VARIANTES: dict[str, str] = {
+    # Motorola Edge (typo frecuente)
+    "funcion":    "fusion",
+    "funciona":   "fusion",
+    "fusión":     "fusion",
+    # Sufijos iPhone/Samsung
+    "promax":     "pro max",
+    "pro maximo": "pro max",
+    # Otros typos
+    "litee":  "lite",
+    "pluss":  "plus",
+    "oultra": "ultra",
+    "ultre":  "ultra",
+    "neon":   "neo",
+}
+
+
 # Alias para mapear lo que escribe el cliente al header del CSV
 ALIAS_MARCAS = {
     'iphone': 'IPHONE',
@@ -568,7 +586,8 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
 
     if var_q:
         # Cliente especifico una variante: buscar productos que la cubran exactamente
-        var_q_lower = var_q.lower()
+        # Normalizar typos antes de buscar (ej: "funcion" → "fusion")
+        var_q_lower = ALIAS_VARIANTES.get(var_q.lower(), var_q.lower())
         exactos = [p for p, vs in matches if any((v or '').lower() == var_q_lower for v in vs)]
         if exactos:
             modelo_completo = _formatear_modelo(base_q, var_q)
