@@ -309,14 +309,6 @@ async def lifespan(app: FastAPI):
             "       Configura DATABASE_URL con PostgreSQL de Railway."
         )
 
-    # 1.5 Registrar tabla de caché de MercadoLibre ANTES de create_all (opcional).
-    #     Si Playwright no está o falla, queda desactivado sin romper el arranque.
-    try:
-        from agent.pricing_mercadolibre_v2 import _crear_tabla_cache
-        _crear_tabla_cache()
-    except Exception as e:
-        logger.warning(f"[INIT] Caché de MercadoLibre no disponible: {e}")
-
     # 2. Inicializar BD general (conversaciones, perfiles)
     await inicializar_db()
     logger.info("[INIT] Base de datos de conversaciones lista")
@@ -337,24 +329,18 @@ async def lifespan(app: FastAPI):
     # 4. Mensaje de inicio
     logger.info(f"[INIT] Servidor listo — Puerto: {PORT} | Proveedor: {proveedor.__class__.__name__}")
 
-    # 5. Iniciar scheduler de seguimientos — TEMPORALMENTE DESACTIVADO PARA DIAGNOSTICAR CRASH
-    # scheduler_task = asyncio.create_task(iniciar_scheduler())
-    # logger.info("[INIT] ✅ Scheduler de seguimientos REACTIVADO (fallback robusto de MercadoLibre)")
-    scheduler_task = None
-
-    # 6. Iniciar scheduler de citas diarias (9:00 AM) — TEMPORALMENTE DESACTIVADO PARA DIAGNOSTICAR CRASH
-    # from agent.appointment_notifications import scheduler_citas_diarias
-    # scheduler_citas_task = asyncio.create_task(scheduler_citas_diarias())
-    # logger.info("[INIT] ✅ Scheduler de citas REACTIVADO")
-    scheduler_citas_task = None
+    # 5. Iniciar scheduler principal — orquesta TODO en segundo plano:
+    #    seguimientos, retomas, recordatorios de cita, notificaciones a Ulises,
+    #    resumen diario de citas (9 AM), alertas de presupuesto/factura y reporte semanal.
+    #    (la causa del crash era el puerto en el Dockerfile, no los schedulers)
+    scheduler_task = asyncio.create_task(iniciar_scheduler())
+    logger.info("[INIT] ✅ Scheduler principal activo")
 
     yield
 
     # Cleanup
     if scheduler_task:
         scheduler_task.cancel()
-    if scheduler_citas_task:
-        scheduler_citas_task.cancel()
     logger.info("[SHUTDOWN] Servidor detenido")
 
 

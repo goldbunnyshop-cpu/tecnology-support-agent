@@ -8,8 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir "asyncpg>=0.29.0" && \
     pip install --no-cache-dir -r requirements.txt
-RUN python -m playwright install chromium && \
-    python -m playwright install-deps chromium
 COPY . .
 EXPOSE 8000
 # Bind al puerto que Railway inyecta en $PORT (cae a 8000 en local).

@@ -24,7 +24,6 @@ IMPORTANTE: No uses precios de catálogo ni listas de servicios fijos. Solo desc
   "dano_visible": "descripción concisa del daño o problema visual detectado, o 'No se aprecia daño visible' si todo parece bien",
   "severidad": "leve | moderada | grave | no_determinable",
   "reparacion_necesaria": "descripción técnica de lo que hay que hacer físicamente (ej: sustituir el panel LCD, reemplazar la batería, limpiar los pines del puerto USB-C). Usa lenguaje técnico neutro, sin nombres de paquetes de servicio. 'Diagnóstico físico requerido' si no puedes determinarlo",
-  "refaccion_ml": "término de búsqueda para la refacción principal en MercadoLibre México (ej: 'pantalla iPhone 12 original', 'batería Samsung S21', 'ventilador PS4 CUH-1200'). Cadena vacía si no requiere refacción (limpieza, diagnóstico, etc.)",
   "nota_tecnica": "observación técnica breve para el equipo interno, máximo 1 oración",
   "puede_diagnosticar": true
 }
@@ -130,42 +129,6 @@ def _mime_a_tipo_anthropic(mime_type: str) -> str:
     return tabla.get(mime_type.lower(), "image/jpeg")
 
 
-async def _buscar_precio_minimo_ml(termino: str) -> float | None:
-    """Consulta la API pública de MercadoLibre México y retorna el precio mínimo encontrado."""
-    if not termino:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(
-                "https://api.mercadolibre.com/sites/MLM/search",
-                params={"q": termino, "limit": 20},
-            )
-            if r.status_code != 200:
-                logger.warning(f"ML API {r.status_code} para '{termino}'")
-                return None
-            items = r.json().get("results", [])
-            # Filtrar precios razonables (evitar accesorios de $10 o dispositivos completos de $50k)
-            precios = [
-                item["price"]
-                for item in items
-                if 80 <= item.get("price", 0) <= 15_000
-            ]
-            if not precios:
-                return None
-            precio_min = min(precios)
-            logger.info(f"ML precio mínimo '{termino}': ${precio_min:.0f}")
-            return precio_min
-    except Exception as e:
-        logger.warning(f"Error consultando ML: {e}")
-        return None
-
-
-def _formatear_precio(valor: float) -> str:
-    """Redondea al múltiplo de 50 más cercano y formatea con comas."""
-    redondeado = round(valor / 50) * 50
-    return f"${redondeado:,.0f}"
-
-
 async def _llamar_vision(imagen_b64: str, media_type: str) -> dict:
     """Llama a Claude Vision con la imagen en base64 y retorna el dict parseado."""
     try:
@@ -203,33 +166,14 @@ async def _llamar_vision(imagen_b64: str, media_type: str) -> dict:
         return {"puede_diagnosticar": False, "motivo": "Error interno de análisis"}
 
 
-async def _enriquecer_con_precio_ml(analisis: dict) -> dict:
-    """Busca la refacción en ML y calcula el precio de servicio (mínimo ML × 3)."""
-    if not analisis.get("puede_diagnosticar", False):
-        return analisis
-
-    termino = analisis.get("refaccion_ml", "").strip()
-    if not termino:
-        analisis["precio_estimado"] = "Por cotizar"
-        return analisis
-
-    precio_min = await _buscar_precio_minimo_ml(termino)
-    if precio_min:
-        precio_servicio = precio_min * 3
-        analisis["precio_estimado"] = _formatear_precio(precio_servicio)
-        logger.info(f"Precio estimado calculado: {analisis['precio_estimado']} (refacción ${precio_min:.0f} × 3)")
-    else:
-        analisis["precio_estimado"] = "Por cotizar"
-
-    return analisis
-
-
 async def analizar_imagen_bytes(imagen_bytes: bytes, mime_type: str) -> dict:
-    """Analiza bytes de imagen con Claude Vision y enriquece con precio de ML."""
+    """Analiza bytes de imagen con Claude Vision. El precio se confirma en el módulo."""
     imagen_b64 = base64.standard_b64encode(imagen_bytes).decode("utf-8")
     media_type = _mime_a_tipo_anthropic(mime_type)
     analisis = await _llamar_vision(imagen_b64, media_type)
-    return await _enriquecer_con_precio_ml(analisis)
+    # No hay fuente automática de precios (ML descontinuado): el precio se cotiza en módulo.
+    analisis.setdefault("precio_estimado", "Por cotizar")
+    return analisis
 
 
 async def analizar_thumbnail_b64(thumbnail_b64: str) -> dict:

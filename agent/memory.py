@@ -304,9 +304,6 @@ async def _migrar_clientes_perfil():
 
 async def inicializar_db():
     """Crea las tablas si no existen y aplica migraciones seguras."""
-    # NOTA: PrecioMercadoLibreCache se omite para evitar ciclo circular en imports
-    # El caché funcionará con lógica simple sin ORM si es necesario
-
     if _USANDO_SQLITE:
         ruta_sqlite = DATABASE_URL.replace("sqlite+aiosqlite://", "")
         persistente = "/data/" in ruta_sqlite
