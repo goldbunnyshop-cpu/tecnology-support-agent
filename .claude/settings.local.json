@@ -18,7 +18,10 @@
       "Write",
       "Edit",
       "Glob",
-      "Grep"
+      "Grep",
+      "Bash(python *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(PYTHONIOENCODING=utf-8 python *)"
     ]
   }
 }

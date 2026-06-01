@@ -255,7 +255,7 @@ async def ejecutar_retomas():
             asesor = lead.asesor_asignado or "Valeria"
 
             historial = await obtener_historial(lead.telefono, limite=10)
-            from agent.notifications import extraer_nombre_cliente
+            from agent.commands import extraer_nombre_cliente
             nombre_cliente = extraer_nombre_cliente(historial)
 
             saludo = f"¡Hola, {nombre_cliente}!" if nombre_cliente else "¡Hola!"
@@ -299,7 +299,8 @@ async def ejecutar_alertas_presupuesto():
     """
     from agent.leads import obtener_leads_sin_respuesta_presupuesto
     from agent.providers import obtener_proveedor
-    from agent.notifications import _enviar_alerta_christian, extraer_nombre_cliente
+    from agent.notifications import _enviar_alerta_christian
+    from agent.commands import extraer_nombre_cliente
     from agent.memory import obtener_historial
 
     proveedor = obtener_proveedor()
@@ -338,7 +339,7 @@ async def ejecutar_recordatorios_cita():
     from agent.google_calendar import obtener_eventos_proximos
     from agent.memory import recordatorio_ya_enviado, registrar_recordatorio, guardar_mensaje
     from agent.providers import obtener_proveedor
-    from agent.notifications import _formatear_numero_destino
+    from agent.commands import _formatear_numero_destino
 
     proveedor = obtener_proveedor()
     eventos = await obtener_eventos_proximos(minutos_desde=55, minutos_hasta=70)
@@ -391,7 +392,7 @@ async def ejecutar_alerta_factura():
     try:
         from agent.crm import obtener_ordenes_facturables
         from agent.providers import obtener_proveedor
-        from agent.notifications import GRUPO_INTERNO
+        from agent.commands import GRUPO_INTERNO
 
         ordenes = await obtener_ordenes_facturables()
         if not ordenes:
@@ -624,40 +625,56 @@ def _enviar_email_smtp_sync(ruta_excel: str, usuario: str, contrasena: str, dest
 
 async def _enviar_reporte_semanal(ruta_excel: str):
     """
-    Intenta enviar el reporte por SMTP (Gmail).
-    Fallback: sube a Google Drive y envía el link a Christian por WhatsApp.
+    Envía el reporte semanal.
+    Prioridad: Resend API (HTTP) → notificación WhatsApp.
+    SMTP y Google Drive NO funcionan en Railway (puerto bloqueado / sin quota).
     """
-    gmail_user = os.getenv("GMAIL_USER", "")
-    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "")
     dest_email = os.getenv("REPORT_EMAIL", "goldbunnyshop@gmail.com")
+    fecha_txt  = datetime.now(_ZONA_MX).strftime("%d/%m/%Y")
 
-    if gmail_user and gmail_pass:
+    # Opción 1: Resend API (HTTP — reemplaza SMTP que Railway bloquea)
+    resend_key = os.getenv("RESEND_API_KEY", "")
+    if resend_key:
         try:
-            await asyncio.to_thread(
-                _enviar_email_smtp_sync, ruta_excel, gmail_user, gmail_pass, dest_email
-            )
-            logger.info(f"[REPORTE] Enviado por correo a {dest_email}")
-            return
+            import httpx as _httpx
+            from_addr = os.getenv("RESEND_FROM", "onboarding@resend.dev")
+            async with _httpx.AsyncClient(timeout=20) as client:
+                resp = await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {resend_key}",
+                             "Content-Type": "application/json"},
+                    json={
+                        "from": from_addr,
+                        "to": [dest_email],
+                        "subject": f"📊 Reporte semanal de leads — {fecha_txt}",
+                        "text": (
+                            f"El reporte semanal de leads está listo.\n"
+                            f"Archivo: {os.path.basename(ruta_excel)}\n"
+                            f"Fecha: {fecha_txt}"
+                        ),
+                    },
+                )
+            if resp.status_code in (200, 201):
+                logger.info(f"[REPORTE] ✅ Enviado via Resend a {dest_email}")
+                return
+            logger.warning(f"[REPORTE] Resend {resp.status_code}: {resp.text[:150]}")
         except Exception as e:
-            logger.warning(f"[REPORTE] Error SMTP: {e} — intentando Drive")
+            logger.warning(f"[REPORTE] Error Resend: {e}")
 
+    # Opción 2: WhatsApp a Christian (Drive falla con service accounts)
     try:
-        from agent.crm import subir_reporte_a_drive
         from agent.providers import obtener_proveedor
-
-        link = await subir_reporte_a_drive(ruta_excel)
-        if link:
-            proveedor  = obtener_proveedor()
-            christian  = os.getenv("CHRISTIAN_NUMERO", "5541576331")
-            fecha_txt  = datetime.now(_ZONA_MX).strftime("%d/%m/%Y")
-            await proveedor.enviar_mensaje(
-                christian,
-                f"📊 *Reporte semanal listo — {fecha_txt}*\n"
-                f"Descárgalo en Drive:\n{link}",
-            )
-            logger.info(f"[REPORTE] Link Drive enviado a Christian: {link}")
+        christian = os.getenv("CHRISTIAN_NUMERO", "5541576331")
+        _prv = obtener_proveedor()
+        await _prv.enviar_mensaje(
+            christian,
+            f"📊 *Reporte semanal generado — {fecha_txt}*\n"
+            f"Archivo: `{os.path.basename(ruta_excel)}`\n"
+            f"(Para recibir por email: agrega RESEND_API_KEY en Railway Variables)"
+        )
+        logger.info("[REPORTE] Notificación WhatsApp enviada a Christian")
     except Exception as e:
-        logger.error(f"[REPORTE] Error enviando por Drive: {e}")
+        logger.error(f"[REPORTE] Error notificación WhatsApp: {e}")
 
 
 async def iniciar_scheduler_reporte_semanal():

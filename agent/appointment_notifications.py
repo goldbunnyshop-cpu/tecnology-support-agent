@@ -1,14 +1,12 @@
 # agent/appointment_notifications.py — Notificaciones de citas para Ulises (técnico)
-# Email SMTP + mensaje al grupo "Taller Interno TS"
+# Email via Resend API (HTTP) + mensaje al grupo "Taller Interno TS"
+# NOTA: Railway bloquea conexiones SMTP salientes — por eso usamos Resend API (HTTP).
 
 import asyncio
 import json
 import logging
 import os
-import smtplib
 from datetime import datetime, timedelta
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -17,8 +15,6 @@ logger = logging.getLogger("agentkit")
 
 _ZONA_MX     = ZoneInfo("America/Mexico_City")
 EMAIL_ULISES  = os.getenv("EMAIL_ULISES", "10telefonos10@gmail.com")
-SMTP_SERVER   = os.getenv("SMTP_SERVER",  "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
 GRUPO_NOMBRE  = os.getenv("GRUPO_INTERNO_NOMBRE", "Taller Interno TS")
 _UBICACION    = "Plazuela de la Fama 1, Col. La Fama, Tlalpan"
 
@@ -27,33 +23,42 @@ _MESES_ES = {1:"enero",2:"febrero",3:"marzo",4:"abril",5:"mayo",6:"junio",
              7:"julio",8:"agosto",9:"septiembre",10:"octubre",11:"noviembre",12:"diciembre"}
 
 
-# ─── Email SMTP ──────────────────────────────────────────────────────────────
-
-def _enviar_email_sync(asunto: str, body: str) -> bool:
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASSWORD", "")
-    if not smtp_user or not smtp_pass:
-        logger.warning("[CITAS EMAIL] SMTP_USER/SMTP_PASSWORD no configurados — omitiendo email")
-        return False
-    try:
-        msg = MIMEMultipart()
-        msg["From"]    = smtp_user
-        msg["To"]      = EMAIL_ULISES
-        msg["Subject"] = asunto
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=20) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-        logger.info(f"[CITAS EMAIL] ✅ Enviado a {EMAIL_ULISES}: {asunto}")
-        return True
-    except Exception as e:
-        logger.error(f"[CITAS EMAIL] Error SMTP: {e}")
-        return False
-
+# ─── Email via Resend API (HTTP — funciona en Railway) ────────────────────────
+# Configurar en Railway Variables:
+#   RESEND_API_KEY = re_xxxx...  (obtener en resend.com, plan gratuito = 3000 emails/mes)
+#   RESEND_FROM    = onboarding@resend.dev  (o tu dominio verificado)
 
 async def _enviar_email(asunto: str, body: str) -> bool:
-    return await asyncio.to_thread(_enviar_email_sync, asunto, body)
+    """Envía email usando Resend API (HTTP). Railway NO permite SMTP saliente."""
+    api_key = os.getenv("RESEND_API_KEY", "")
+    if not api_key:
+        logger.warning("[CITAS EMAIL] RESEND_API_KEY no configurado — omitiendo email")
+        return False
+    from_addr = os.getenv("RESEND_FROM", "onboarding@resend.dev")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": from_addr,
+                    "to": [EMAIL_ULISES],
+                    "subject": asunto,
+                    "text": body,
+                },
+            )
+        if resp.status_code in (200, 201):
+            logger.info(f"[CITAS EMAIL] ✅ Enviado via Resend a {EMAIL_ULISES}: {asunto}")
+            return True
+        else:
+            logger.error(f"[CITAS EMAIL] Error Resend {resp.status_code}: {resp.text[:200]}")
+            return False
+    except Exception as e:
+        logger.error(f"[CITAS EMAIL] Excepción Resend: {e}")
+        return False
 
 
 # ─── Grupo interno Whapi ──────────────────────────────────────────────────────
@@ -364,4 +369,4 @@ async def enviar_resumen_diario() -> None:
         f"{lista_g}"
     )
     await _enviar_grupo(msg_grupo)
-    logger.info(f"[CITAS] Resumen diario enviado — {len(eventos_hoy)} citas hoy")
+    logger.info("[CITAS RESUMEN] ✅ Resumen diario enviado")

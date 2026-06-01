@@ -49,8 +49,8 @@ from agent.followup import iniciar_scheduler
 from agent.reports import generar_reporte_excel
 from agent.import_chats import importar_todos_los_chats
 from agent.cita_detector import guardar_cita_automatica
+from agent.commands import procesar_comando_grupo
 from agent.notifications import (
-    procesar_comando_grupo,
     detectar_y_notificar_christian,
     notificar_christian_vision,
     notificar_cita_agendada,

@@ -536,6 +536,41 @@ async def registrar_cita_notificada(
             await session.commit()
 
 
+async def cita_ya_existe_para_telefono(telefono: str, fecha_hora: datetime, ventana_minutos: int = 45) -> bool:
+    """
+    Retorna True si ya hay una cita en la BD para este teléfono en ±ventana_minutos
+    alrededor de fecha_hora. Evita crear duplicados en Google Calendar.
+    """
+    if not telefono or not fecha_hora:
+        return False
+    inicio = fecha_hora - timedelta(minutes=ventana_minutos)
+    fin    = fecha_hora + timedelta(minutes=ventana_minutos)
+    async with async_session() as session:
+        try:
+            variantes = _variantes_telefono(telefono)
+            placeholders = ", ".join([f":tel{i}" for i in range(len(variantes))])
+            params = {f"tel{i}": v for i, v in enumerate(variantes)}
+            params.update({"inicio": inicio, "fin": fin})
+            result = await session.execute(
+                text(
+                    f"SELECT COUNT(*) FROM citas "
+                    f"WHERE telefono IN ({placeholders}) "
+                    f"AND fecha_hora BETWEEN :inicio AND :fin"
+                ),
+                params,
+            )
+            count = result.scalar_one_or_none() or 0
+            if count > 0:
+                logger.info(
+                    f"[DEDUP] Cita ya existe para {telefono} en "
+                    f"{fecha_hora.strftime('%d/%m %H:%M')} — ignorando duplicado"
+                )
+            return count > 0
+        except Exception as e:
+            logger.warning(f"[DEDUP] No se pudo verificar duplicado: {e}")
+            return False
+
+
 async def confirmacion_cita_ya_enviada(cliente_telefono: str, evento_id: str) -> bool:
     """Retorna True si esta confirmación ya fue enviada al cliente — evita duplicados."""
     if not evento_id:
