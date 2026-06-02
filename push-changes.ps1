@@ -24,7 +24,7 @@ Write-Host "Cambios agregados" -ForegroundColor Green
 Write-Host ""
 
 # 3. Commit
-$mensaje = "fix: CRITICO - ELIMINAR RESTRICCION DE PRECIOS (UMBRAL a 999999999) - mostrar TODOS los precios sin limite"
+$mensaje = "feat: MEJORAR contexto conversacional en consultas de precio - preguntas clarificadoras inteligentes + busqueda amplia de contexto"
 Write-Host "[3/4] Haciendo commit: '$mensaje'" -ForegroundColor Yellow
 git commit -m $mensaje
 if ($LASTEXITCODE -eq 0) {

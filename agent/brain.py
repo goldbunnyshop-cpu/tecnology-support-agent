@@ -134,9 +134,11 @@ def _historial_en_contexto_precio(historial: list[dict]) -> bool:
 
 
 def _buscar_ultimo_modelo_historial(historial: list[dict]) -> str | None:
+    """Busca el ÚLTIMO modelo mencionado en el historial (últimos 20 mensajes = contexto de sesión)."""
     if not historial:
         return None
-    for msg in reversed(historial[-12:]):
+    # Buscar en los últimos 20 mensajes para abarcar toda una sesión conversacional
+    for msg in reversed(historial[-20:]):
         if msg.get("role") != "user":
             continue
         c = _normalizar_consulta_pricing(msg.get("content") or "")
@@ -155,14 +157,46 @@ def _es_respuesta_marca(mensaje: str) -> str | None:
 
 
 def _buscar_ultima_marca_historial(historial: list[dict]) -> str | None:
+    """Busca la ÚLTIMA marca mencionada en el historial (últimos 20 mensajes = contexto de sesión)."""
     if not historial:
         return None
-    for msg in reversed(historial[-12:]):
+    # Buscar en los últimos 20 mensajes
+    for msg in reversed(historial[-20:]):
         if msg.get("role") != "user":
             continue
         marca = _es_respuesta_marca(msg.get("content") or "")
         if marca:
             return marca
+    return None
+
+
+def _generar_pregunta_clarificadora(mensaje: str, marca_prev: str | None, modelo_prev: str | None) -> str | None:
+    """Genera una pregunta clarificadora inteligente cuando hay contexto pero falta especificidad.
+
+    Ej: Si cliente pregunta "¿precio?" y hace poco preguntó sobre un S21, retorna:
+    "¿Del Samsung S21?" en lugar de delegar a Claude.
+    """
+    m = (mensaje or "").lower()
+    es_consulta_precio = any(re.search(p, m) for p in _PATRONES_PRECIO)
+
+    if not es_consulta_precio:
+        return None
+
+    # Si pregunta "¿precio?" o similar SIN especificar dispositivo, pero hay contexto anterior
+    if marca_prev and modelo_prev:
+        dispositivo = f"{marca_prev} {modelo_prev}".strip().title()
+        # Detectar si pregunta por refacción específica
+        refaccion = "display"
+        if re.search(r"\b(bater[ií]a|bateria|pila)\b", m):
+            refaccion = "batería"
+        elif re.search(r"\b(tapa)\b", m):
+            refaccion = "tapa"
+
+        if refaccion == "display":
+            return f"¿Del display del {dispositivo}?"
+        else:
+            return f"¿De la {refaccion} del {dispositivo}?"
+
     return None
 
 
@@ -262,11 +296,7 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
             except Exception as e:
                 logger.error(f"[PRICING] Error en cotización contextual con refacción: {e}")
 
-    if not es_consulta_precio and not (es_modelo_breve and (hay_contexto_precio or marca_prev)) and not (marca_suelta and modelo_prev):
-        logger.info(f"[PRICING-DEBUG] NO ES CONSULTA PRECIO → delegando a Claude")
-        return None
-
-    # Caso conversacional: cliente responde solo marca después de "costo s21"
+    # ── MEJORA: Caso conversacional: cliente responde solo marca después de "costo s21" ──
     if marca_suelta and modelo_prev:
         try:
             logger.info(f"[PRICING-DEBUG] Caso conversacional: marca='{marca_suelta}' + modelo_prev='{modelo_prev}'")
@@ -276,7 +306,7 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
         except Exception as e:
             logger.error(f"[PRICING] Error resolviendo marca+modelo contextual: {e}")
 
-    # Caso conversacional inverso: cliente responde solo modelo corto tras decir marca
+    # ── MEJORA: Caso conversacional inverso: cliente responde solo modelo corto tras decir marca ──
     if es_modelo_breve and marca_prev:
         try:
             logger.info(f"[PRICING-DEBUG] Caso conversacional: modelo_breve + marca_prev='{marca_prev}'")
@@ -285,6 +315,20 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
             return _limpiar_respuesta_pricing(r)
         except Exception as e:
             logger.error(f"[PRICING] Error resolviendo modelo con marca contextual: {e}")
+
+    # ── NUEVA MEJORA: Preguntas clarificadoras inteligentes ──
+    # Si es una consulta de precio vaga pero hay contexto de dispositivo anterior,
+    # no delegar a Claude: hacer pregunta clarificadora ("¿Del Samsung S21?")
+    if es_consulta_precio and not modelo_actual and (marca_prev or modelo_prev):
+        pregunta = _generar_pregunta_clarificadora(mensaje, marca_prev, modelo_prev)
+        if pregunta:
+            logger.info(f"[PRICING-DEBUG] Pregunta clarificadora generada: '{pregunta}'")
+            return pregunta  # Retorna como respuesta de pricing directa
+
+    # Última evaluación: si NO es claramente una consulta de precio
+    if not es_consulta_precio and not (es_modelo_breve and (hay_contexto_precio or marca_prev)) and not (marca_suelta and modelo_prev):
+        logger.info(f"[PRICING-DEBUG] NO ES CONSULTA PRECIO → delegando a Claude")
+        return None
 
     logger.info(f"[PRICING-DEBUG] Llamando _resolver_pricing_desde_texto()")
     respuesta = await _resolver_pricing_desde_texto(mensaje)
