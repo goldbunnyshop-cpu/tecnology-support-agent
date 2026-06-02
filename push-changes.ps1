@@ -24,7 +24,7 @@ Write-Host "Cambios agregados" -ForegroundColor Green
 Write-Host ""
 
 # 3. Commit
-$mensaje = "feat: integrar fixoem.com con multiplicacion x3, soportar todos dispositivos, validar precios"
+$mensaje = "fix: agregar logs detallados para diagnosticar motor de pricing - rastrear flujo completo"
 Write-Host "[3/4] Haciendo commit: '$mensaje'" -ForegroundColor Yellow
 git commit -m "$mensaje"
 if ($LASTEXITCODE -eq 0) {

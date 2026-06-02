@@ -177,19 +177,26 @@ async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
     else:
         refaccion = "display"
     try:
+        logger.info(f"[PRICING] RESOLVER_PRICING: marca='{marca}', modelo='{modelo}', refaccion='{refaccion}'")
         if marca and modelo:
             # SIEMPRE usar cotizar_con_fallback para acceder a Google Sheets
+            logger.info(f"[PRICING] Llamando cotizar_con_fallback(marca='{marca}', modelo='{modelo}', refaccion='{refaccion}')")
             r = await cotizar_con_fallback(marca, modelo, refaccion)
+            logger.info(f"[PRICING] Respuesta fallback: {r[:100] if r else 'None'}")
             return _limpiar_respuesta_pricing(r)
         if modelo:
             # FIX: Usar cotizar_con_fallback incluso sin marca (Hugo Shop → Google Sheets)
+            logger.info(f"[PRICING] Llamando cotizar_con_fallback(marca='', modelo='{modelo}', refaccion='{refaccion}')")
             r = await cotizar_con_fallback("", modelo, refaccion)
+            logger.info(f"[PRICING] Respuesta fallback: {r[:100] if r else 'None'}")
             return _limpiar_respuesta_pricing(r)
         # Sin modelo: pedir información
+        logger.info(f"[PRICING] Sin modelo específico, usando mensaje completo")
         r = await cotizar_con_fallback("", mensaje, refaccion)
+        logger.info(f"[PRICING] Respuesta fallback: {r[:100] if r else 'None'}")
         return _limpiar_respuesta_pricing(r)
     except Exception as e:
-        logger.error(f"[PRICING] Error en consulta directa: {e}")
+        logger.error(f"[PRICING] Error en consulta directa: {e}", exc_info=True)
         return None
 
 
@@ -202,14 +209,21 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     hay_contexto_precio = _historial_en_contexto_precio(historial)
     marca_actual, modelo_actual = _extraer_marca_modelo(mensaje)
 
+    # LOG DETALLADO: Rastrear decisión del motor de pricing
+    logger.info(f"[PRICING-DEBUG] Mensaje: '{mensaje}'")
+    logger.info(f"[PRICING-DEBUG] es_consulta_precio={es_consulta_precio}, es_display={es_display}, es_no_display={es_no_display}, es_modelo_breve={es_modelo_breve}")
+    logger.info(f"[PRICING-DEBUG] marca_actual='{marca_actual}', modelo_actual='{modelo_actual}'")
+
     # CRÍTICO: Si menciona display/pantalla/cambio pantalla EXPLÍCITAMENTE,
     # eso tiene prioridad sobre mencionar casualmente "PS5" o "consola".
     # Ej: "iPad (cambio pantalla) controles de PS5" = consulta de display, no de PS5
     if es_display:
         # Es una consulta de display → el motor la maneja, ignora es_no_display
+        logger.info(f"[PRICING-DEBUG] Detectado: DISPLAY explícito → motor de pricing")
         pass
     elif es_no_display:
         # NO menciona display y SÍ menciona exclusión → que la maneje Claude
+        logger.info(f"[PRICING-DEBUG] Detectado: NO_DISPLAY → delegando a Claude")
         return None
 
     # Si este mensaje ya trae modelo y hay intención real de cotizar pantalla
@@ -249,12 +263,15 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
                 logger.error(f"[PRICING] Error en cotización contextual con refacción: {e}")
 
     if not es_consulta_precio and not (es_modelo_breve and (hay_contexto_precio or marca_prev)) and not (marca_suelta and modelo_prev):
+        logger.info(f"[PRICING-DEBUG] NO ES CONSULTA PRECIO → delegando a Claude")
         return None
 
     # Caso conversacional: cliente responde solo marca después de "costo s21"
     if marca_suelta and modelo_prev:
         try:
+            logger.info(f"[PRICING-DEBUG] Caso conversacional: marca='{marca_suelta}' + modelo_prev='{modelo_prev}'")
             r = await cotizar_con_fallback(marca_suelta, modelo_prev)
+            logger.info(f"[PRICING-DEBUG] Retornando respuesta contextual")
             return _limpiar_respuesta_pricing(r)
         except Exception as e:
             logger.error(f"[PRICING] Error resolviendo marca+modelo contextual: {e}")
@@ -262,12 +279,20 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     # Caso conversacional inverso: cliente responde solo modelo corto tras decir marca
     if es_modelo_breve and marca_prev:
         try:
+            logger.info(f"[PRICING-DEBUG] Caso conversacional: modelo_breve + marca_prev='{marca_prev}'")
             r = await cotizar_con_fallback(marca_prev, _normalizar_consulta_pricing(mensaje))
+            logger.info(f"[PRICING-DEBUG] Retornando respuesta contextual")
             return _limpiar_respuesta_pricing(r)
         except Exception as e:
             logger.error(f"[PRICING] Error resolviendo modelo con marca contextual: {e}")
 
-    return await _resolver_pricing_desde_texto(mensaje)
+    logger.info(f"[PRICING-DEBUG] Llamando _resolver_pricing_desde_texto()")
+    respuesta = await _resolver_pricing_desde_texto(mensaje)
+    if respuesta:
+        logger.info(f"[PRICING-DEBUG] ✅ PRICING RETORNÓ RESPUESTA")
+        return respuesta
+    logger.info(f"[PRICING-DEBUG] ❌ PRICING NO ENCONTRÓ NADA → delegando a Claude")
+    return None
 
 
 def cargar_config_prompts() -> dict:
