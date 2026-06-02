@@ -362,51 +362,54 @@ async def buscar_google_sheets(
 async def formatear_cotizacion_sheets(producto: Dict, marca: str = "", modelo: str = "") -> str:
     """
     Formatea la cotización desde Google Sheets en el mismo estilo que Hugo Shop.
+
+    CAMBIO IMPORTANTE:
+    - Para DISPLAYS: Mostrar SOLO el precio MÁS ALTO (precio_3) etiquetado como "Calidad"
+    - Para BATERÍAS: Mostrar SOLO el precio Unitario (sin mayoreo ni surtidos)
     """
     nombre = producto.get("nombre", "").upper()
     fuente = producto.get("fuente", "")
+    titulo = f"{marca} {modelo}".strip().upper() if marca and modelo else nombre
 
-    lineas = [f"Encontramos en nuestro inventario:\n"]
-    lineas.append(f"📦 {nombre}\n")
+    lineas = [f"Para {titulo} encontramos estas opciones:\n"]
 
-    # DISPLAYS
+    # DISPLAYS - Mostrar SOLO el precio MÁS ALTO
     if "displays" in fuente.lower():
         p1 = producto.get("precio_1")
         p2 = producto.get("precio_2")
         p3 = producto.get("precio_3")
 
-        if p1:
-            lineas.append(f"* Precio 1: ${int(p1 * 4):,} MXN")  # Multiplicador ×4
-        if p2:
-            lineas.append(f"* Precio 2: ${int(p2 * 4):,} MXN")
-        if p3:
-            lineas.append(f"* Precio 3: ${int(p3 * 4):,} MXN")
+        # Seleccionar el precio más alto (precio_3 es el premium)
+        precios = [p for p in [p1, p2, p3] if p]
+        if precios:
+            precio_max = max(precios)  # El precio más alto
+            precio_mxn = int(precio_max * 4)  # Multiplicador ×4
+            lineas.append(f"* Calidad Original: ${precio_mxn:,} MXN")
+            logger.info(f"[SHEETS] DISPLAYS formateado: {titulo} → precio ${precio_mxn:,} MXN")
+        else:
+            logger.warning(f"[SHEETS] DISPLAYS sin precios válidos para {titulo}")
 
-    # BATERÍAS ANDROID
+    # BATERÍAS ANDROID - Mostrar SOLO el precio Unitario
     elif "android" in fuente.lower():
         p_unit = producto.get("p_unitario")
-        may_1 = producto.get("mayoreo_1")
-        may_2 = producto.get("mayoreo_2")
 
         if p_unit:
-            lineas.append(f"* Precio Unitario: ${int(p_unit * 4):,} MXN")
-        if may_1:
-            lineas.append(f"* Mayoreo 1: ${int(may_1 * 4):,} MXN")
-        if may_2:
-            lineas.append(f"* Mayoreo 2: ${int(may_2 * 4):,} MXN")
+            precio_mxn = int(p_unit * 4)  # Multiplicador ×4
+            lineas.append(f"* Precio Unitario: ${precio_mxn:,} MXN")
+            logger.info(f"[SHEETS] BATERÍAS ANDROID formateado: {titulo} → precio ${precio_mxn:,} MXN")
+        else:
+            logger.warning(f"[SHEETS] BATERÍAS ANDROID sin precio unitario para {titulo}")
 
-    # BATERÍAS iPHONE
+    # BATERÍAS iPHONE - Mostrar SOLO el precio Unitario
     elif "iphone" in fuente.lower():
         p_unit = producto.get("p_unitario")
-        sur_20 = producto.get("surtido_20pz")
-        sur_50 = producto.get("surtido_50pz")
 
         if p_unit:
-            lineas.append(f"* Precio Unitario: ${int(p_unit * 4):,} MXN")
-        if sur_20:
-            lineas.append(f"* 20pz Surtido: ${int(sur_20 * 4):,} MXN")
-        if sur_50:
-            lineas.append(f"* 50pz Surtido: ${int(sur_50 * 4):,} MXN")
+            precio_mxn = int(p_unit * 4)  # Multiplicador ×4
+            lineas.append(f"* Precio Unitario: ${precio_mxn:,} MXN")
+            logger.info(f"[SHEETS] BATERÍAS iPHONE formateado: {titulo} → precio ${precio_mxn:,} MXN")
+        else:
+            logger.warning(f"[SHEETS] BATERÍAS iPHONE sin precio unitario para {titulo}")
 
     lineas.append("")
     lineas.append("✅ Incluye diagnóstico, garantía 90 días y cambio el mismo día.")
