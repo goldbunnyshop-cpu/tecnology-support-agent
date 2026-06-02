@@ -166,8 +166,14 @@ def _buscar_ultima_marca_historial(historial: list[dict]) -> str | None:
 
 async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
     marca, modelo = _extraer_marca_modelo(mensaje)
-    # Detectar tipo de pieza para aplicar el multiplicador correcto (tapas ≠ displays)
-    refaccion = "tapa" if "tapa" in (mensaje or "").lower() else "display"
+    # Detectar tipo de pieza: bateria > tapa > display (default)
+    m = (mensaje or "").lower()
+    if re.search(r"\b(bater[ií]a|pila)\b", m):
+        refaccion = "bateria"
+    elif "tapa" in m:
+        refaccion = "tapa"
+    else:
+        refaccion = "display"
     try:
         if marca and modelo:
             r = await cotizar_con_fallback(marca, modelo, refaccion)
