@@ -27,6 +27,7 @@ from agent.pricing import (
     MULTIPLICADOR_USD_A_MXN,
     _mensaje_no_disponible,
 )
+from agent.pricing_sheets import cotizar_google_sheets
 
 logger = logging.getLogger("agentkit")
 
@@ -463,7 +464,10 @@ def es_respuesta_no_disponible(respuesta: str) -> bool:
 async def cotizar_con_fallback(
     marca: str, modelo: str, refaccion: str = "display"
 ) -> str:
-    """Hugo Shop primero; si no tiene la pieza, busca en fixoem + Sheet.
+    """Pipeline de precios con 4 fuentes:
+    1. Hugo Shop (primero)
+    2. Google Sheets específico (Displays, Baterías Android/iPhone) — NUEVO
+    3. fixoem + Sheet genérico (fallback final)
 
     Es el reemplazo directo de obtener_cotizacion_display() para brain.py.
     """
@@ -475,10 +479,20 @@ async def cotizar_con_fallback(
     if not es_respuesta_no_disponible(respuesta_hugo):
         return respuesta_hugo
 
-    # Hugo Shop no tiene → intentar fuentes externas
+    # Hugo Shop no tiene → intentar Google Sheets específico
+    logger.info(f"[PRICING] Hugo Shop no tiene '{marca} {modelo}', intentando Google Sheets específico...")
+    respuesta_sheets = await cotizar_google_sheets(marca, modelo, refaccion)
+    if respuesta_sheets:
+        logger.info(f"[PRICING] Google Sheets encontró '{marca} {modelo}'")
+        return respuesta_sheets
+
+    # Google Sheets no tiene → intentar fixoem + Sheet genérico
+    logger.info(f"[PRICING] Google Sheets no tiene, intentando fixoem + Sheet genérico...")
     externa = await cotizar_fuentes_externas(marca, modelo, refaccion)
     if externa:
+        logger.info(f"[PRICING] fixoem/Sheet genérico encontraron '{marca} {modelo}'")
         return externa
 
     # Nadie tiene → devolver el mensaje de Hugo Shop (pide aclaración / módulo)
+    logger.info(f"[PRICING] Ninguna fuente tiene '{marca} {modelo}'")
     return respuesta_hugo
