@@ -531,17 +531,21 @@ def _mensaje_no_disponible(marca: str, modelo: str) -> str:
     # Si falta marca O modelo, pedir ambos
     if not marca_limpia or not modelo_limpio:
         return (
-            "Para cotizarte el display exacto, necesito que me digas:\n"
-            "1. Cual es la marca de tu dispositivo? (Samsung, iPhone, Motorola, etc.)\n"
-            "2. Cual es el modelo exacto? (por ejemplo: Galaxy A21, iPhone 14, Moto G42)\n\n"
-            "Si no estas seguro del modelo, verifica en Configuracion > Acerca de o acude al modulo."
+            "Para cotizarte la refacción, necesito que me digas:\n"
+            "1. Marca del dispositivo (Samsung, iPhone, Motorola, etc.)\n"
+            "2. Modelo exacto (A21, A21S, S21 Ultra, 13 Pro Max, etc.)\n\n"
+            "Si no sabes el modelo exacto, revisa Configuración > Acerca de"
         )
 
-    # Si tenemos marca y modelo pero no existe, ofrecer alternativas
+    # Si tenemos marca y modelo pero no existe
+    # CRÍTICO: Ser muy claro que NO lo tenemos en stock
     return (
-        f"Para el {marca_limpia} {modelo_limpio}, no encontre displays en nuestro inventario.\n"
-        f"Es posible que sea un modelo diferente? Verifica el numero exacto (A21, A21S, etc.)\n"
-        f"O acude al modulo y revisamos juntos — tenemos alternativas compatibles."
+        f"❌ Disculpa, no tenemos *{marca_limpia.upper()} {modelo_limpio}* disponible en este momento.\n\n"
+        f"✅ Pero tenemos estas marcas/modelos en stock:\n"
+        f"• Samsung (A12, A21, A32, S21, S21 Ultra)\n"
+        f"• iPhone (11, 12, 13, 14, 15)\n"
+        f"• Motorola (G10, G31, G42)\n\n"
+        f"¿Alguno de estos? O confirma el modelo exacto de tu dispositivo."
     )
 
 

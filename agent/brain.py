@@ -28,8 +28,9 @@ _PATRONES_PRECIO = [
 # Términos inequívocos de pantalla/display. NO se incluyen "touch"/"táctil" porque
 # aparecen en quejas conversacionales de reparación ("el touch muerto") sin intención
 # de cotizar — esas las atiende Claude, no el motor de cotización.
+# NUEVA: También detecta "cambio pantalla" (aun entre paréntesis)
 _PATRON_DISPLAY = re.compile(
-    r"\b(displays?|pantallas?|mica|cristal|gorilla)\b", re.I
+    r"(?:\b(displays?|pantallas?|mica|cristal|gorilla)\b|cambio\s+(?:de\s+)?(pantalla|display))", re.I
 )
 
 # Señales de que la consulta NO es de display. El motor de cotización ahora cotiza
@@ -201,8 +202,14 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     hay_contexto_precio = _historial_en_contexto_precio(historial)
     marca_actual, modelo_actual = _extraer_marca_modelo(mensaje)
 
-    # EXCLUSIÓN: la consulta no es de pantalla → que la maneje Claude, no el motor.
-    if es_no_display:
+    # CRÍTICO: Si menciona display/pantalla/cambio pantalla EXPLÍCITAMENTE,
+    # eso tiene prioridad sobre mencionar casualmente "PS5" o "consola".
+    # Ej: "iPad (cambio pantalla) controles de PS5" = consulta de display, no de PS5
+    if es_display:
+        # Es una consulta de display → el motor la maneja, ignora es_no_display
+        pass
+    elif es_no_display:
+        # NO menciona display y SÍ menciona exclusión → que la maneje Claude
         return None
 
     # Si este mensaje ya trae modelo y hay intención real de cotizar pantalla

@@ -192,6 +192,7 @@ async def _buscar_fixoem(query: str, _marca_q: str = "", _modelo_q: str = "") ->
     """Busca en fixoem vía el endpoint de sugerencias de Shopify.
 
     Retorna lista de {titulo, precio, categoria}.
+    Los precios de fixoem están en MXN, se multiplican por 3 para margen de venta.
     """
     clave = f"fixoem::{query.lower()}"
     cacheado = _cache_get(clave)
@@ -224,13 +225,16 @@ async def _buscar_fixoem(query: str, _marca_q: str = "", _modelo_q: str = "") ->
                     continue
                 if not _titulo_coincide_modelo(titulo, _marca_q, _modelo_q):
                     continue
-                precio = _limpiar_precio(p.get("price"))
-                if not precio:
+                precio_fixoem_mxn = _limpiar_precio(p.get("price"))
+                if not precio_fixoem_mxn:
                     continue
+                # Precios de fixoem en MXN se multiplican por 3 para margen comercial
+                precio_final = precio_fixoem_mxn * 3
                 categoria = _clasificar_calidad(titulo, es_display)
                 productos.append(
-                    {"titulo": titulo, "precio": precio, "categoria": categoria, "fuente": "fixoem"}
+                    {"titulo": titulo, "precio": precio_final, "categoria": categoria, "fuente": "fixoem"}
                 )
+                logger.info(f"[FALLBACK] fixoem: {titulo} → MXN${precio_fixoem_mxn:.0f} × 3 = MXN${precio_final:.0f}")
     except Exception as e:
         logger.warning(f"[FALLBACK] Error en fixoem '{query}': {e}")
 
