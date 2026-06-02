@@ -481,10 +481,15 @@ async def cotizar_con_fallback(
 
     # Hugo Shop no tiene → intentar Google Sheets específico
     logger.info(f"[PRICING] Hugo Shop no tiene '{marca} {modelo}', intentando Google Sheets específico...")
-    respuesta_sheets = await cotizar_google_sheets(marca, modelo, refaccion)
-    if respuesta_sheets:
-        logger.info(f"[PRICING] Google Sheets encontró '{marca} {modelo}'")
-        return respuesta_sheets
+    try:
+        logger.info(f"[PRICING] Llamando cotizar_google_sheets(marca={marca}, modelo={modelo}, refaccion={refaccion})")
+        respuesta_sheets = await cotizar_google_sheets(marca, modelo, refaccion)
+        logger.info(f"[PRICING] Respuesta de Google Sheets: {respuesta_sheets is not None}")
+        if respuesta_sheets:
+            logger.info(f"[PRICING] Google Sheets encontró '{marca} {modelo}'")
+            return respuesta_sheets
+    except Exception as e:
+        logger.error(f"[PRICING] EXCEPCIÓN en Google Sheets: {type(e).__name__}: {e}", exc_info=True)
 
     # Google Sheets no tiene → intentar fixoem + Sheet genérico
     logger.info(f"[PRICING] Google Sheets no tiene, intentando fixoem + Sheet genérico...")
