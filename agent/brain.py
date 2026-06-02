@@ -216,6 +216,26 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     modelo_prev = _buscar_ultimo_modelo_historial(historial)
     marca_prev = _buscar_ultima_marca_historial(historial)
 
+    # ── NUEVO: Si dice solo "también batería", "también display", "también tapa" ──
+    # Reutiliza marca+modelo anterior pero cambia la refacción
+    if (marca_prev and modelo_prev) and not marca_actual and not modelo_actual:
+        m_lower = m.lower()
+        # Detectar si es SOLO cambio de refacción sin nuevo dispositivo
+        if re.search(r"\b(también|ademas|y)\s+(bater[ií]a|pila|display|pantalla|tapa)", m_lower):
+            # Extraer qué refacción pide
+            if re.search(r"\b(bater[ií]a|pila)\b", m_lower):
+                refaccion = "bateria"
+            elif re.search(r"\b(tapa)\b", m_lower):
+                refaccion = "tapa"
+            else:
+                refaccion = "display"
+            try:
+                logger.info(f"[PRICING] Reutilizando contexto: {marca_prev} {modelo_prev}, cambiando a refacción='{refaccion}'")
+                r = await cotizar_con_fallback(marca_prev, modelo_prev, refaccion)
+                return _limpiar_respuesta_pricing(r)
+            except Exception as e:
+                logger.error(f"[PRICING] Error en cotización contextual con refacción: {e}")
+
     if not es_consulta_precio and not (es_modelo_breve and (hay_contexto_precio or marca_prev)) and not (marca_suelta and modelo_prev):
         return None
 

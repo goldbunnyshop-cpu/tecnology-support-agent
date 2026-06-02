@@ -276,14 +276,32 @@ async def _cargar_catalogo_sheets() -> Dict[str, List[Dict]]:
 
 # ── Búsqueda ───────────────────────────────────────────────────────────────────
 
-def _score_coincidencia(nombre_producto: str, tokens_query: List[str]) -> int:
+def _score_coincidencia(nombre_producto: str, tokens_query: List[str], marca: str = "", modelo: str = "") -> int:
     """
-    Calcula un score de coincidencia entre el query y el nombre del producto.
-    Más tokens que coinciden = score más alto.
+    Calcula score de coincidencia con umbral mínimo.
+
+    Puntuación:
+    - Si encuentra MARCA + MODELO juntos en el nombre → score = 100 (match perfecto)
+    - Si encuentra MARCA en el nombre → score = 50 + tokens adicionales
+    - Si encuentra varios tokens → score = tokens encontrados (mínimo 2)
+    - Si encuentra 0-1 tokens → score = 0 (rechaza)
     """
     nombre_lower = nombre_producto.lower()
-    score = sum(1 for tok in tokens_query if tok in nombre_lower)
-    return score
+    marca_lower = marca.lower() if marca else ""
+    modelo_lower = modelo.lower() if modelo else ""
+
+    # Match perfecto: marca + modelo juntos
+    if marca_lower and modelo_lower:
+        if marca_lower in nombre_lower and modelo_lower in nombre_lower:
+            return 100
+        if marca_lower in nombre_lower:
+            return 50  # Marca encontrada pero no modelo
+
+    # Token matching: contar coincidencias
+    coincidencias = sum(1 for tok in tokens_query if tok in nombre_lower)
+
+    # UMBRAL MÍNIMO: al menos 2 tokens deben coincidir (no aceptar matches débiles)
+    return coincidencias if coincidencias >= 2 else 0
 
 
 async def buscar_google_sheets(
@@ -291,6 +309,11 @@ async def buscar_google_sheets(
 ) -> Optional[Dict]:
     """
     Busca un producto en Google Sheets usando query + marca + modelo.
+
+    Prioridad de búsqueda:
+    1. Búsqueda exacta: marca + modelo
+    2. Búsqueda por marca
+    3. Búsqueda por tokens múltiples (mínimo 2 coincidencias)
 
     Retorna:
       - Para DISPLAYS: {nombre, categoria, precio_1, precio_2, precio_3, fuente}
@@ -306,30 +329,34 @@ async def buscar_google_sheets(
         logger.warning("[SHEETS] Catálogo vacío")
         return None
 
-    # Tokenizar query
+    # Tokenizar query (solo palabras >= 2 caracteres)
     tokens = [t.lower() for t in re.split(r"\s+", query.lower().strip()) if len(t) >= 2]
     if not tokens:
+        logger.warning(f"[SHEETS] Query '{query}' tiene tokens muy cortos, rechazando")
         return None
+
+    logger.info(f"[SHEETS] Buscando en catálogo: query='{query}', marca='{marca}', modelo='{modelo}', tokens={tokens}")
 
     # Búsqueda en todas las hojas
     mejores_resultados = []
     for hoja_name, productos in catalogo.items():
         for producto in productos:
             nombre_producto = producto.get("nombre", "")
-            score = _score_coincidencia(nombre_producto, tokens)
+            score = _score_coincidencia(nombre_producto, tokens, marca, modelo)
 
             if score > 0:
-                mejores_resultados.append((score, producto))
+                mejores_resultados.append((score, producto, hoja_name))
 
     if not mejores_resultados:
-        logger.info(f"[SHEETS] Sin resultados para '{query}'")
+        logger.info(f"[SHEETS] Sin resultados para '{query}' (marca='{marca}', modelo='{modelo}')")
         return None
 
     # Retornar el mejor match
     mejor = max(mejores_resultados, key=lambda x: x[0])
-    logger.info(f"[SHEETS] Encontrado: {mejor[1].get('nombre')} (score: {mejor[0]})")
+    score, producto, hoja = mejor[0], mejor[1], mejor[2]
+    logger.info(f"[SHEETS] Encontrado en {hoja}: '{producto.get('nombre')}' (score: {score})")
 
-    return mejor[1]
+    return producto
 
 
 async def formatear_cotizacion_sheets(producto: Dict, marca: str = "", modelo: str = "") -> str:
