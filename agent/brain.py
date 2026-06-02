@@ -31,15 +31,14 @@ _PATRON_DISPLAY = re.compile(
     r"\b(displays?|pantallas?|mica|cristal|gorilla)\b", re.I
 )
 
-# Señales de que la consulta NO es de display. El motor de cotización solo cotiza
-# PANTALLAS; si el cliente pregunta por mantenimiento de consola, costo de
-# diagnóstico, batería, centro de carga, software, o reparación de control, NO debe
-# intervenir el motor — lo atiende Claude con las reglas del prompt (precio fijo de
-# consola, invitar al módulo, Situación 5, etc.).
+# Señales de que la consulta NO es de display. El motor de cotización ahora cotiza
+# PANTALLAS + BATERÍAS DE CELULAR (via Google Sheets).
+# Si el cliente pregunta por: mantenimiento de consola, diagnóstico, centro de carga,
+# software, o reparación de control → Claude atiende (precio fijo, invitar módulo, etc.)
 _PATRON_NO_DISPLAY = re.compile(
     r"\b("
     r"mantenimiento|limpieza|diagn[oó]stic\w*|"
-    r"bater[ií]a|pila|centro\s+de\s+carga|puerto\s+de\s+carga|no\s+carga|"
+    r"pila|centro\s+de\s+carga|puerto\s+de\s+carga|no\s+carga|"
     r"bocina|altavoz|micr[oó]fono|c[aá]mara|bot[oó]n|botones|"
     r"software|desbloque\w*|liberaci[oó]n|liberar|"
     r"control|mando|joystick|palanca|drift|gatillo|"
