@@ -305,15 +305,14 @@ def _score_coincidencia(nombre_producto: str, tokens_query: List[str], marca: st
 
 
 async def buscar_google_sheets(
-    query: str, marca: str = "", modelo: str = ""
+    query: str, marca: str = "", modelo: str = "", refaccion: str = "display"
 ) -> Optional[Dict]:
     """
     Busca un producto en Google Sheets usando query + marca + modelo.
 
-    Prioridad de búsqueda:
-    1. Búsqueda exacta: marca + modelo
-    2. Búsqueda por marca
-    3. Búsqueda por tokens múltiples (mínimo 2 coincidencias)
+    CRÍTICO: Busca SOLO en la hoja correspondiente según refacción.
+    - Si refaccion='display' → busca SOLO en DISPLAYS
+    - Si refaccion='bateria' → busca en BATERÍAS ANDROID e iPHONE
 
     Retorna:
       - Para DISPLAYS: {nombre, categoria, precio_1, precio_2, precio_3, fuente}
@@ -335,11 +334,26 @@ async def buscar_google_sheets(
         logger.warning(f"[SHEETS] Query '{query}' tiene tokens muy cortos, rechazando")
         return None
 
-    logger.info(f"[SHEETS] Buscando en catálogo: query='{query}', marca='{marca}', modelo='{modelo}', tokens={tokens}")
+    logger.info(f"[SHEETS] Buscando en catálogo: query='{query}', marca='{marca}', modelo='{modelo}', refaccion='{refaccion}', tokens={tokens}")
 
-    # Búsqueda en todas las hojas
+    # FILTRAR HOJAS SEGÚN REFACCIÓN (CRÍTICO)
+    hojas_a_buscar = {}
+    if refaccion == "display":
+        # Solo displays
+        hojas_a_buscar = {k: v for k, v in catalogo.items() if "DISPLAYS" in k.upper()}
+        logger.info(f"[SHEETS] Refaccion=display → buscando SOLO en DISPLAYS")
+    elif refaccion == "bateria":
+        # Solo baterías
+        hojas_a_buscar = {k: v for k, v in catalogo.items() if "BATERÍAS" in k.upper() or "BATERIA" in k.upper()}
+        logger.info(f"[SHEETS] Refaccion=bateria → buscando SOLO en BATERÍAS")
+    else:
+        # Fallback: buscar en todas
+        hojas_a_buscar = catalogo
+        logger.info(f"[SHEETS] Refaccion={refaccion} desconocida → buscando en todas las hojas")
+
+    # Búsqueda en hojas filtradas
     mejores_resultados = []
-    for hoja_name, productos in catalogo.items():
+    for hoja_name, productos in hojas_a_buscar.items():
         for producto in productos:
             nombre_producto = producto.get("nombre", "")
             score = _score_coincidencia(nombre_producto, tokens, marca, modelo)
@@ -348,7 +362,7 @@ async def buscar_google_sheets(
                 mejores_resultados.append((score, producto, hoja_name))
 
     if not mejores_resultados:
-        logger.info(f"[SHEETS] Sin resultados para '{query}' (marca='{marca}', modelo='{modelo}')")
+        logger.info(f"[SHEETS] Sin resultados para '{query}' en {refaccion} (marca='{marca}', modelo='{modelo}')")
         return None
 
     # Retornar el mejor match
@@ -426,6 +440,8 @@ async def cotizar_google_sheets(
     """
     Busca una pieza en Google Sheets y retorna la cotización formateada.
 
+    CRÍTICO: Pasa refaccion a buscar_google_sheets() para filtrar hojas.
+
     Retorna:
       - Cotización formateada si encuentra la pieza
       - None si no encontró
@@ -434,7 +450,8 @@ async def cotizar_google_sheets(
     if not query:
         return None
 
-    producto = await buscar_google_sheets(query, marca, modelo)
+    # PASAR refaccion para filtrar las hojas correctas
+    producto = await buscar_google_sheets(query, marca, modelo, refaccion)
     if not producto:
         return None
 
