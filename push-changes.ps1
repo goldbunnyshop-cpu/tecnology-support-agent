@@ -24,9 +24,9 @@ Write-Host "Cambios agregados" -ForegroundColor Green
 Write-Host ""
 
 # 3. Commit
-$mensaje = "fix: agregar logs detallados para diagnosticar motor de pricing - rastrear flujo completo"
+$mensaje = "fix: CRITICO - ELIMINAR RESTRICCION DE PRECIOS (UMBRAL a 999999999) - mostrar TODOS los precios sin limite"
 Write-Host "[3/4] Haciendo commit: '$mensaje'" -ForegroundColor Yellow
-git commit -m "$mensaje"
+git commit -m $mensaje
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Commit realizado" -ForegroundColor Green
 } else {

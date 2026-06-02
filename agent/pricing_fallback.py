@@ -44,7 +44,9 @@ MULT_TAPA_OTRAS = int(os.getenv("PRICING_MULT_TAPA_OTRAS", "5"))
 
 # Umbral: si el precio calculado supera este monto, NO se muestra el número; en su
 # lugar se invita a consultar el precio directamente con el técnico.
-UMBRAL_CONSULTAR = int(os.getenv("PRICING_UMBRAL_CONSULTAR", "4000"))
+# CRÍTICO: Sin límite de precio. El cliente debe ver TODOS los precios calculados.
+# Si necesita restricción especial, usar variable de entorno PRICING_UMBRAL_CONSULTAR
+UMBRAL_CONSULTAR = int(os.getenv("PRICING_UMBRAL_CONSULTAR", "999999999"))
 
 CACHE_TTL = int(os.getenv("PRICING_FALLBACK_CACHE_TTL", str(6 * 3600)))  # 6 horas
 HTTP_TIMEOUT = 15
