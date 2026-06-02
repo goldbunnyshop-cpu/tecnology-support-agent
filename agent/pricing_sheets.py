@@ -234,24 +234,38 @@ async def _cargar_catalogo_sheets() -> Dict[str, List[Dict]]:
     clave = "sheets::catalogo_completo"
     cacheado = _cache_get(clave)
     if cacheado is not None:
+        logger.info(f"[SHEETS] Catálogo desde caché ({sum(len(v) for v in cacheado.values())} productos)")
         return cacheado
 
+    logger.info(f"[SHEETS] Descargando catálogo desde Google Sheets (SHEET_ID={SHEET_ID[:20]}...)")
     catalogo = {}
 
     # DISPLAYS
+    logger.info("[SHEETS] Descargando DISPLAYS...")
     csv_displays = await _descargar_sheet_csv(GIDS_SHEETS["DISPLAYS"])
     if csv_displays:
         catalogo["DISPLAYS"] = await _parsear_displays(csv_displays)
+        logger.info(f"[SHEETS] DISPLAYS: {len(catalogo['DISPLAYS'])} items")
+    else:
+        logger.warning("[SHEETS] DISPLAYS: no se pudo descargar (csv vacío)")
 
     # BATERÍAS ANDROID
+    logger.info("[SHEETS] Descargando BATERÍAS ANDROID...")
     csv_android = await _descargar_sheet_csv(GIDS_SHEETS["BATERÍAS ANDROID"])
     if csv_android:
         catalogo["BATERÍAS ANDROID"] = await _parsear_baterias_android(csv_android)
+        logger.info(f"[SHEETS] BATERÍAS ANDROID: {len(catalogo['BATERÍAS ANDROID'])} items")
+    else:
+        logger.warning("[SHEETS] BATERÍAS ANDROID: no se pudo descargar (csv vacío)")
 
     # BATERÍAS iPHONE
+    logger.info("[SHEETS] Descargando BATERÍAS iPHONE...")
     csv_iphone = await _descargar_sheet_csv(GIDS_SHEETS["BATERÍAS iPHONE"])
     if csv_iphone:
         catalogo["BATERÍAS iPHONE"] = await _parsear_baterias_iphone(csv_iphone)
+        logger.info(f"[SHEETS] BATERÍAS iPHONE: {len(catalogo['BATERÍAS iPHONE'])} items")
+    else:
+        logger.warning("[SHEETS] BATERÍAS iPHONE: no se pudo descargar (csv vacío)")
 
     total = sum(len(v) for v in catalogo.values())
     logger.info(f"[SHEETS] Catálogo completo cargado: {total} productos de {len(catalogo)} hojas")
