@@ -464,29 +464,39 @@ def es_respuesta_no_disponible(respuesta: str) -> bool:
 async def cotizar_con_fallback(
     marca: str, modelo: str, refaccion: str = "display"
 ) -> str:
-    """Pipeline de precios con 4 fuentes:
-    1. Hugo Shop (primero)
-    2. Google Sheets específico (Displays, Baterías Android/iPhone) — NUEVO
-    3. fixoem + Sheet genérico (fallback final)
+    """Pipeline de precios con fuentes apropiadas según refacción:
+
+    Si refaccion == "display":
+      1. Hugo Shop (primero) — tiene displays
+      2. Google Sheets (si Hugo no tiene)
+      3. fixoem + Sheet genérico
+
+    Si refaccion == "bateria" o "tapa":
+      1. Google Sheets directo (Hugo Shop no tiene)
+      2. fixoem + Sheet genérico
 
     Es el reemplazo directo de obtener_cotizacion_display() para brain.py.
     """
     from agent.pricing import obtener_cotizacion_display
 
-    respuesta_hugo = await obtener_cotizacion_display(marca, modelo)
+    # DISPLAYS: intentar Hugo Shop primero
+    if refaccion == "display":
+        respuesta_hugo = await obtener_cotizacion_display(marca, modelo)
+        if not es_respuesta_no_disponible(respuesta_hugo):
+            return respuesta_hugo
+        logger.info(f"[PRICING] Hugo Shop no tiene DISPLAY '{marca} {modelo}', intentando Google Sheets...")
+    else:
+        # BATERÍAS / TAPAS: Hugo Shop no tiene, ir directo a Google Sheets
+        logger.info(f"[PRICING] Refacción '{refaccion}' no está en Hugo Shop, consultando Google Sheets directo...")
+        respuesta_hugo = None
 
-    # Si Hugo Shop SÍ tiene la pieza (no es mensaje de "no disponible"), usarla.
-    if not es_respuesta_no_disponible(respuesta_hugo):
-        return respuesta_hugo
-
-    # Hugo Shop no tiene → intentar Google Sheets específico
-    logger.info(f"[PRICING] Hugo Shop no tiene '{marca} {modelo}', intentando Google Sheets específico...")
+    # Intentar Google Sheets específico (funciona para displays, baterías y tapas)
     try:
         logger.info(f"[PRICING] Llamando cotizar_google_sheets(marca={marca}, modelo={modelo}, refaccion={refaccion})")
         respuesta_sheets = await cotizar_google_sheets(marca, modelo, refaccion)
         logger.info(f"[PRICING] Respuesta de Google Sheets: {respuesta_sheets is not None}")
         if respuesta_sheets:
-            logger.info(f"[PRICING] Google Sheets encontró '{marca} {modelo}'")
+            logger.info(f"[PRICING] Google Sheets encontró '{marca} {modelo}' ({refaccion})")
             return respuesta_sheets
     except Exception as e:
         logger.error(f"[PRICING] EXCEPCIÓN en Google Sheets: {type(e).__name__}: {e}", exc_info=True)
@@ -498,6 +508,6 @@ async def cotizar_con_fallback(
         logger.info(f"[PRICING] fixoem/Sheet genérico encontraron '{marca} {modelo}'")
         return externa
 
-    # Nadie tiene → devolver el mensaje de Hugo Shop (pide aclaración / módulo)
-    logger.info(f"[PRICING] Ninguna fuente tiene '{marca} {modelo}'")
-    return respuesta_hugo
+    # Nadie tiene → devolver el mensaje de Hugo Shop si aplica, o None
+    logger.info(f"[PRICING] Ninguna fuente tiene '{marca} {modelo}' ({refaccion})")
+    return respuesta_hugo or None
