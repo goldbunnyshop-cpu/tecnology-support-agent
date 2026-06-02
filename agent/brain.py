@@ -4,6 +4,7 @@
 import os
 import re
 import yaml
+import asyncio
 import logging
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
@@ -317,17 +318,32 @@ async def generar_respuesta(
     mensajes = [{"role": m["role"], "content": m["content"]} for m in historial]
     mensajes.append({"role": "user", "content": mensaje})
 
-    try:
-        response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=mensajes,
-        )
-        respuesta = response.content[0].text
-        logger.info(f"[{asesor}] Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
-        return respuesta
+    # Retry logic: reintentar si error 529 (Overloaded) o timeout
+    max_intentos = 3
+    espera_inicial = 1  # segundos
 
-    except Exception as e:
-        logger.error(f"Error Claude API: {e}")
-        return obtener_mensaje_error()
+    for intento in range(max_intentos):
+        try:
+            response = await client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=system_prompt,
+                messages=mensajes,
+            )
+            respuesta = response.content[0].text
+            logger.info(f"[{asesor}] Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
+            return respuesta
+
+        except Exception as e:
+            error_str = str(e).lower()
+            # Si es error 529 (Overloaded) o timeout, reintentar con backoff
+            if ("529" in str(e) or "overload" in error_str or "timeout" in error_str) and intento < max_intentos - 1:
+                espera = espera_inicial * (2 ** intento)  # exponential backoff: 1s, 2s, 4s
+                logger.warning(f"[{asesor}] Error transitorio (intento {intento + 1}/{max_intentos}): {e}")
+                logger.info(f"[{asesor}] Reintentando en {espera} segundos...")
+                await asyncio.sleep(espera)
+                continue
+
+            # Si es otro error o último intento fallido, retornar error
+            logger.error(f"[{asesor}] Error Claude API (intento {intento + 1}/{max_intentos}): {e}")
+            return obtener_mensaje_error()
