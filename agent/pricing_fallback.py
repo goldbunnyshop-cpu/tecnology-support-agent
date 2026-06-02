@@ -465,47 +465,53 @@ async def cotizar_con_fallback(
     marca: str, modelo: str, refaccion: str = "display"
 ) -> str:
     """Pipeline de precios con 3+ fuentes:
-    1. Hugo Shop (primero) — tiene muchos displays
+    1. Hugo Shop (primero) — SOLO para displays
     2. Google Sheets (624 productos: displays, baterías Android/iPhone)
     3. fixoem + Sheet genérico (fallback final)
 
-    Todas las fuentes se consultan para ANY refacción (display, bateria, tapa).
-    Es el reemplazo directo de obtener_cotizacion_display() para brain.py.
+    CAMBIO: Si refacción != "display", SALTAR Hugo Shop e ir directo a Google Sheets
+    (Hugo Shop solo tiene displays, no baterías ni tapas).
     """
     from agent.pricing import obtener_cotizacion_display
 
-    # 1. Intentar Hugo Shop primero (tiene displays principalmente)
-    respuesta_hugo = await obtener_cotizacion_display(marca, modelo)
+    respuesta_hugo = None
 
-    # Si Hugo Shop tiene la pieza (no es "no disponible"), usarla
-    if not es_respuesta_no_disponible(respuesta_hugo):
-        # PERO: si refacción es bateria/tapa y Hugo Shop pide variante, no es válido
-        # (Hugo Shop no entiende esas refacciones, solo displays)
-        if refaccion != "display" and "necesito que me digas" in respuesta_hugo.lower():
-            logger.info(f"[PRICING] Hugo Shop pide variante pero refacción='{refaccion}' (no es display). Intentando Google Sheets...")
-        else:
-            # Hugo Shop tiene la pieza y es válido
+    # 1. SOLO intentar Hugo Shop si refacción es display
+    if refaccion == "display":
+        logger.info(f"[PRICING] Intentando Hugo Shop para DISPLAY: {marca} {modelo}")
+        respuesta_hugo = await obtener_cotizacion_display(marca, modelo)
+
+        # Si Hugo Shop tiene la pieza (no es "no disponible"), usarla
+        if not es_respuesta_no_disponible(respuesta_hugo):
+            logger.info(f"[PRICING] Hugo Shop encontró display: {marca} {modelo}")
             return respuesta_hugo
+        logger.info(f"[PRICING] Hugo Shop no tiene display: {marca} {modelo}")
+    else:
+        logger.info(f"[PRICING] Refacción={refaccion} (no es display), SALTANDO Hugo Shop → Google Sheets")
 
-    # 2. Hugo Shop no tiene o no es válido → intentar Google Sheets
-    logger.info(f"[PRICING] Hugo Shop no tiene '{marca} {modelo}' ({refaccion}), intentando Google Sheets...")
+    # 2. Hugo Shop no tiene o refacción != display → intentar Google Sheets
+    logger.info(f"[PRICING] Llamando Google Sheets(marca={marca}, modelo={modelo}, refaccion={refaccion})")
     try:
-        logger.info(f"[PRICING] Llamando cotizar_google_sheets(marca={marca}, modelo={modelo}, refaccion={refaccion})")
         respuesta_sheets = await cotizar_google_sheets(marca, modelo, refaccion)
         logger.info(f"[PRICING] Respuesta de Google Sheets: {respuesta_sheets is not None}")
         if respuesta_sheets:
             logger.info(f"[PRICING] Google Sheets encontró '{marca} {modelo}' ({refaccion})")
             return respuesta_sheets
+        logger.info(f"[PRICING] Google Sheets NO encontró '{marca} {modelo}' ({refaccion})")
     except Exception as e:
         logger.error(f"[PRICING] EXCEPCIÓN en Google Sheets: {type(e).__name__}: {e}", exc_info=True)
 
     # 3. Google Sheets no tiene → intentar fixoem + Sheet genérico
-    logger.info(f"[PRICING] Google Sheets no tiene, intentando fixoem + Sheet genérico...")
+    logger.info(f"[PRICING] Intentando fixoem + Sheet genérico para '{marca} {modelo}' ({refaccion})...")
     externa = await cotizar_fuentes_externas(marca, modelo, refaccion)
     if externa:
         logger.info(f"[PRICING] fixoem/Sheet genérico encontraron '{marca} {modelo}'")
         return externa
 
-    # Nadie tiene → devolver el mensaje de Hugo Shop (pide aclaración / módulo)
+    # Nadie tiene → si tenemos respuesta de Hugo Shop, devolverla; si no, devolver genérica
+    if respuesta_hugo:
+        logger.info(f"[PRICING] Ninguna fuente tiene '{marca} {modelo}' ({refaccion}), devolviendo Hugo Shop")
+        return respuesta_hugo
+
     logger.info(f"[PRICING] Ninguna fuente tiene '{marca} {modelo}' ({refaccion})")
-    return respuesta_hugo
+    return _mensaje_no_disponible(marca, modelo)

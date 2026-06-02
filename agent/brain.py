@@ -168,7 +168,7 @@ async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
     marca, modelo = _extraer_marca_modelo(mensaje)
     # Detectar tipo de pieza: bateria > tapa > display (default)
     m = (mensaje or "").lower()
-    if re.search(r"\b(bater[ií]a|pila)\b", m):
+    if re.search(r"\b(bater[ií]a|bateria|pila)\b", m):  # FIX: Incluir "bateria" sin acento
         refaccion = "bateria"
     elif "tapa" in m:
         refaccion = "tapa"
@@ -176,12 +176,15 @@ async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
         refaccion = "display"
     try:
         if marca and modelo:
+            # SIEMPRE usar cotizar_con_fallback para acceder a Google Sheets
             r = await cotizar_con_fallback(marca, modelo, refaccion)
             return _limpiar_respuesta_pricing(r)
         if modelo:
-            r = await buscar_modelo_sin_marca(modelo)
+            # FIX: Usar cotizar_con_fallback incluso sin marca (Hugo Shop → Google Sheets)
+            r = await cotizar_con_fallback("", modelo, refaccion)
             return _limpiar_respuesta_pricing(r)
-        r = await buscar_modelo_sin_marca(mensaje)
+        # Sin modelo: pedir información
+        r = await cotizar_con_fallback("", mensaje, refaccion)
         return _limpiar_respuesta_pricing(r)
     except Exception as e:
         logger.error(f"[PRICING] Error en consulta directa: {e}")
@@ -221,7 +224,8 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     if (marca_prev and modelo_prev) and not marca_actual and not modelo_actual:
         m_lower = m.lower()
         # Detectar si es SOLO cambio de refacción sin nuevo dispositivo
-        if re.search(r"\b(también|ademas|y)\s+(bater[ií]a|pila|display|pantalla|tapa)", m_lower):
+        # FIX: Incluir "bateria" sin acento + "batería" con acento
+        if re.search(r"\b(también|ademas|y)\s+(bater[ií]a|bateria|pila|display|pantalla|tapa)", m_lower):
             # Extraer qué refacción pide
             if re.search(r"\b(bater[ií]a|pila)\b", m_lower):
                 refaccion = "bateria"
