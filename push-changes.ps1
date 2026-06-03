@@ -24,7 +24,7 @@ Write-Host "Cambios agregados" -ForegroundColor Green
 Write-Host ""
 
 # 3. Commit
-$mensaje = "feat: MEJORAR contexto conversacional en consultas de precio - preguntas clarificadoras inteligentes + busqueda amplia de contexto"
+$mensaje = "fix: CRITICO - mejorar scoring Google Sheets - seleccionar precio mas alto en empates"
 Write-Host "[3/4] Haciendo commit: '$mensaje'" -ForegroundColor Yellow
 git commit -m $mensaje
 if ($LASTEXITCODE -eq 0) {

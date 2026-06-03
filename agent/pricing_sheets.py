@@ -366,7 +366,8 @@ async def buscar_google_sheets(
         return None
 
     # Retornar el mejor match
-    mejor = max(mejores_resultados, key=lambda x: x[0])
+    # En caso de empate de scores, selecciona el precio más alto
+    mejor = max(mejores_resultados, key=lambda x: (x[0], -x[1].get('precio_3', x[1].get('p_unitario', 0))))
     score, producto, hoja = mejor[0], mejor[1], mejor[2]
     logger.info(f"[SHEETS] Encontrado en {hoja}: '{producto.get('nombre')}' (score: {score})")
 
@@ -397,7 +398,7 @@ async def formatear_cotizacion_sheets(producto: Dict, marca: str = "", modelo: s
         precios = [p for p in [p1, p2, p3] if p]
         if precios:
             precio_max = max(precios)  # El precio más alto
-            precio_mxn = int(precio_max * 4)  # Multiplicador ×4
+            precio_mxn = int(precio_max * 3)  # Multiplicador ×3 (margen comercial)
             lineas.append(f"* Calidad Original: ${precio_mxn:,} MXN")
             logger.info(f"[SHEETS] DISPLAYS formateado: {titulo} → precio ${precio_mxn:,} MXN")
         else:

@@ -1,0 +1,222 @@
+================================================================================
+DIAGNOSTICO CRITICO: BUG EN SELECCION DE PRODUCTOS - COTIZACIONES INCORRECTAS
+================================================================================
+
+Fecha: 2026-06-03
+Usuario: Christian (goldbunnyshop@gmail.com)
+Severidad: CRITICA
+Area Afectada: Motor de precios - pricing_sheets.py - Scoring/busqueda de productos
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+El motor de pricing esta seleccionando el PRODUCTO INCORRECTO de Google Sheets,
+resultando en cotizaciones muy bajas.
+
+Ejemplo real:
+- Cliente pregunta: "Precio display iPhone 13 mini?"
+- Bot responde: "Display Calidad Original: $2,360 MXN" [INCORRECTO]
+- Lo correcto seria: "Display de Diagnostico: ~$4,000 MXN" [CORRECTO]
+
+================================================================================
+ANALISIS DEL PROBLEMA
+================================================================================
+
+LO QUE PASO (Escenario 1: iPhone 13 mini)
+
+ENTRADA: "Precio display iPhone 13 mini"
+         |
+         v
+BUSQUEDA en Google Sheets (gid=1452574805 - DISPLAYS)
+         |
+         v
+ENCONTRADOS 2 DISPLAYS para iPhone 13 mini:
+  1. Display Calidad Original => 590 MXN base * 4 = 2,360 MXN [SELECCIONADO - INCORRECTO]
+  2. Display de Diagnostico => 1,000 MXN base * 4 = 4,000 MXN [DEBERIA SELECCIONAR - CORRECTO]
+         |
+         v
+SALIDA: "Display Calidad Original: $2,360 MXN" [INCORRECTO]
+
+ROOT CAUSE:
+
+El scoring en pricing_sheets.py (lineas 355-373) esta seleccionando el
+producto INCORRECTO:
+
+  # Linea 369-370 (PROBLEMA)
+  mejor = max(mejores_resultados, key=lambda x: x[0])
+
+HIPOTESIS:
+- Ambos displays tienen el MISMO SCORE (contienen "display" + "iphone" + "13" + "mini")
+- Cuando hay empate, max() retorna el PRIMERO de la lista (orden de Google Sheets)
+- El display de 590 MXN aparece ANTES en el sheet que el de 1,000 MXN
+- RESULTADO: Se selecciona el de 590 MXN [INCORRECTO]
+
+================================================================================
+DATOS EN GOOGLE SHEETS (DISPLAYS)
+================================================================================
+
+Sheet: DISPLAYS (gid=1452574805)
+Rango: Rows 431-448
+Estructura:
+
+| Fila | Nombre | Categoria | Precio 1 | Precio 2 | Precio 3 |
+|------|--------|-----------|----------|----------|----------|
+| ?    | Display Calidad Original [iPhone 13 mini] | ... | 590 | ??? | ??? |
+| ?    | Display de Diagnostico [iPhone 13 mini] | ... | 1000 | ??? | ??? |
+
+PROBLEMA IDENTIFICADO:
+- Fila con "Calidad Original de 590 MXN" aparece ANTES que "de Diagnostico de 1,000 MXN"
+- Cuando ambas tienen el mismo score, se selecciona la primera
+- RESULTADO: Cotizacion de 2,360 MXN en lugar de 4,000 MXN
+
+================================================================================
+SINTOMAS ADICIONALES
+================================================================================
+
+Sintoma 2: Cotizaciones espontaneas de iPhone 12
+
+Reporte: "Algunas conversaciones iniciales estan dando cotizaciones de iPhone 12
+display sin que el usuario haya preguntado por modelo ni marca"
+
+Causa probable:
+- Mismo problema de scoring - selecciona el primer resultado aunque no sea el mejor match
+- O hay un default hardcodeado que retorna iPhone 12
+
+================================================================================
+ARCHIVOS AFECTADOS
+================================================================================
+
+1. agent/pricing_sheets.py (CRITICO)
+
+Funcion afectada: buscar_google_sheets() (lineas 307-373)
+
+  # LINEAS 354-373 (PROBLEMA)
+  mejor = max(mejores_resultados, key=lambda x: x[0])
+  score, producto, hoja = mejor[0], mejor[1], mejor[2]
+  logger.info(f"[SHEETS] Encontrado en {hoja}: '{producto.get('nombre')}' (score: {score})")
+  return producto
+
+Problema:
+- Cuando hay EMPATE de scores, max() retorna el primer resultado
+- No hay desempate (tie-breaking logic)
+- No hay priorizacion de productos por precio o nombre
+
+2. agent/pricing_sheets.py (LOGICA DE SCORING)
+
+Funcion: _score_coincidencia() (lineas ~285-304)
+
+  def _score_coincidencia(nombre_producto, tokens_query, marca, modelo):
+      # Cuenta coincidencias de tokens
+      coincidencias = sum(1 for tok in tokens_query if tok in nombre_lower)
+      return coincidencias if coincidencias >= 2 else 0
+
+Problema:
+- Scoring muy simple: solo cuenta tokens coincidentes
+- No diferencia entre buenos matches y malos matches
+- No considera la CALIDAD del match
+
+================================================================================
+INFORMACION GUARDADA (ESTADOS ESPERADOS)
+================================================================================
+
+Multiplicador:
+- ESTA CORRECTO en x4
+- NO cambiar
+- Google Sheets => precio base * 4 = precio cliente
+
+Estructura de precios esperada:
+Display Generico:       ~800 MXN base   => $3,200 MXN cliente (x4)
+Display de Diagnostico: ~1,000 MXN base => $4,000 MXN cliente (x4)
+Display Original:       ~1,200 MXN base => $4,800 MXN cliente (x4)
+
+================================================================================
+SOLUCIONES PROPUESTAS
+================================================================================
+
+OPCION A: REORDENAR Google Sheets
+Mas simple - Cambio manual en Google Sheets
+1. Mover fila "Display de Diagnostico de 1,000 MXN" a ser la PRIMERA
+2. Resultado: Cuando hay empate, se selecciona la correcta (primera)
+3. Ventaja: No tocar codigo
+4. Desventaja: Fragil - depende del orden
+
+OPCION B: MEJORAR SCORING (RECOMENDADO)
+Robusto - Cambio en codigo
+
+Agregar tie-breaking logic:
+  # Cuando hay empate, seleccionar por:
+  # 1. Mejor match (score mas alto) - YA HACE
+  # 2. Si empate => seleccionar el precio MAS ALTO (preferir original)
+  # 3. Si aun hay empate => seleccionar por orden alfabetico
+
+Cambio en buscar_google_sheets() lineas 369-370:
+
+  # ACTUAL (INCORRECTO)
+  mejor = max(mejores_resultados, key=lambda x: x[0])
+
+  # PROPUESTO (CORRECTO)
+  mejor = max(
+      mejores_resultados,
+      key=lambda x: (x[0], -x[1].get('precio_3', x[1].get('p_unitario', 0)))
+  )
+
+OPCION C: AGREGAR FILTRO DE CALIDAD
+Especifico - Priorizar productos con ciertos keywords
+- Si encuentra "Diagnostico" => priorizar
+- Si encuentra "Original" => priorizar menos
+- Si encuentra "Generico" => priorizar menos
+
+================================================================================
+CHECKLIST PARA CLAUDE CODE
+================================================================================
+
+[ ] Revisar Google Sheets (gid=1452574805) filas 431-448
+[ ] Confirmar orden de productos (Calidad Original antes que Diagnostico?)
+[ ] Revisar scoring en pricing_sheets.py lineas 354-373
+[ ] Implementar tie-breaking por precio (Opcion B recomendada)
+[ ] Agregar logs detallados: mostrar TODOS los matches encontrados
+[ ] Hacer test: "Precio display iPhone 13 mini" => debe retornar ~$4,000 MXN
+[ ] Hacer test: "Precio display iPhone 12" => verificar que NO es espontaneo
+[ ] Verificar que multiplicador x4 no cambie
+[ ] Hacer deploy a Railway
+
+================================================================================
+TEST CASES PARA VALIDAR FIX
+================================================================================
+
+TEST 1: iPhone 13 mini display
+Entrada: "Precio display iPhone 13 mini"
+Esperado: ~$4,000 MXN (Display de Diagnostico de 1,000 * 4)
+Actual: $2,360 MXN (Display Calidad Original de 590 * 4) [INCORRECTO]
+
+TEST 2: iPhone 12 display
+Entrada: "Precio display iPhone 12"
+Esperado: ~$4,000 MXN (si existe en sheets)
+Verificar: No debe retornar en conversacion inicial sin contexto
+
+TEST 3: Display Samsung S21
+Entrada: "Precio display Samsung S21"
+Esperado: Precio correcto segun Google Sheets
+Verificar: Selecciona el display CORRECTO (mas alto, original)
+
+================================================================================
+NOTAS IMPORTANTES
+================================================================================
+
+1. El multiplicador x4 es CORRECTO - No cambiar
+2. El problema es la SELECCION del producto - Scoring debil
+3. Google Sheets tiene datos correctos - Solo necesita tie-breaking en codigo
+4. Prioridad: Implementar Opcion B (tie-breaking por precio)
+5. Urgencia: CRITICA - Las cotizaciones estan saliendo incorrectas
+
+================================================================================
+CONTACTO
+================================================================================
+
+Usuario: Christian
+Email: goldbunnyshop@gmail.com
+Negocio: Reparacion de celulares, laptops, tablets, drones, etc.
+
+Ultima actualizacion: 2026-06-03 14:XX
+Diagnostico por: Claude (en sesion con Christian)
