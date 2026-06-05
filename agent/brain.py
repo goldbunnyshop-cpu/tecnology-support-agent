@@ -50,12 +50,15 @@ _PATRON_NO_DISPLAY = re.compile(
 )
 
 _PATRON_MODELO_CORTO = re.compile(
-    r"^\s*(?:el\s+|del\s+|de\s+)?[a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe|lite|neo|mini|se))?\s*\??\s*$",
+    r"^\s*(?:el\s+|del\s+|de\s+|es\s+un\s+|tengo\s+un\s+)?"
+    r"[a-z]?\d{1,4}"
+    r"(?:\s*(?:\+|plus|ultra|pro|max|fe|lite|neo|mini|se)){0,2}"  # hasta 2 variantes: "pro max"
+    r"\s*\??\s*$",
     re.I,
 )
 
 _PATRON_MODELO_EN_TEXTO = re.compile(
-    r"\b([a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe))?)\b",
+    r"\b([a-z]?\d{1,4}(?:\s*(?:\+|plus|ultra|pro|max|fe|lite|neo|mini|se)){0,2})\b",
     re.I,
 )
 
@@ -79,6 +82,18 @@ def _limpiar_respuesta_pricing(texto: str) -> str:
     return t
 
 
+def _modelo_plausible(modelo: str | None) -> str | None:
+    """Un modelo válido tiene al menos un dígito (14, a54, edge 40, p30...).
+
+    Evita que frases de relleno ('hola cuanto cuesta la de un') se cuelen como
+    'modelo' y generen cotizaciones corruptas. Si no hay dígito → no es modelo.
+    """
+    if not modelo:
+        return None
+    modelo = modelo.strip(" :,-")
+    return modelo if re.search(r"\d", modelo) else None
+
+
 def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
     """Intenta extraer marca+modelo de un mensaje libre."""
     txt = (mensaje or "").lower()
@@ -90,12 +105,14 @@ def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
             modelo = re.sub(rf".*?\b{re.escape(alias)}\b", "", txt_limpio, count=1).strip(" :,-")
             if not modelo and alias in txt_limpio:
                 modelo = txt_limpio.replace(alias, "").strip(" :,-")
-            return marca, (modelo or None)
+            # Solo aceptar el modelo si parece un modelo real (tiene dígito);
+            # de lo contrario marca conocida pero sin modelo → se pedirá el modelo.
+            return marca, _modelo_plausible(modelo)
     # Sin marca explícita, intentar extraer modelo de la frase limpia
     m = _PATRON_MODELO_EN_TEXTO.search(txt_limpio)
     if m:
         return None, m.group(1).strip()
-    return None, txt_limpio or None
+    return None, _modelo_plausible(txt_limpio)
 
 
 def _normalizar_consulta_pricing(texto: str) -> str:
@@ -157,14 +174,21 @@ def _es_respuesta_marca(mensaje: str) -> str | None:
 
 
 def _buscar_ultima_marca_historial(historial: list[dict]) -> str | None:
-    """Busca la ÚLTIMA marca mencionada en el historial (últimos 20 mensajes = contexto de sesión)."""
+    """Busca la ÚLTIMA marca mencionada en el historial (últimos 20 mensajes = contexto de sesión).
+
+    Detecta la marca aunque venga dentro de una frase ("pantalla de un iphone 14"),
+    no solo cuando el cliente respondió únicamente la marca. Así el contexto de marca
+    persiste durante toda la conversación.
+    """
     if not historial:
         return None
     # Buscar en los últimos 20 mensajes
     for msg in reversed(historial[-20:]):
         if msg.get("role") != "user":
             continue
-        marca = _es_respuesta_marca(msg.get("content") or "")
+        contenido = msg.get("content") or ""
+        # Primero marca-sola; si no, extraer marca de la frase completa.
+        marca = _es_respuesta_marca(contenido) or _extraer_marca_modelo(contenido)[0]
         if marca:
             return marca
     return None
@@ -200,16 +224,23 @@ def _generar_pregunta_clarificadora(mensaje: str, marca_prev: str | None, modelo
     return None
 
 
-async def _resolver_pricing_desde_texto(mensaje: str) -> str | None:
-    marca, modelo = _extraer_marca_modelo(mensaje)
-    # Detectar tipo de pieza: bateria > tapa > display (default)
+def _detectar_refaccion(mensaje: str) -> str:
+    """Tipo de pieza solicitada: bateria > tapa > display (default)."""
     m = (mensaje or "").lower()
-    if re.search(r"\b(bater[ií]a|bateria|pila)\b", m):  # FIX: Incluir "bateria" sin acento
-        refaccion = "bateria"
-    elif "tapa" in m:
-        refaccion = "tapa"
-    else:
-        refaccion = "display"
+    if re.search(r"\b(bater[ií]a|bateria|pila)\b", m):
+        return "bateria"
+    if "tapa" in m:
+        return "tapa"
+    return "display"
+
+
+async def _resolver_pricing_desde_texto(mensaje: str, marca_ctx: str | None = None) -> str | None:
+    marca, modelo = _extraer_marca_modelo(mensaje)
+    # Si el mensaje no trae marca pero la conversación ya la estableció, usarla.
+    if not marca and marca_ctx:
+        marca = marca_ctx
+    refaccion = _detectar_refaccion(mensaje)
+    m = (mensaje or "").lower()
     try:
         logger.info(f"[PRICING] RESOLVER_PRICING: marca='{marca}', modelo='{modelo}', refaccion='{refaccion}'")
         if marca and modelo:
@@ -265,7 +296,11 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     # ACTUAL. NO se enruta por la sola presencia de una marca: eso desviaba al motor
     # consultas que no eran de pantalla.
     if modelo_actual and (es_display or es_consulta_precio or es_modelo_breve):
-        return await _resolver_pricing_desde_texto(mensaje)
+        # Si el mensaje trae modelo pero no marca, heredar la marca del contexto
+        # (ej. cliente respondió "14 pro max" tras hablar del iPhone). Sin esto la
+        # búsqueda sin marca matcheaba productos equivocados / precios absurdos.
+        marca_ctx = marca_actual or _buscar_ultima_marca_historial(historial)
+        return await _resolver_pricing_desde_texto(mensaje, marca_ctx)
 
     # Pidió pantalla pero sin modelo aún (ej: "cuánto cuesta la pantalla de un iphone").
     if es_display:
@@ -281,7 +316,7 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
         m_lower = m.lower()
         # Detectar si es SOLO cambio de refacción sin nuevo dispositivo
         # FIX: Incluir "bateria" sin acento + "batería" con acento
-        if re.search(r"\b(también|ademas|y)\s+(bater[ií]a|bateria|pila|display|pantalla|tapa)", m_lower):
+        if re.search(r"\b(también|tambien|ademas|además|y)\s+(?:la\s+|el\s+|de\s+)?(bater[ií]a|bateria|pila|display|pantalla|tapa)", m_lower):
             # Extraer qué refacción pide
             if re.search(r"\b(bater[ií]a|pila)\b", m_lower):
                 refaccion = "bateria"

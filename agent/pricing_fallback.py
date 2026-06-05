@@ -456,6 +456,11 @@ _INDICADORES_NO_DISPONIBLE = (
     "acude al modulo",
     "necesito que me digas",
     "alternativas compatibles",
+    # Formato de _mensaje_no_disponible() cuando hay marca+modelo pero no está en
+    # Hugo Shop: "❌ Disculpa, no tenemos *X* disponible en este momento". Sin esto
+    # la cadena de fallback se detenía y nunca consultaba Google Sheets/fixoem.
+    "no tenemos",
+    "disponible en este momento",
 )
 
 
