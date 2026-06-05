@@ -431,45 +431,77 @@ ETIQUETAS_CATEGORIA = {
 }
 
 
-def _formatear_cotizacion(marca: str, modelo: str, productos: list[dict]) -> str:
-    """Construye la cotizacion final con promedios por categoria.
+def clasificar_calidad_titulo(titulo: str, es_display: bool) -> str | None:
+    """Clasifica la calidad a partir del TITULO del producto (no de una columna CALIDAD).
 
-    Para multiples sub-calidades dentro de la misma categoria (ej INCELL + CARTAN
-    INCELL ambos GENERICO), se promedia y se muestra UN solo precio etiquetado
-    como 'Calidad Generica'.
+    A diferencia de obtener_categoria() (pensada para la columna CALIDAD de Hugo),
+    aqui INCELL / COPIA / IPS / LCD DOMINAN sobre 'FHD': un "Incell FHD" es un panel
+    GENERICO (FHD describe la resolucion, no es premium). Lo usan las fuentes cuya
+    calidad viene escrita en el nombre del producto (Google Sheets, fixoem):
+
+      'iPhone 13 Incell FHD'      -> GENERICO
+      'iPhone 13 Pro Max Oled'    -> ORIGINAL
+      'Hisense E50 Copia Alta'    -> GENERICO
+      'Honor 90 Original con Marco' -> ORIGINAL
+      'Display ... Amoled'        -> AMOLED
     """
-    productos_por_categoria = defaultdict(list)
+    if not titulo:
+        return None
+    c = titulo.upper()
+    if 'AMOLED' in c:
+        return 'AMOLED'
+    tiene_generico = any(p in c for p in (
+        'INCELL', 'IN-CELL', 'COG', 'IPS', 'LCD', 'COPIA', 'GENERIC', 'GENÉRIC',
+    ))
+    tiene_original = any(p in c for p in (
+        'OLED', 'ORIGINAL', 'ORIG', ' COF', 'DD SOFT', 'HG ORIG',
+    ))
+    # INCELL/COPIA mandan: si aparecen, es generico aunque tambien diga FHD/ORIG.
+    if tiene_generico:
+        return 'GENERICO'
+    if tiene_original:
+        return 'ORIGINAL'
+    # Sin pista de calidad: un display suele ser un LCD comun (generico);
+    # otras piezas (tapa, bateria) no tienen tiers de calidad.
+    return 'GENERICO' if es_display else None
+
+
+def _categorias_finales(productos: list[dict]) -> dict[str, list[float]]:
+    """De productos de Hugo Shop arma {CATEGORIA: [precios_finales_mxn]}.
+
+    Cada precio se convierte ya a MXN aplicando el multiplicador de su categoria
+    (GENERICO/ORIGINAL x4, AMOLED x3). Asi el resultado es comparable y se puede
+    FUSIONAR con el de otras fuentes (Google Sheets) sin importar la moneda base.
+    """
+    categorias: dict[str, list[float]] = defaultdict(list)
     for p in productos:
         cat = obtener_categoria(p.get('CALIDAD', ''))
-        if cat:
-            productos_por_categoria[cat].append(p)
+        precio = p.get('PRECIO_USD')
+        if cat and precio:
+            mult = MULTIPLICADOR_POR_CATEGORIA.get(cat, MULTIPLICADOR_USD_A_MXN)
+            categorias[cat].append(precio * mult)
+    return categorias
 
-    if not productos_por_categoria:
-        return _mensaje_no_disponible(marca, modelo)
 
+def formatear_cotizacion_tiers(marca: str, modelo: str, categorias: dict[str, list[float]]) -> str:
+    """Formatea la cotizacion mostrando UNA linea por calidad disponible.
+
+    `categorias` es {CATEGORIA: [precios_finales_mxn]}. Se promedia cada categoria
+    y se muestra en el orden Generica -> Original -> AMOLED. La idea es SIEMPRE
+    ofrecer las calidades que existan (idealmente la barata y la cara).
+    """
     lineas = [f"Para {marca} {modelo.upper()} tenemos estas opciones:\n"]
+    hay_precios = False
     for categoria in ('GENERICO', 'ORIGINAL', 'AMOLED'):
-        productos_cat = productos_por_categoria.get(categoria)
-        if not productos_cat:
-            continue
-        precios = [p['PRECIO_USD'] for p in productos_cat if p.get('PRECIO_USD')]
+        precios = categorias.get(categoria)
         if not precios:
             continue
-        promedio_usd = sum(precios) / len(precios)
-        multiplicador = MULTIPLICADOR_POR_CATEGORIA.get(categoria, MULTIPLICADOR_USD_A_MXN)
-        precio_mxn = int(promedio_usd * multiplicador)
-        etiqueta = ETIQUETAS_CATEGORIA[categoria]
-        linea = f"* {etiqueta}: ${precio_mxn:,} MXN"
+        precio_mxn = int(sum(precios) / len(precios))
+        lineas.append(f"* {ETIQUETAS_CATEGORIA[categoria]}: ${precio_mxn:,} MXN")
+        hay_precios = True
 
-        # Listar colores solo si hay precios distintos por color
-        precios_por_color = {}
-        for p in productos_cat:
-            color = p.get('COLOR') or 'Sin especificar'
-            precios_por_color.setdefault(color, []).append(p['PRECIO_USD'])
-        if len(precios_por_color) > 1:
-            colores = sorted(precios_por_color.keys())
-            linea += f"  (disponible en: {', '.join(colores)})"
-        lineas.append(linea)
+    if not hay_precios:
+        return _mensaje_no_disponible(marca, modelo)
 
     lineas.append("")
     lineas.append("Cada display incluye: diagnostico, garantia 90 dias y cambio el mismo dia.")
@@ -481,6 +513,11 @@ def _formatear_cotizacion(marca: str, modelo: str, productos: list[dict]) -> str
         "'Calidad Generica', 'Calidad Original', 'AMOLED' - sin tecnicismos en parentesis):\n\n"
         f"{cuerpo}"
     )
+
+
+def _formatear_cotizacion(marca: str, modelo: str, productos: list[dict]) -> str:
+    """Cotizacion de Hugo Shop: agrupa por categoria y muestra un precio por calidad."""
+    return formatear_cotizacion_tiers(marca, modelo, _categorias_finales(productos))
 
 
 def _formatear_modelo(base: str, variante: str | None) -> str:
@@ -553,22 +590,30 @@ def _mensaje_no_disponible(marca: str, modelo: str) -> str:
 # API PUBLICA
 # ============================================================
 
-async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
-    """Punto de entrada usado por brain.py / tools.py."""
+def _resolver_match_hugo(marca: str, modelo: str) -> dict:
+    """Nucleo de matching contra Hugo Shop. NO formatea: devuelve un resultado
+    estructurado para que lo consuman tanto la cotizacion directa como el merge
+    con Google Sheets.
+
+    Retorna uno de:
+      {"tipo": "no_disponible"}
+      {"tipo": "variante", "respuesta": <pregunta para el cliente>}
+      {"tipo": "ok", "modelo": <modelo formateado>, "productos": [<dict de Hugo>...]}
+    """
     marca_csv = _marca_canonica(marca)
     if not marca_csv:
         logger.warning(f"[PRICING] Marca no reconocida: {marca}")
-        return _mensaje_no_disponible(marca, modelo)
+        return {"tipo": "no_disponible"}
 
     productos = cargar_csv_hugo()
     productos_marca = [p for p in productos if p.get('MARCA') == marca_csv]
     if not productos_marca:
         logger.warning(f"[PRICING] Sin productos para marca {marca_csv}")
-        return _mensaje_no_disponible(marca, modelo)
+        return {"tipo": "no_disponible"}
 
     base_q, var_q = normalizar_modelo_query(modelo, marca)
     if not base_q:
-        return _mensaje_no_disponible(marca, modelo)
+        return {"tipo": "no_disponible"}
 
     # Mapear cada producto a las variantes que cubre para el base solicitado.
     # Un producto multi-modelo (ej "V60/E60") puede cubrir varias variantes; cada
@@ -583,7 +628,7 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
 
     if not matches:
         logger.warning(f"[PRICING] Sin coincidencias para {marca} {modelo} (base={base_q})")
-        return _mensaje_no_disponible(marca, modelo)
+        return {"tipo": "no_disponible"}
 
     # Set de variantes unicas en todos los productos coincidentes
     variantes_csv = sorted({(v or '__base__').lower() for _, vs in matches for v in vs})
@@ -595,8 +640,8 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
         exactos = [p for p, vs in matches if any((v or '').lower() == var_q_lower for v in vs)]
         if exactos:
             modelo_completo = _formatear_modelo(base_q, var_q)
-            logger.info(f"[PRICING] Cotizando exacto: {marca} {modelo_completo} ({len(exactos)} productos)")
-            return _formatear_cotizacion(marca, modelo_completo, exactos)
+            logger.info(f"[PRICING] Hugo match exacto: {marca} {modelo_completo} ({len(exactos)} productos)")
+            return {"tipo": "ok", "modelo": modelo_completo, "productos": exactos}
         # Sin exact: si la variante del cliente es prefijo de variantes mas completas
         # (ej "50" prefija "50 fusion", "50 neo", "50 ultra") filtramos a esas.
         variantes_filtradas = sorted({
@@ -605,21 +650,51 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
         })
         if variantes_filtradas:
             logger.info(f"[PRICING] Variante '{var_q}' parcial para {marca} {base_q}. Filtradas: {variantes_filtradas}")
-            return _formatear_pregunta_variantes(marca, base_q, variantes_filtradas)
+            return {"tipo": "variante", "respuesta": _formatear_pregunta_variantes(marca, base_q, variantes_filtradas)}
         logger.info(f"[PRICING] Variante '{var_q}' no existe para {marca} {base_q}. Variantes: {variantes_csv}")
-        return _formatear_pregunta_variantes(marca, base_q, variantes_csv)
+        return {"tipo": "variante", "respuesta": _formatear_pregunta_variantes(marca, base_q, variantes_csv)}
 
     # Cliente NO especifico variante.
     # Si solo existe el base puro (sin variantes) -> cotizar directo todos los productos
     if variantes_csv == ['__base__']:
         productos_base = [p for p, vs in matches if any(v is None for v in vs)]
-        logger.info(f"[PRICING] Cotizando base sin variantes: {marca} {base_q}")
-        return _formatear_cotizacion(marca, base_q, productos_base)
+        logger.info(f"[PRICING] Hugo base sin variantes: {marca} {base_q}")
+        return {"tipo": "ok", "modelo": base_q, "productos": productos_base}
 
     # Hay variantes (con o sin base): preguntar antes de cotizar.
     # Regla estricta: NO cotizar hasta confirmar variante exacta.
     logger.info(f"[PRICING] Pidiendo variante a cliente para {marca} {base_q}. Disponibles: {variantes_csv}")
-    return _formatear_pregunta_variantes(marca, base_q, variantes_csv)
+    return {"tipo": "variante", "respuesta": _formatear_pregunta_variantes(marca, base_q, variantes_csv)}
+
+
+async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
+    """Punto de entrada usado por brain.py / tools.py. Cotiza SOLO con Hugo Shop."""
+    res = _resolver_match_hugo(marca, modelo)
+    if res["tipo"] == "variante":
+        return res["respuesta"]
+    if res["tipo"] == "ok":
+        return _formatear_cotizacion(marca, res["modelo"], res["productos"])
+    return _mensaje_no_disponible(marca, modelo)
+
+
+async def recolectar_categorias_hugo(marca: str, modelo: str) -> dict:
+    """Version estructurada de obtener_cotizacion_display para FUSIONAR con otras
+    fuentes. Devuelve las calidades de Hugo Shop ya en MXN, sin formatear.
+
+    Retorna uno de:
+      {"tipo": "no_disponible"}
+      {"tipo": "variante", "respuesta": <pregunta para el cliente>}
+      {"tipo": "ok", "marca": str, "modelo": str, "categorias": {CAT: [precios_mxn]}}
+    """
+    res = _resolver_match_hugo(marca, modelo)
+    if res["tipo"] != "ok":
+        return res
+    return {
+        "tipo": "ok",
+        "marca": marca,
+        "modelo": res["modelo"],
+        "categorias": _categorias_finales(res["productos"]),
+    }
 
 
 

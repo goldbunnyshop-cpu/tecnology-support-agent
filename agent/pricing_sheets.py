@@ -20,6 +20,13 @@ from typing import Optional, Dict, List, Tuple
 
 import httpx
 
+from agent.pricing import (
+    clasificar_calidad_titulo,
+    formatear_cotizacion_tiers,
+    MULTIPLICADOR_POR_CATEGORIA,
+    MULTIPLICADOR_USD_A_MXN,
+)
+
 logger = logging.getLogger("agentkit")
 
 # ── Configuración ─────────────────────────────────────────────────────────────
@@ -468,11 +475,12 @@ async def buscar_google_sheets(
 
 async def formatear_cotizacion_sheets(producto: Dict, marca: str = "", modelo: str = "") -> str:
     """
-    Formatea la cotización desde Google Sheets en el mismo estilo que Hugo Shop.
+    Formatea la cotización de BATERÍAS desde Google Sheets (precio único).
 
-    CAMBIO IMPORTANTE:
-    - Para DISPLAYS: Mostrar SOLO el precio MÁS ALTO (precio_3) etiquetado como "Calidad"
-    - Para BATERÍAS: Mostrar SOLO el precio Unitario (sin mayoreo ni surtidos)
+    NOTA: los DISPLAYS ya NO pasan por aquí — se cotizan con
+    recolectar_categorias_display_sheets() + formatear_cotizacion_tiers() para
+    mostrar TODAS las calidades (genérica/original/amoled). Esta función queda
+    para piezas de precio único (baterías).
     """
     nombre = producto.get("nombre", "").upper()
     fuente = producto.get("fuente", "")
@@ -480,24 +488,8 @@ async def formatear_cotizacion_sheets(producto: Dict, marca: str = "", modelo: s
 
     lineas = [f"Para {titulo} encontramos estas opciones:\n"]
 
-    # DISPLAYS - Mostrar SOLO el precio MÁS ALTO
-    if "displays" in fuente.lower():
-        p1 = producto.get("precio_1")
-        p2 = producto.get("precio_2")
-        p3 = producto.get("precio_3")
-
-        # Seleccionar el precio más alto (precio_3 es el premium)
-        precios = [p for p in [p1, p2, p3] if p]
-        if precios:
-            precio_max = max(precios)  # El precio más alto
-            precio_mxn = int(precio_max * 3)  # Multiplicador ×3 (margen comercial)
-            lineas.append(f"* Calidad Original: ${precio_mxn:,} MXN")
-            logger.info(f"[SHEETS] DISPLAYS formateado: {titulo} → precio ${precio_mxn:,} MXN")
-        else:
-            logger.warning(f"[SHEETS] DISPLAYS sin precios válidos para {titulo}")
-
     # BATERÍAS ANDROID - Mostrar SOLO el precio Unitario
-    elif "android" in fuente.lower():
+    if "android" in fuente.lower():
         p_unit = producto.get("p_unitario")
 
         if p_unit:
@@ -527,25 +519,40 @@ async def formatear_cotizacion_sheets(producto: Dict, marca: str = "", modelo: s
 
 # ── API pública ────────────────────────────────────────────────────────────────
 
-async def _cotizar_display_iphone(query: str, marca: str, modelo: str) -> Optional[str]:
-    """Cotización de display de iPhone con manejo de variantes.
+def _categorias_desde_productos_sheet(productos: List[Dict]) -> Dict[str, List[float]]:
+    """De productos de la hoja DISPLAYS arma {CATEGORIA: [precios_finales_mxn]}.
 
-    Regla de negocio: si el cliente no especifica la versión exacta (14 vs 14 Pro
-    vs 14 Pro Max) y existe más de una variante en el catálogo, NO adivinamos:
-    preguntamos cuál tiene (igual que Hugo Shop). Solo cotizamos cuando la variante
-    es inequívoca o el cliente ya la confirmó.
+    La calidad se deduce del NOMBRE del producto (Incell/Copia = GENERICO,
+    Oled/Original = ORIGINAL, Amoled = AMOLED). El precio base es el 'Precio
+    Unitario' (precio_1, el de 1 pieza) y se aplica el multiplicador de la
+    categoria (GENERICO/ORIGINAL x4, AMOLED x3) — mismo criterio que Hugo Shop.
     """
-    # Importación diferida para evitar ciclos de import.
+    categorias: Dict[str, List[float]] = defaultdict(list)
+    for p in productos:
+        cat = clasificar_calidad_titulo(p.get("nombre", ""), es_display=True)
+        base = p.get("precio_1")  # Precio Unitario (columna D)
+        if cat and base:
+            mult = MULTIPLICADOR_POR_CATEGORIA.get(cat, MULTIPLICADOR_USD_A_MXN)
+            categorias[cat].append(base * mult)
+    return categorias
+
+
+async def _recolectar_iphone_sheets(query: str, marca: str, modelo: str) -> Dict:
+    """Colector de displays de iPhone con manejo de variantes (estructurado).
+
+    Regla: si el cliente no especifica la versión exacta (14 vs 14 Pro vs 14 Pro
+    Max) y hay más de una variante en el catálogo, NO adivinamos: pedimos cuál
+    tiene (igual que Hugo Shop). Cuando la variante es inequívoca o el cliente ya
+    la confirmó, devolvemos las calidades agrupadas.
+    """
     from agent.pricing import _formatear_pregunta_variantes, _formatear_modelo
 
     base, variante_pedida = _split_base_variante(modelo)
     if not base:
-        # Sin modelo concreto (ej. solo "iphone"): pedir el modelo, no adivinar.
-        logger.info("[SHEETS] iPhone sin modelo concreto → no cotizar, pedir modelo")
-        return None
+        return {"tipo": "no"}
 
     candidatos = await buscar_google_sheets(query, marca, modelo, "display", devolver_todos=True)
-    # Quedarnos con displays de iPhone que contengan el número base exacto.
+    # Displays de iPhone que contengan el número base exacto.
     relevantes = [
         (s, p, h) for (s, p, h) in candidatos
         if "iphone" in p.get("nombre", "").lower()
@@ -553,40 +560,75 @@ async def _cotizar_display_iphone(query: str, marca: str, modelo: str) -> Option
     ]
     if not relevantes:
         logger.info(f"[SHEETS] Sin displays iPhone para base '{base}'")
-        return None
+        return {"tipo": "no"}
 
     # Agrupar por variante presente en el nombre.
     por_variante: Dict[Optional[str], list] = defaultdict(list)
     for s, p, h in relevantes:
         por_variante[_variante_en_titulo(p["nombre"], base)].append(p)
 
-    def _mejor(productos: list) -> Dict:
-        return max(productos, key=_precio_orden)
-
-    # El cliente especificó variante (ej "14 pro max").
     if variante_pedida:
-        if variante_pedida in por_variante:
-            modelo_fmt = _formatear_modelo(base, variante_pedida)
-            logger.info(f"[SHEETS] iPhone variante exacta '{modelo_fmt}'")
-            return await formatear_cotizacion_sheets(_mejor(por_variante[variante_pedida]), "iPhone", modelo_fmt)
-        # Pidió una variante que no tenemos → ofrecer las disponibles.
-        logger.info(f"[SHEETS] Variante '{variante_pedida}' no está; ofreciendo disponibles")
-        return _formatear_pregunta_variantes(
-            "iPhone", base, [v or "__base__" for v in por_variante.keys()]
-        )
+        if variante_pedida not in por_variante:
+            logger.info(f"[SHEETS] Variante '{variante_pedida}' no está; ofreciendo disponibles")
+            return {"tipo": "variante", "respuesta": _formatear_pregunta_variantes(
+                "iPhone", base, [v or "__base__" for v in por_variante.keys()])}
+        productos = por_variante[variante_pedida]
+        modelo_fmt = _formatear_modelo(base, variante_pedida)
+    else:
+        if len(por_variante) > 1:
+            logger.info(f"[SHEETS] iPhone {base} con varias variantes → preguntar versión")
+            return {"tipo": "variante", "respuesta": _formatear_pregunta_variantes(
+                "iPhone", base, [v or "__base__" for v in por_variante.keys()])}
+        unica = next(iter(por_variante))
+        productos = por_variante[unica]
+        modelo_fmt = _formatear_modelo(base, unica) if unica else base.upper()
 
-    # No especificó variante.
-    if len(por_variante) > 1:
-        logger.info(f"[SHEETS] iPhone {base} con varias variantes → preguntar versión")
-        return _formatear_pregunta_variantes(
-            "iPhone", base, [v or "__base__" for v in por_variante.keys()]
-        )
+    categorias = _categorias_desde_productos_sheet(productos)
+    if not categorias:
+        return {"tipo": "no"}
+    logger.info(f"[SHEETS] iPhone {modelo_fmt} calidades: {list(categorias.keys())}")
+    return {"tipo": "ok", "marca": "iPhone", "modelo": modelo_fmt, "categorias": categorias}
 
-    # Una sola variante (o solo el base): cotizar directo.
-    unica_variante = next(iter(por_variante))
-    modelo_fmt = _formatear_modelo(base, unica_variante) if unica_variante else base.upper()
-    logger.info(f"[SHEETS] iPhone {modelo_fmt} variante única → cotizar")
-    return await formatear_cotizacion_sheets(_mejor(por_variante[unica_variante]), "iPhone", modelo_fmt)
+
+async def recolectar_categorias_display_sheets(marca: str, modelo: str) -> Dict:
+    """Colector estructurado de displays en Google Sheets, agrupados por calidad.
+
+    Devuelve las calidades disponibles para el modelo (en MXN, sin formatear) para
+    poder FUSIONARLAS con las de Hugo Shop. Cada línea del Sheet puede listar varios
+    modelos compatibles ('iPhone 12 / 12 Pro', 'Honor X6B / X6B Plus / Play 50M');
+    `_titulo_coincide_modelo` garantiza que solo devolvamos los del modelo pedido.
+
+    Retorna uno de:
+      {"tipo": "no"}
+      {"tipo": "variante", "respuesta": <pregunta para el cliente>}
+      {"tipo": "ok", "marca": str, "modelo": str, "categorias": {CAT: [precios_mxn]}}
+    """
+    from agent.pricing_fallback import _titulo_coincide_modelo
+
+    if not modelo:
+        return {"tipo": "no"}
+    query = " ".join(p for p in ["display", marca, modelo] if p).strip()
+    if not query:
+        return {"tipo": "no"}
+
+    # iPhone celular (no reloj): manejar variantes antes de agrupar.
+    if _es_marca_iphone(marca) and not _es_consulta_reloj(query, marca, modelo):
+        return await _recolectar_iphone_sheets(query, marca, modelo)
+
+    candidatos = await buscar_google_sheets(query, marca, modelo, "display", devolver_todos=True)
+    relevantes = [
+        p for (s, p, h) in candidatos
+        if _titulo_coincide_modelo(p.get("nombre", ""), marca, modelo)
+    ]
+    if not relevantes:
+        logger.info(f"[SHEETS] Sin displays para '{marca} {modelo}'")
+        return {"tipo": "no"}
+
+    categorias = _categorias_desde_productos_sheet(relevantes)
+    if not categorias:
+        return {"tipo": "no"}
+    logger.info(f"[SHEETS] '{marca} {modelo}' calidades: {list(categorias.keys())}")
+    return {"tipo": "ok", "marca": marca, "modelo": modelo, "categorias": categorias}
 
 
 async def cotizar_google_sheets(
@@ -598,7 +640,7 @@ async def cotizar_google_sheets(
     CRÍTICO: Pasa refaccion a buscar_google_sheets() para filtrar hojas.
 
     Retorna:
-      - Cotización formateada si encuentra la pieza
+      - Cotización formateada (con TODAS las calidades disponibles) si encuentra
       - Pregunta de variante si el modelo es ambiguo (iPhone 14 vs 14 Pro vs Pro Max)
       - None si no encontró
     """
@@ -606,11 +648,16 @@ async def cotizar_google_sheets(
     if not query:
         return None
 
-    # Displays de iPhone (celular, no reloj): manejar variantes antes de cotizar.
-    if refaccion == "display" and _es_marca_iphone(marca) and not _es_consulta_reloj(query, marca, modelo):
-        return await _cotizar_display_iphone(query, marca, modelo)
+    # Displays: agrupar por calidad y mostrar todas las opciones (genérica/original/amoled).
+    if refaccion == "display":
+        res = await recolectar_categorias_display_sheets(marca, modelo)
+        if res["tipo"] == "variante":
+            return res["respuesta"]
+        if res["tipo"] == "ok":
+            return formatear_cotizacion_tiers(res.get("marca") or marca, res["modelo"], res["categorias"])
+        return None
 
-    # PASAR refaccion para filtrar las hojas correctas
+    # Baterías / otras piezas (precio único): usar el formateador clásico.
     producto = await buscar_google_sheets(query, marca, modelo, refaccion)
     if not producto:
         return None

@@ -472,39 +472,92 @@ def es_respuesta_no_disponible(respuesta: str) -> bool:
     return any(ind in r for ind in _INDICADORES_NO_DISPONIBLE)
 
 
+def _fusionar_categorias(
+    base: dict[str, list[float]], extra: dict[str, list[float]]
+) -> dict[str, list[float]]:
+    """Fusiona calidades de dos fuentes. `base` (Hugo) manda: `extra` (Sheets) SOLO
+    aporta las calidades que falten. Así, si Hugo trae solo Original, Sheets completa
+    la Genérica (y/o AMOLED) sin pisar lo que Hugo ya tenía."""
+    fusion = {cat: list(precios) for cat, precios in base.items()}
+    for cat, precios in extra.items():
+        if cat not in fusion:
+            fusion[cat] = list(precios)
+    return fusion
+
+
+async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
+    """Cotización de DISPLAY fusionando Hugo Shop + Google Sheets.
+
+    Objetivo: SIEMPRE ofrecer las calidades disponibles (idealmente la barata
+    'Calidad Generica' y la cara 'Calidad Original', y 'AMOLED' si existe). Si una
+    fuente solo trae una calidad, se complementa con la otra.
+    """
+    from agent.pricing import (
+        recolectar_categorias_hugo,
+        formatear_cotizacion_tiers,
+    )
+    from agent.pricing_sheets import recolectar_categorias_display_sheets
+
+    # 1. Hugo Shop (primario para displays)
+    hugo = await recolectar_categorias_hugo(marca, modelo)
+
+    # Si Hugo necesita confirmar la variante (ej "edge 50": fusion/neo/ultra), se
+    # pregunta ANTES de cotizar — no mezclamos precios de variantes distintas.
+    if hugo["tipo"] == "variante":
+        logger.info(f"[PRICING] Hugo pide variante para {marca} {modelo}")
+        return hugo["respuesta"]
+
+    # 2. Google Sheets (para complementar calidades faltantes o como primario)
+    sheets = await recolectar_categorias_display_sheets(marca, modelo)
+
+    if hugo["tipo"] == "ok":
+        categorias = dict(hugo["categorias"])
+        modelo_fmt = hugo["modelo"]
+        if sheets.get("tipo") == "ok":
+            faltantes = [c for c in sheets["categorias"] if c not in categorias]
+            categorias = _fusionar_categorias(categorias, sheets["categorias"])
+            if faltantes:
+                logger.info(f"[PRICING] Sheets complementó calidades {faltantes} en {marca} {modelo_fmt}")
+        logger.info(f"[PRICING] Display {marca} {modelo_fmt}: calidades {list(categorias.keys())}")
+        return formatear_cotizacion_tiers(marca, modelo_fmt, categorias)
+
+    # 3. Hugo no tiene el display → usar Google Sheets como primario
+    if sheets.get("tipo") == "variante":
+        logger.info(f"[PRICING] Sheets pide variante para {marca} {modelo}")
+        return sheets["respuesta"]
+    if sheets.get("tipo") == "ok":
+        logger.info(f"[PRICING] Sheets cotizó display {marca} {modelo} (Hugo no tenía)")
+        return formatear_cotizacion_tiers(
+            sheets.get("marca") or marca, sheets["modelo"], sheets["categorias"]
+        )
+
+    # 4. Ninguna lista interna tiene el display → fixoem + Sheet genérico
+    logger.info(f"[PRICING] Hugo/Sheets sin display '{marca} {modelo}' → fixoem/Sheet genérico")
+    externa = await cotizar_fuentes_externas(marca, modelo, "display")
+    if externa:
+        return externa
+
+    logger.info(f"[PRICING] Ninguna fuente tiene display '{marca} {modelo}'")
+    return _mensaje_no_disponible(marca, modelo)
+
+
 async def cotizar_con_fallback(
     marca: str, modelo: str, refaccion: str = "display"
 ) -> str:
-    """Pipeline de precios con 3+ fuentes:
-    1. Hugo Shop (primero) — SOLO para displays
-    2. Google Sheets (624 productos: displays, baterías Android/iPhone)
-    3. fixoem + Sheet genérico (fallback final)
+    """Pipeline de precios con varias fuentes:
 
-    CAMBIO: Si refacción != "display", SALTAR Hugo Shop e ir directo a Google Sheets
-    (Hugo Shop solo tiene displays, no baterías ni tapas).
+    DISPLAY → Hugo Shop + Google Sheets FUSIONADOS (todas las calidades), con
+              fixoem/Sheet genérico como último recurso.
+    BATERÍA/TAPA/otros → Google Sheets (precio único) → fixoem/Sheet genérico.
+              (Hugo Shop solo tiene displays.)
     """
-    from agent.pricing import obtener_cotizacion_display
-
-    respuesta_hugo = None
-
-    # 1. SOLO intentar Hugo Shop si refacción es display
     if refaccion == "display":
-        logger.info(f"[PRICING] Intentando Hugo Shop para DISPLAY: {marca} {modelo}")
-        respuesta_hugo = await obtener_cotizacion_display(marca, modelo)
+        return await _cotizar_display_fusionado(marca, modelo)
 
-        # Si Hugo Shop tiene la pieza (no es "no disponible"), usarla
-        if not es_respuesta_no_disponible(respuesta_hugo):
-            logger.info(f"[PRICING] Hugo Shop encontró display: {marca} {modelo}")
-            return respuesta_hugo
-        logger.info(f"[PRICING] Hugo Shop no tiene display: {marca} {modelo}")
-    else:
-        logger.info(f"[PRICING] Refacción={refaccion} (no es display), SALTANDO Hugo Shop → Google Sheets")
-
-    # 2. Hugo Shop no tiene o refacción != display → intentar Google Sheets
-    logger.info(f"[PRICING] Llamando Google Sheets(marca={marca}, modelo={modelo}, refaccion={refaccion})")
+    # Refacción != display (batería, tapa…): Hugo no aplica.
+    logger.info(f"[PRICING] Refacción={refaccion} (no display) → Google Sheets")
     try:
         respuesta_sheets = await cotizar_google_sheets(marca, modelo, refaccion)
-        logger.info(f"[PRICING] Respuesta de Google Sheets: {respuesta_sheets is not None}")
         if respuesta_sheets:
             logger.info(f"[PRICING] Google Sheets encontró '{marca} {modelo}' ({refaccion})")
             return respuesta_sheets
@@ -512,17 +565,11 @@ async def cotizar_con_fallback(
     except Exception as e:
         logger.error(f"[PRICING] EXCEPCIÓN en Google Sheets: {type(e).__name__}: {e}", exc_info=True)
 
-    # 3. Google Sheets no tiene → intentar fixoem + Sheet genérico
     logger.info(f"[PRICING] Intentando fixoem + Sheet genérico para '{marca} {modelo}' ({refaccion})...")
     externa = await cotizar_fuentes_externas(marca, modelo, refaccion)
     if externa:
         logger.info(f"[PRICING] fixoem/Sheet genérico encontraron '{marca} {modelo}'")
         return externa
-
-    # Nadie tiene → si tenemos respuesta de Hugo Shop, devolverla; si no, devolver genérica
-    if respuesta_hugo:
-        logger.info(f"[PRICING] Ninguna fuente tiene '{marca} {modelo}' ({refaccion}), devolviendo Hugo Shop")
-        return respuesta_hugo
 
     logger.info(f"[PRICING] Ninguna fuente tiene '{marca} {modelo}' ({refaccion})")
     return _mensaje_no_disponible(marca, modelo)

@@ -60,19 +60,23 @@ class TestPricingSheets:
 
     @pytest.mark.asyncio
     async def test_formateo_display(self):
-        """TEST 5: Formateo de cotización para Display"""
-        producto = {
-            "nombre": "Display iPhone 15 Oled",
-            "categoria": "Display / Display de Diagnóstico",
-            "precio_1": 150.0,
-            "precio_2": 160.0,
-            "precio_3": 170.0,
-            "fuente": "google_sheets_displays",
+        """TEST 5: Formateo de Display por CALIDADES (genérica + original).
+
+        Los displays ya no usan formatear_cotizacion_sheets: se agrupan por calidad
+        (del nombre del producto) y se formatean con formatear_cotizacion_tiers.
+        Aquí validamos que muestra DOS precios (la barata y la cara).
+        """
+        from agent.pricing import formatear_cotizacion_tiers
+        categorias = {
+            "GENERICO": [2760.0],   # Incell ($690 x4)
+            "ORIGINAL": [4480.0],   # Oled  ($1120 x4)
         }
-        cotizacion = await formatear_cotizacion_sheets(producto, "iPhone", "15")
-        assert "Display iPhone 15 Oled" in cotizacion.upper()
-        assert "$" in cotizacion
-        print(f"✅ Formateo Display:\n{cotizacion[:200]}...")
+        cotizacion = formatear_cotizacion_tiers("iPhone", "13 Pro Max", categorias)
+        assert "Calidad Generica" in cotizacion
+        assert "Calidad Original" in cotizacion
+        assert "$2,760" in cotizacion
+        assert "$4,480" in cotizacion
+        print(f"✅ Formateo Display (tiers):\n{cotizacion[:240]}...")
 
     @pytest.mark.asyncio
     async def test_formateo_bateria_android(self):
