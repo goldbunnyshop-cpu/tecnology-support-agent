@@ -38,22 +38,27 @@ class Lead(Base):
 
 async def _migrar_columnas():
     """Agrega columnas nuevas si no existen (migración segura sin perder datos)."""
-    async with engine.begin() as conn:
-        for columna, definicion in [
-            ("fuente",                  "VARCHAR(50) DEFAULT 'desconocido'"),
-            ("fuente_detalle",          "VARCHAR(200) DEFAULT ''"),
-            ("asesor_asignado",         "VARCHAR(50) DEFAULT ''"),
-            ("retoma_en",               "DATETIME"),
-            ("retoma_desde",            "DATETIME"),
-            ("presupuesto_enviado_en",  "DATETIME"),
-            ("seguimiento_enviado_en",   "DATETIME"),
-            ("seguimiento_realizado",    "BOOLEAN DEFAULT 0"),
-            ("prioridad",               "VARCHAR(20) DEFAULT 'medio'"),
-        ]:
-            try:
+    from agent.memory import _USANDO_SQLITE
+    tipo_fecha = "DATETIME" if _USANDO_SQLITE else "TIMESTAMP"
+    bool_false = "BOOLEAN DEFAULT 0" if _USANDO_SQLITE else "BOOLEAN DEFAULT false"
+    for columna, definicion in [
+        ("fuente",                  "VARCHAR(50) DEFAULT 'desconocido'"),
+        ("fuente_detalle",          "VARCHAR(200) DEFAULT ''"),
+        ("asesor_asignado",         "VARCHAR(50) DEFAULT ''"),
+        ("retoma_en",               tipo_fecha),
+        ("retoma_desde",            tipo_fecha),
+        ("presupuesto_enviado_en",  tipo_fecha),
+        ("seguimiento_enviado_en",   tipo_fecha),
+        ("seguimiento_realizado",    bool_false),
+        ("prioridad",               "VARCHAR(20) DEFAULT 'medio'"),
+    ]:
+        # Una transacción POR columna: en Postgres un ALTER que falla (columna ya
+        # existe) aborta toda la transacción; aislándolos, los demás siguen.
+        try:
+            async with engine.begin() as conn:
                 await conn.execute(text(f"ALTER TABLE leads ADD COLUMN {columna} {definicion}"))
-            except Exception:
-                pass  # columna ya existe
+        except Exception:
+            pass  # columna ya existe
 
 
 async def obtener_o_asignar_asesor(telefono: str) -> str:

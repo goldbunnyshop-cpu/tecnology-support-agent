@@ -282,24 +282,27 @@ async def agregar_servicio_cliente(telefono: str, servicio: str):
 
 async def _migrar_clientes_perfil():
     """Agrega columnas nuevas a clientes_perfil si no existen."""
-    async with engine.begin() as conn:
-        for columna, definicion in [
-            ("nombre",           "VARCHAR(100)"),
-            ("dispositivos_json","TEXT DEFAULT '[]'"),
-            ("servicios_json",   "TEXT DEFAULT '[]'"),
-            ("ultima_visita",    "DATETIME"),
-            ("asesor_ultimo",    "VARCHAR(50) DEFAULT ''"),
-            ("notas",            "TEXT DEFAULT ''"),
-            ("pausada_hasta",    "DATETIME"),
-            ("created_at",       "DATETIME"),
-        ]:
-            try:
-                from sqlalchemy import text
+    from sqlalchemy import text
+    tipo_fecha = "DATETIME" if _USANDO_SQLITE else "TIMESTAMP"
+    for columna, definicion in [
+        ("nombre",           "VARCHAR(100)"),
+        ("dispositivos_json","TEXT DEFAULT '[]'"),
+        ("servicios_json",   "TEXT DEFAULT '[]'"),
+        ("ultima_visita",    tipo_fecha),
+        ("asesor_ultimo",    "VARCHAR(50) DEFAULT ''"),
+        ("notas",            "TEXT DEFAULT ''"),
+        ("pausada_hasta",    tipo_fecha),
+        ("created_at",       tipo_fecha),
+    ]:
+        # Una transacción POR columna: en Postgres un ALTER que falla (columna ya
+        # existe) aborta toda la transacción; aislándolos, los demás siguen.
+        try:
+            async with engine.begin() as conn:
                 await conn.execute(text(
                     f"ALTER TABLE clientes_perfil ADD COLUMN {columna} {definicion}"
                 ))
-            except Exception:
-                pass  # columna ya existe
+        except Exception:
+            pass  # columna ya existe
 
 
 async def inicializar_db():
@@ -322,18 +325,26 @@ async def inicializar_db():
         await conn.run_sync(Base.metadata.create_all)
         # Tabla legacy/operativa para citas detectadas automaticamente
         # (la consume agent/cita_detector.py con SQL directo).
+        # DDL dialect-aware: SQLite usa AUTOINCREMENT/DATETIME; PostgreSQL usa
+        # SERIAL/TIMESTAMP (AUTOINCREMENT y DATETIME NO existen en Postgres).
         from sqlalchemy import text
-        await conn.execute(text("""
+        if _USANDO_SQLITE:
+            citas_id = "id INTEGER PRIMARY KEY AUTOINCREMENT"
+            tipo_fecha = "DATETIME"
+        else:
+            citas_id = "id SERIAL PRIMARY KEY"
+            tipo_fecha = "TIMESTAMP"
+        await conn.execute(text(f"""
             CREATE TABLE IF NOT EXISTS citas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {citas_id},
                 nombre TEXT NOT NULL,
                 telefono TEXT DEFAULT '',
                 dispositivo TEXT NOT NULL,
                 problema TEXT NOT NULL,
-                fecha_hora DATETIME NOT NULL,
+                fecha_hora {tipo_fecha} NOT NULL,
                 asesor TEXT DEFAULT '',
                 fuente TEXT DEFAULT 'automatica',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at {tipo_fecha} DEFAULT CURRENT_TIMESTAMP
             )
         """))
 
