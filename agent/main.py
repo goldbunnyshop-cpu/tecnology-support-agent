@@ -675,6 +675,11 @@ async def _procesar_lote_mensajes(mensajes):
                 )
                 if GRUPO_INTERNO.lower() in nombre_g.lower():
                     logger.info(f"[WEBHOOK] Grupo interno detectado")
+                    # Responder SIEMPRE al chat_id del grupo (con @g.us), NO a su nombre:
+                    # Whapi rechaza el nombre ("Taller Interno TS") con un 400 porque el
+                    # destino debe ser dígitos/@g.us. (Bug visto en logs: stop funcionaba
+                    # pero la confirmación al grupo fallaba.)
+                    chat_id_g = getattr(msg, "chat_id_raw", None) or msg.telefono
 
                     # ── Intentar procesar comando stop/on PRIMERO ──
                     es_comando_control, respuesta_control = await procesar_comando_control(
@@ -684,7 +689,7 @@ async def _procesar_lote_mensajes(mensajes):
                     if es_comando_control:
                         if respuesta_control:
                             logger.info(f"[CMD] Respuesta: {respuesta_control}")
-                            await proveedor.enviar_mensaje(nombre_g, respuesta_control)
+                            await proveedor.enviar_mensaje(chat_id_g, respuesta_control)
                         continue
 
                     # ── Si no fue comando stop/on, procesar comandos generales de Ulises ──
