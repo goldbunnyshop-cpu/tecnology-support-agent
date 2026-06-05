@@ -106,16 +106,19 @@ class PausaManager:
             logger.warning(f"[PAUSA] Intento de pausar número interno: {numero_limpio}")
             return False, f"⚠️ No se puede pausar número interno: {numero_limpio}"
 
-        # Verificar si ya está pausado
-        if numero_limpio in self.pausas_activas:
-            return False, f"⚠️ Ya está pausado: {numero_limpio}"
-
         try:
-            # Guardar pausa en la base de datos
-            from agent.memory import pausar_conversacion
+            # FUENTE DE VERDAD = BD (lo que lee el webhook en main.py vía esta_pausada).
+            # El dict self.pausas_activas es solo respaldo y NO debe bloquear: antes
+            # hacía 'return ya pausado' SIN renovar la BD, así que tras expirar/borrarse
+            # la pausa el agente volvía a responder pero re-escribir "pausa" decía
+            # "ya activa" sin re-pausar. Ahora SIEMPRE renovamos en BD.
+            from agent.memory import pausar_conversacion, esta_pausada
+            ya_pausado = await esta_pausada(numero_limpio)
+
+            # (Re)crear la pausa en BD — reinicia el contador de duración.
             await pausar_conversacion(numero_limpio, horas=duracion_horas)
 
-            # Registrar pausa local (respaldo en memoria)
+            # Respaldo en memoria (no autoritativo)
             self.pausas_activas[numero_limpio] = datetime.now(ZONA_MEXICO)
             self.historial_pausas.append({
                 'numero': numero_limpio,
@@ -124,12 +127,11 @@ class PausaManager:
                 'duracion_horas': duracion_horas,
             })
 
-            logger.info(f"[PAUSA] {numero_limpio} pausado por: {razon} ({duracion_horas}h)")
+            logger.info(f"[PAUSA] {numero_limpio} pausado por: {razon} ({duracion_horas}h) — ya_pausado={ya_pausado}")
 
-            # Aquí se integraría con agent.notifications
-            # await notificar_grupo_pausa(numero_limpio, razon)
-
-            return True, f"✓ Conversación pausada. Christian será notificado."
+            if ya_pausado:
+                return True, f"🔄 Pausa renovada {duracion_horas}h para {numero_limpio}."
+            return True, f"✓ Conversación pausada {duracion_horas}h. Christian será notificado."
 
         except Exception as e:
             logger.error(f"Error procesando pausa: {e}")
@@ -210,13 +212,16 @@ class PausaManager:
         numero_limpio = self.normalizar_numero(numero_cliente)
 
         try:
-            # Aquí se integraría con agent.memory.reanudar_conversacion
-            # await reanudar_conversacion(numero_limpio)
+            # Limpiar la pausa en la BD (fuente de verdad que lee el webhook).
+            # ANTES estaba comentado: 'reanudar' borraba solo el dict en memoria y
+            # el agente seguía pausado en BD hasta que la pausa expiraba sola.
+            from agent.memory import reanudar_conversacion
+            await reanudar_conversacion(numero_limpio)
 
             if numero_limpio in self.pausas_activas:
                 del self.pausas_activas[numero_limpio]
 
-            logger.info(f"[PAUSA] {numero_limpio} reanudado")
+            logger.info(f"[PAUSA] {numero_limpio} reanudado (BD + memoria)")
             return True, f"✓ Conversación reanudada para {numero_limpio}"
 
         except Exception as e:
