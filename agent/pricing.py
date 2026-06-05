@@ -565,13 +565,15 @@ def _mensaje_no_disponible(marca: str, modelo: str) -> str:
     marca_limpia = marca if marca and marca != "No especificado" else ""
     modelo_limpio = modelo if modelo and modelo != "modelo desconocido" else ""
 
-    # Si falta marca O modelo, pedir ambos
+    # Si falta marca O modelo, pedir ambos (tono cálido + empuje a dar el modelo)
     if not marca_limpia or not modelo_limpio:
         return (
-            "Para cotizarte la refacción, necesito que me digas:\n"
-            "1. Marca del dispositivo (Samsung, iPhone, Motorola, etc.)\n"
-            "2. Modelo exacto (A21, A21S, S21 Ultra, 13 Pro Max, etc.)\n\n"
-            "Si no sabes el modelo exacto, revisa Configuración > Acerca de"
+            "¡Con mucho gusto te cotizo tu pantalla! 😊\n"
+            "Para darte el precio exacto solo dime de qué equipo es:\n\n"
+            "📱 *Marca* (Samsung, iPhone, Motorola, Xiaomi...)\n"
+            "🔧 *Modelo* (ej. S22 Ultra, 13 Pro Max, A54, Edge 40)\n\n"
+            "Mándame marca y modelo y te paso el precio al instante. "
+            "Si no estás seguro del modelo, lo encuentras en *Configuración > Acerca del teléfono*."
         )
 
     # Si tenemos marca y modelo pero no existe
