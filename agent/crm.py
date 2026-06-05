@@ -5,7 +5,7 @@ import re
 import json
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from googleapiclient.discovery import build
@@ -528,3 +528,88 @@ async def obtener_ordenes_por_estatus(estatus: str) -> list[dict]:
 
 async def subir_reporte_a_drive(ruta_local: str) -> str:
     return await asyncio.to_thread(_subir_reporte_a_drive_sync, ruta_local)
+
+
+# ─── Cupones (hoja "Cupones") ─────────────────────────────────────────────────
+# Usados por los comandos '2nd' (15% desc) y 'noshow' (10% desc). El registro en
+# Sheets es SECUNDARIO: si el CRM/Sheets no está configurado, NO debe tronar el
+# comando — solo se loguea y el mensaje al cliente igual se envía.
+
+HOJA_CUPONES = "Cupones"
+HEADER_CUPONES = [
+    "Teléfono", "Cupón", "% Descuento", "Fecha emisión", "Fecha expiración", "Estado",
+]
+
+
+def _crear_hoja_cupones_sync() -> bool:
+    """Crea la hoja 'Cupones' (con encabezado) si no existe. Idempotente."""
+    if not SHEET_ID:
+        logger.warning("[CUPONES] GOOGLE_SHEET_ID no configurado — no se crea hoja")
+        return False
+    svc = _sheets_svc()
+    meta = svc.spreadsheets().get(spreadsheetId=SHEET_ID).execute()
+    existe = any(
+        s["properties"]["title"] == HOJA_CUPONES for s in meta.get("sheets", [])
+    )
+    if existe:
+        return True
+    svc.spreadsheets().batchUpdate(
+        spreadsheetId=SHEET_ID,
+        body={"requests": [{"addSheet": {"properties": {"title": HOJA_CUPONES}}}]},
+    ).execute()
+    svc.spreadsheets().values().update(
+        spreadsheetId=SHEET_ID,
+        range=f"'{HOJA_CUPONES}'!A1",
+        valueInputOption="USER_ENTERED",
+        body={"values": [HEADER_CUPONES]},
+    ).execute()
+    logger.info(f"[CUPONES] Hoja '{HOJA_CUPONES}' creada")
+    return True
+
+
+def _registrar_cupon_sync(
+    telefono: str, cupon: str, porcentaje: int, dias_validez: int
+) -> bool:
+    """Agrega una fila a la hoja 'Cupones'. Crea la hoja si hace falta."""
+    if not SHEET_ID:
+        logger.warning("[CUPONES] GOOGLE_SHEET_ID no configurado — cupón no registrado")
+        return False
+    _crear_hoja_cupones_sync()
+    svc = _sheets_svc()
+    hoy = datetime.now(ZONA)
+    expira = hoy + timedelta(days=dias_validez)
+    fila = [
+        telefono, cupon, f"{porcentaje}%",
+        hoy.strftime("%d/%m/%Y"), expira.strftime("%d/%m/%Y"), "Activo",
+    ]
+    svc.spreadsheets().values().append(
+        spreadsheetId=SHEET_ID,
+        range=f"'{HOJA_CUPONES}'!A:F",
+        valueInputOption="USER_ENTERED",
+        insertDataOption="INSERT_ROWS",
+        body={"values": [fila]},
+    ).execute()
+    logger.info(f"[CUPONES] Registrado {cupon} ({porcentaje}%) para {telefono}")
+    return True
+
+
+async def crear_hoja_cupones() -> bool:
+    """Crea/verifica la hoja 'Cupones'. Resiliente: nunca lanza excepción."""
+    try:
+        return await asyncio.to_thread(_crear_hoja_cupones_sync)
+    except Exception as e:
+        logger.warning(f"[CUPONES] No se pudo crear/verificar hoja: {e}")
+        return False
+
+
+async def registrar_cupon(
+    telefono: str, cupon: str, porcentaje: int = 15, dias_validez: int = 8
+) -> bool:
+    """Registra un cupón en Sheets. Resiliente: nunca lanza excepción (devuelve False)."""
+    try:
+        return await asyncio.to_thread(
+            _registrar_cupon_sync, telefono, cupon, porcentaje, dias_validez
+        )
+    except Exception as e:
+        logger.warning(f"[CUPONES] No se pudo registrar cupón {cupon} para {telefono}: {e}")
+        return False

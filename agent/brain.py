@@ -458,3 +458,32 @@ async def generar_respuesta(
             # Si es otro error o último intento fallido, retornar error
             logger.error(f"[{asesor}] Error Claude API (intento {intento + 1}/{max_intentos}): {e}")
             return obtener_mensaje_error()
+
+
+async def generar_mensaje_noshow(
+    telefono: str,
+    nombre_cliente: str,
+    historial: list[dict],
+    cupon: str,
+    fecha_expira: str,
+) -> str:
+    """Genera el mensaje de reconexión para un cliente que agendó cita pero NO se
+    presentó (no-show). Tono cálido y empático (sin regañar): explora por qué no
+    vino y ofrece un cupón de descuento por tiempo limitado para reagendar.
+
+    Usado por el comando 'noshow' del grupo interno. Reutiliza generar_respuesta()
+    para mantener la voz del asesor.
+    """
+    prompt = (
+        f"Cliente: {nombre_cliente}\n"
+        f"Situacion: agendo una cita en el taller pero NO se presento (no-show).\n"
+        f"Cupon: {cupon} (10% de descuento, valido hasta {fecha_expira})\n\n"
+        f"Tarea: redacta UN solo mensaje de WhatsApp, calido y empatico (NO regañes), para reconectar:\n"
+        f"1. Saluda por su nombre y nota con amabilidad que no pudo asistir a su cita\n"
+        f"2. Pregunta si todo esta bien y si le gustaria reagendar\n"
+        f"3. Ofrece el cupon {cupon} (10% de descuento) si reagenda antes del {fecha_expira}\n"
+        f"4. Indica: 'Muestra este cupon al tecnico al aceptar la reparacion para aplicar el descuento'\n"
+        f"5. Cierra invitando a responder con un dia y hora para reagendar\n\n"
+        f"Responde SOLO con el mensaje listo para enviar, sin encabezados ni comillas."
+    )
+    return await generar_respuesta(prompt, historial)

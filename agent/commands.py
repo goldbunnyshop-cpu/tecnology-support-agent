@@ -69,7 +69,9 @@ TEXTO_MENU = (
 # ════════════════════════════════════════════════════════════════════════════
 
 # Diccionario: telefono_normalizado → razón del bloqueo
-# Se limpia al reiniciar el servidor
+# ⚠️ OBSOLETO: el webhook entrante (main.py) NO lee este dict. El bloqueo real de
+# clientes vive en la tabla StoppedNumber (BD) vía agent.memory.detener_numero /
+# numero_esta_stopped. Estas funciones en memoria quedan solo por compatibilidad.
 _NUMEROS_BLOQUEADOS = {}
 
 
@@ -469,9 +471,12 @@ async def procesar_comando_grupo(
         if advertencia:
             await _responder(advertencia)
             return False
-        if esta_bloqueado(phone_fmt):
-            razon = obtener_razon_bloqueo(phone_fmt)
-            await _responder(f"⛔ Número {phone_fmt} está bloqueado: {razon}")
+        from agent.memory import numero_esta_stopped
+        if await numero_esta_stopped(phone_fmt):
+            await _responder(
+                f"⛔ Número {phone_fmt} está DETENIDO (stop). "
+                f"Reactívalo con 'unblock: {phone_fmt}' u 'on: {phone_fmt}' para enviarle mensajes."
+            )
             return False
         enviado = await proveedor.enviar_mensaje(phone_fmt, mensaje)
         if enviado:
@@ -725,8 +730,13 @@ async def procesar_comando_grupo(
     # ════════════════════════════════════════════════════════════════════════════
 
     if cmd == "stop":
-        """Bloquea un número (no responde, no modifica BD)."""
-        phone = parsear_phone_simple(payload)
+        """Detiene al cliente en el store PERSISTENTE (tabla StoppedNumber en BD).
+
+        Antes escribía en un dict en memoria que NADIE leía en el webhook entrante
+        → el agente seguía respondiendo. Ahora usa detener_numero(), el MISMO store
+        que revisa main.py antes de procesar cada mensaje del cliente.
+        """
+        phone = re.sub(r"\D", "", payload)  # tolera números con espacios/guiones
         if not phone:
             await _responder("⚠️ Formato: stop: NÚMERO\nEj: stop: 5541576331")
             return True
@@ -734,9 +744,9 @@ async def procesar_comando_grupo(
         if advertencia:
             await _responder(advertencia)
             return True
-        bloquear_numero(phone_fmt, "Bloqueado con comando 'stop'")
-        await _responder(f"⛔ Número {phone_fmt} bloqueado. No recibirá respuestas del agente.")
-        logger.info(f"[BLOQUEO] {phone_fmt} bloqueado con comando 'stop'")
+        from agent.memory import detener_numero
+        _, mensaje = await detener_numero(phone_fmt, razon="comando_stop", detenido_por="grupo")
+        await _responder(mensaje)
         return True
 
     if cmd == "2nd":
@@ -791,8 +801,9 @@ async def procesar_comando_grupo(
             exito = await proveedor.enviar_mensaje(phone_fmt, mensaje_seguimiento)
 
             if exito:
-                # Desbloquear después de enviar el mensaje
-                desbloquear_numero(phone_fmt)
+                # Reactivar el número (si estaba detenido) para que el seguimiento fluya
+                from agent.memory import reactivar_numero
+                await reactivar_numero(phone_fmt, reactivado_por="comando_2nd")
                 logger.info(f"[2ND] Mensaje de seguimiento enviado a {phone_fmt} — Cupón: {cupon}")
 
                 # Confirmar en grupo
@@ -810,8 +821,8 @@ async def procesar_comando_grupo(
         return True
 
     if cmd == "unblock":
-        """Desbloquea un número sin enviar mensaje."""
-        phone = parsear_phone_simple(payload)
+        """Reactiva un número detenido (mismo store persistente que 'stop')."""
+        phone = re.sub(r"\D", "", payload)
         if not phone:
             await _responder("⚠️ Formato: unblock: NÚMERO\nEj: unblock: 5541576331")
             return True
@@ -820,9 +831,9 @@ async def procesar_comando_grupo(
             await _responder(advertencia)
             return True
 
-        desbloquear_numero(phone_fmt)
-        logger.info(f"[DESBLOQUEO] Número {phone_fmt} desbloqueado con comando 'unblock'")
-        await _responder(f"🔓 Número {phone_fmt} desbloqueado. El agente responderá normalmente.")
+        from agent.memory import reactivar_numero
+        _, mensaje = await reactivar_numero(phone_fmt, reactivado_por="grupo")
+        await _responder(mensaje)
         return True
 
     if cmd == "noshow":
