@@ -116,7 +116,14 @@ async def _obtener_grupo_id() -> str | None:
 
 
 async def _enviar_grupo(mensaje: str, reintentos: int = 2) -> bool:
-    """Envía mensaje al grupo interno con reintentos automáticos."""
+    """Envía mensaje al grupo interno.
+
+    IMPORTANTE — solo reintenta cuando Whapi responde con un error HTTP claro
+    (la solicitud NO fue procesada). Si hay timeout o una excepción de red,
+    NO se reintenta: el mensaje puede haberse entregado igual aunque no
+    recibiéramos la respuesta a tiempo, y reintentar en ese caso era la causa
+    de que la misma confirmación de cita llegara duplicada/triplicada al grupo.
+    """
     grupo_id = await _obtener_grupo_id()
     if not grupo_id:
         logger.warning("[CITAS GRUPO] ❌ No se encontró el grupo — revisa GRUPO_CHRISTIAN_INTERNO en .env")
@@ -134,7 +141,7 @@ async def _enviar_grupo(mensaje: str, reintentos: int = 2) -> bool:
         logger.warning(f"[CITAS GRUPO] Validación UTF-8: {e}")
         mensaje_validado = mensaje
 
-    # Intentar envío con reintentos
+    # Intentar envío — reintentos SOLO ante error HTTP confirmado
     for intento in range(1, reintentos + 1):
         try:
             logger.info(
@@ -157,26 +164,31 @@ async def _enviar_grupo(mensaje: str, reintentos: int = 2) -> bool:
                     content=body_bytes,
                 )
 
-                if r.status_code == 200:
-                    logger.info(f"[CITAS GRUPO] ✅ Mensaje enviado al grupo exitosamente")
-                    return True
-                else:
-                    logger.error(
-                        f"[CITAS GRUPO] ❌ HTTP {r.status_code} en intento {intento}/{reintentos}"
-                        f" — {r.text[:150]}"
-                    )
-                    if intento < reintentos:
-                        await asyncio.sleep(1)  # Esperar antes de reintentar
+            if r.status_code == 200:
+                logger.info(f"[CITAS GRUPO] ✅ Mensaje enviado al grupo exitosamente")
+                return True
 
-        except asyncio.TimeoutError:
-            logger.error(f"[CITAS GRUPO] ⏱️ Timeout en intento {intento}/{reintentos}")
+            # Error HTTP claro: Whapi rechazó la solicitud → sí es seguro reintentar
+            logger.error(
+                f"[CITAS GRUPO] ❌ HTTP {r.status_code} en intento {intento}/{reintentos}"
+                f" — {r.text[:150]}"
+            )
             if intento < reintentos:
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)  # Esperar antes de reintentar
+
+        except (asyncio.TimeoutError, httpx.TimeoutException):
+            # Ambiguo: pudo haberse entregado aunque no llegó la respuesta a tiempo.
+            # NO reintentar — evita reenviar la misma cita al grupo.
+            logger.error(
+                f"[CITAS GRUPO] ⏱️ Timeout en intento {intento}/{reintentos} — "
+                f"NO se reintenta (el mensaje pudo haberse entregado igual)"
+            )
+            return False
 
         except Exception as e:
+            # También ambiguo (error de red a media transacción) → no reintentar
             logger.error(f"[CITAS GRUPO] ❌ Excepción en intento {intento}/{reintentos}: {type(e).__name__}: {e}")
-            if intento < reintentos:
-                await asyncio.sleep(1)
+            return False
 
     logger.error(f"[CITAS GRUPO] ❌ FALLÓ después de {reintentos} intentos")
     return False
@@ -196,6 +208,22 @@ async def notificar_nueva_cita(
 ) -> None:
     """Notifica inmediatamente a Ulises por email y grupo cuando se agenda una cita."""
     when = f"{fecha_texto.capitalize()}, {hora_texto}"
+
+    # ── Anti-duplicados: reservar el evento ANTES de enviar ──
+    # Si esta notificación "inmediata" ya fue registrada (por una llamada
+    # anterior, o porque el scheduler de citas-Ulises corrió en paralelo),
+    # no la repetimos. Registrar AQUÍ (antes de enviar) — y no al final —
+    # evita que el scheduler de 10 min reenvíe la misma cita al grupo mientras
+    # este envío sigue en curso.
+    if evento_id:
+        from agent.memory import cita_notificada_ya_enviada, registrar_cita_notificada
+        if await cita_notificada_ya_enviada(evento_id, "inmediata"):
+            logger.warning(
+                f"[CITAS NOTIF] ⚠️ Notificación 'inmediata' ya registrada para "
+                f"evento_id={evento_id} — se omite para no duplicar en el grupo"
+            )
+            return
+        await registrar_cita_notificada(evento_id, "inmediata", telefono, False, False)
 
     logger.info(
         f"[CITAS NOTIF] 🚀 ========== INICIANDO NOTIFICACIÓN DE CITA =========="
@@ -256,18 +284,8 @@ async def notificar_nueva_cita(
         logger.error(f"[CITAS NOTIF] Traceback:\n{traceback.format_exc()}")
         enviado_grupo = False
 
-    # Registrar (OPCIONAL — si falla, continúa de todas formas)
-    if evento_id:
-        logger.info(f"[CITAS NOTIF] 📋 Intentando registrar en historial (evento_id={evento_id})")
-        try:
-            from agent.memory import registrar_cita_notificada
-            await registrar_cita_notificada(evento_id, "inmediata", telefono, enviado_email, enviado_grupo)
-            logger.info(f"[CITAS NOTIF] ✅ Cita registrada en historial de notificaciones")
-        except Exception as e:
-            logger.warning(
-                f"[CITAS NOTIF] ⚠️ No se registró en BD (tabla puede no existir): {type(e).__name__}: {str(e)[:100]}"
-            )
-            logger.info(f"[CITAS NOTIF] ℹ️ Continuando de todas formas — las notificaciones SÍ se enviaron")
+    # Nota: el registro anti-duplicados ya se hizo ANTES de enviar (ver arriba).
+    # No se vuelve a registrar aquí para no pisar esa reserva.
 
     logger.info(
         f"[CITAS NOTIF] ========== NOTIFICACIÓN TERMINADA =========="
@@ -302,12 +320,18 @@ async def notificar_recordatorio_1h(
         f"📱 {dispositivo}"
     )
 
+    # ── Anti-duplicados: igual que en notificar_nueva_cita, reservar ANTES de enviar ──
+    if evento_id:
+        from agent.memory import cita_notificada_ya_enviada, registrar_cita_notificada
+        if await cita_notificada_ya_enviada(evento_id, "recordatorio_1h"):
+            logger.warning(
+                f"[CITAS] ⚠️ Recordatorio 1h ya registrado para evento_id={evento_id} — se omite"
+            )
+            return
+        await registrar_cita_notificada(evento_id, "recordatorio_1h", telefono, False, False)
+
     enviado_email = await _enviar_email(asunto, body)
     enviado_grupo = await _enviar_grupo(msg_grupo)
-
-    if evento_id:
-        from agent.memory import registrar_cita_notificada
-        await registrar_cita_notificada(evento_id, "recordatorio_1h", telefono, enviado_email, enviado_grupo)
 
     logger.info(f"[CITAS] Recordatorio 1h — {nombre} {hora_texto} | email={enviado_email} grupo={enviado_grupo}")
 
