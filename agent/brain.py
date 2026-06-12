@@ -422,9 +422,28 @@ async def generar_respuesta(
         logger.info(f"[{asesor}] Respuesta de pricing directa aplicada")
         return respuesta_pricing
 
-    system_prompt = construir_system_prompt(asesor)
+    # ── Prompt caching ──
+    # El system_prompt_template (~5000 tokens, fijo por asesor) se manda IGUAL en
+    # cada mensaje. Antes se concatenaba con contexto_cliente (que cambia en cada
+    # turno: fecha/hora, perfil, disponibilidad) Y ESE BLOQUE DINÁMICO IBA PRIMERO,
+    # lo que rompía cualquier posibilidad de cache (el cache de Anthropic requiere
+    # que el PREFIJO sea idéntico).
+    #
+    # Ahora: el bloque estático va primero con cache_control, y el contexto
+    # dinámico va en un bloque separado AL FINAL. Así, dentro de la ventana de
+    # cache (5 min), los mensajes 2, 3, 4... de una misma conversación pagan el
+    # system prompt grande a ~10% del precio normal en vez de 100%.
+    system_prompt_estatico = construir_system_prompt(asesor)
+
+    system_blocks = [
+        {
+            "type": "text",
+            "text": system_prompt_estatico,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
     if contexto_cliente:
-        system_prompt = f"{contexto_cliente}\n\n{system_prompt}"
+        system_blocks.append({"type": "text", "text": contexto_cliente})
 
     mensajes = [{"role": m["role"], "content": m["content"]} for m in historial]
     mensajes.append({"role": "user", "content": mensaje})
@@ -438,11 +457,17 @@ async def generar_respuesta(
             response = await client.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=1024,
-                system=system_prompt,
+                system=system_blocks,
                 messages=mensajes,
             )
             respuesta = response.content[0].text
-            logger.info(f"[{asesor}] Respuesta generada ({response.usage.input_tokens} in / {response.usage.output_tokens} out)")
+            uso = response.usage
+            cache_leido = getattr(uso, "cache_read_input_tokens", 0) or 0
+            cache_creado = getattr(uso, "cache_creation_input_tokens", 0) or 0
+            logger.info(
+                f"[{asesor}] Respuesta generada ({uso.input_tokens} in / {uso.output_tokens} out"
+                f" | cache: {cache_leido} leídos, {cache_creado} creados)"
+            )
             return respuesta
 
         except Exception as e:
