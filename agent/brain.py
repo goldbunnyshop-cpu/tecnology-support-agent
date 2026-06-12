@@ -98,16 +98,27 @@ def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
     """Intenta extraer marca+modelo de un mensaje libre."""
     txt = (mensaje or "").lower()
     txt_limpio = _normalizar_consulta_pricing(txt)
+    tokens = txt_limpio.split()
     # Primero marcas más largas para evitar colisiones (google pixel antes de pixel)
     for alias in sorted(ALIAS_MARCAS.keys(), key=len, reverse=True):
-        if re.search(rf"\b{re.escape(alias)}\b", txt_limpio) or alias in txt_limpio:
-            marca = alias
-            modelo = re.sub(rf".*?\b{re.escape(alias)}\b", "", txt_limpio, count=1).strip(" :,-")
-            if not modelo and alias in txt_limpio:
-                modelo = txt_limpio.replace(alias, "").strip(" :,-")
-            # Solo aceptar el modelo si parece un modelo real (tiene dígito);
-            # de lo contrario marca conocida pero sin modelo → se pedirá el modelo.
-            return marca, _modelo_plausible(modelo)
+        alias_tokens = alias.split()
+        n = len(alias_tokens)
+        for i in range(len(tokens) - n + 1):
+            ventana = tokens[i:i + n]
+            coincide = ventana == alias_tokens
+            if not coincide and n == 1 and len(alias) >= 4:
+                # Typo tolerante: "oppor" ~ "oppo", "iphonee" ~ "iphone"
+                tok = tokens[i]
+                coincide = tok.startswith(alias) and len(tok) <= len(alias) + 2
+            if coincide:
+                marca = alias
+                resto = tokens[i + n:]
+                if not resto:
+                    resto = tokens[:i]
+                modelo = " ".join(resto).strip(" :,-")
+                # Solo aceptar el modelo si parece un modelo real (tiene dígito);
+                # de lo contrario marca conocida pero sin modelo → se pedirá el modelo.
+                return marca, _modelo_plausible(modelo)
     # Sin marca explícita, intentar extraer modelo de la frase limpia
     m = _PATRON_MODELO_EN_TEXTO.search(txt_limpio)
     if m:
@@ -121,8 +132,11 @@ def _normalizar_consulta_pricing(texto: str) -> str:
     # Corrige typo común detectado en pruebas
     t = t.replace("smsamsung", "samsung")
     # Quita prefijos de intención de precio que contaminan el modelo
+    # (incluye variantes/typos de "quiero": "qiero", "qjiero", etc.)
     t = re.sub(
-        r"^(?:me\s+ayudas?\s+a\s+)?(?:cotizar|cotizacion|cotización|precio|costo|presupuesto)\s+(?:de\s+|del\s+|para\s+)?",
+        r"^(?:me\s+ayudas?\s+a\s+|q[a-z]{0,2}iero\s+|quisiera\s+|necesito\s+|deseo\s+|"
+        r"me\s+puedes?\s+|podr[ií]as?\s+)*"
+        r"(?:cotizar|cotizacion|cotización|precio|costo|presupuesto)\s+(?:de\s+|del\s+|para\s+|un\s+|una\s+)?",
         "",
         t,
     )
