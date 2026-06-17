@@ -104,6 +104,20 @@ class PricingScheduler:
             )
             logger.info("✓ Tarea registrada: Reset contador a medianoche")
 
+            # ── TAREA 7: Refrescar catálogo de precios desde Google Sheets (3 AM) ──
+            # Descarga las 3 hojas (DISPLAYS, BATERÍAS ANDROID, BATERÍAS iPHONE) y
+            # persiste en SQLite. Así el catálogo siempre tiene precios del día
+            # sin depender de que la laptop del operador esté encendida.
+            self.scheduler.add_job(
+                self.refrescar_catalogo_sheets,
+                CronTrigger(hour=3, minute=0, timezone=ZONA_PYTZ),
+                id="catalogo_sheets_3am",
+                name="Refrescar catálogo Google Sheets (3 AM)",
+                replace_existing=True,
+                misfire_grace_time=600,  # 10 min de gracia
+            )
+            logger.info("✓ Tarea registrada: Refrescar catálogo Sheets a las 3 AM")
+
             if not self.scheduler.running:
                 self.scheduler.start()
                 logger.info("✓ AsyncIOScheduler iniciado")
@@ -120,6 +134,18 @@ class PricingScheduler:
     # ====================================================================
     # TAREAS: ACTUALIZACIÓN DE PRECIOS
     # ====================================================================
+
+    async def refrescar_catalogo_sheets(self):
+        """Tarea diaria (3 AM): descarga las 3 hojas de Sheets y persiste en SQLite."""
+        hora = datetime.now(ZONA_MEXICO).strftime("%H:%M:%S")
+        logger.info(f"[SCHEDULER] Refrescando catálogo Google Sheets @ {hora}")
+        try:
+            from agent.pricing_sheets import recargar_catalogo_forzado
+            catalogo = await recargar_catalogo_forzado()
+            total = sum(len(v) for v in catalogo.values())
+            logger.info(f"[SCHEDULER] ✅ Catálogo actualizado — {total} productos")
+        except Exception as e:
+            logger.error(f"[SCHEDULER] ❌ Error refrescando catálogo: {e}")
 
     async def actualizar_hugo_2pm(self):
         """Tarea programada: Actualizar Hugo Shop a las 2 PM"""

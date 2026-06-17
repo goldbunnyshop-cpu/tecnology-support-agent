@@ -225,7 +225,7 @@ async def manejar_mensaje_nocturno(telefono: str, contenido: str, asesor: str) -
         f"Deje tu mensaje registrado con prioridad y te escribire en cuanto iniciemos."
     )
     await guardar_mensaje(telefono, "user", contenido)
-    await guardar_mensaje(telefono, "assistant", respuesta)
+    await guardar_mensaje(telefono, "assistant", _para_historial(respuesta))
     await proveedor.enviar_mensaje(telefono, respuesta)
     retoma_utc = calcular_hora_retoma_utc()
     await programar_retoma(telefono, retoma_utc, datetime.utcnow())
@@ -316,6 +316,16 @@ async def lifespan(app: FastAPI):
     await inicializar_db()
     logger.info("[INIT] Base de datos de conversaciones lista")
 
+    # 2b. Inicializar SQLite del catálogo de precios y precargarlo
+    try:
+        from agent.pricing_sheets import _init_catalog_db, _cargar_catalogo_sheets
+        await _init_catalog_db()
+        catalogo = await _cargar_catalogo_sheets()
+        total = sum(len(v) for v in catalogo.values())
+        logger.info(f"[INIT] Catálogo de precios listo — {total} productos")
+    except Exception as e:
+        logger.warning(f"[INIT] Catálogo de precios no disponible al arrancar: {e}")
+
     # 2. Crear tabla `leads` si no existe + agregar columnas
     try:
         await _migrar_columnas()
@@ -352,6 +362,44 @@ app = FastAPI(
     version="2.1.0",
     lifespan=lifespan,
 )
+
+# ── Helper: comprimir cotizaciones antes de guardar en historial ───────────────
+_RE_PRECIO_HIST = re.compile(r'\$[\d,]+')
+
+
+def _para_historial(respuesta: str) -> str:
+    """
+    Guarda una versión compacta de las cotizaciones en el historial de conversación.
+    El cliente recibe el texto completo; en memoria se guarda solo el resumen.
+    Esto evita que el historial crezca con bloques de precios completos y reduce
+    el consumo de tokens en cada turno siguiente de Claude.
+
+    Ejemplo:
+      Entrada:  "📱 *iPhone 15 Plus*\n✅ Calidad Genérica: $2,800 MXN\n✅ Original: $3,500 MXN\n..."
+      Salida:   "[Cotización enviada: iPhone 15 Plus — $2,800–$3,500 MXN]"
+    """
+    if len(respuesta) <= 200:
+        return respuesta  # Respuesta corta → guardar completa
+    if not _RE_PRECIO_HIST.search(respuesta):
+        return respuesta  # Sin precios → no es cotización, guardar completa
+
+    # Extraer primera línea significativa (suele ser el nombre del dispositivo)
+    lineas = [l.strip().replace("*", "").replace("_", "") for l in respuesta.split("\n") if l.strip()]
+    precios_str = _RE_PRECIO_HIST.findall(respuesta)
+    if not precios_str or not lineas:
+        return respuesta[:200] + "…"
+
+    # Calcular rango de precios
+    try:
+        nums = [float(p.replace("$", "").replace(",", "")) for p in precios_str]
+        p_min = f"${min(nums):,.0f}"
+        p_max = f"${max(nums):,.0f}"
+        rango = f"{p_min}–{p_max}" if p_min != p_max else p_min
+    except (ValueError, TypeError):
+        rango = precios_str[0]
+
+    primer_linea = lineas[0][:60]  # máx 60 chars del título
+    return f"[Cotización enviada: {primer_linea} — {rango} MXN]"
 
 
 @app.get("/")
@@ -399,6 +447,29 @@ async def admin_reset_chat(payload: ResetChatRequest, request: Request):
 
     logger.info(f"[ADMIN] Reset chat aplicado para {telefono}: {resumen}")
     return {"ok": True, "telefono": telefono, "resumen": resumen}
+
+
+@app.post("/admin/reload-catalogo")
+async def admin_reload_catalogo(request: Request):
+    """
+    Fuerza recarga del catálogo de precios desde Google Sheets.
+    Útil cuando actualizas precios en Sheets y no quieres esperar 24h.
+    Requiere header: X-Admin-Token
+    """
+    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
+    token_header = request.headers.get("X-Admin-Token", "").strip()
+    if not admin_token or token_header != admin_token:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    try:
+        from agent.pricing_sheets import recargar_catalogo_forzado
+        catalogo = await recargar_catalogo_forzado()
+        total = sum(len(v) for v in catalogo.values())
+        logger.info(f"[ADMIN] Catálogo recargado manualmente — {total} productos")
+        return {"ok": True, "productos": total, "hojas": list(catalogo.keys())}
+    except Exception as e:
+        logger.error(f"[ADMIN] Error recargando catálogo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/diagnostico/grupos")
@@ -615,7 +686,7 @@ async def messenger_handler(request: Request):
 
             respuesta = await generar_respuesta(msg.texto, historial, asesor, contexto_extra)
             await guardar_mensaje(msg.telefono, "user", msg.texto)
-            await guardar_mensaje(msg.telefono, "assistant", respuesta)
+            await guardar_mensaje(msg.telefono, "assistant", _para_historial(respuesta))
             await messenger.enviar_mensaje(msg.telefono, respuesta)
 
             logger.info(f"[MESSENGER] {msg.telefono} → {respuesta[:60]}")
@@ -766,7 +837,7 @@ async def _procesar_lote_mensajes(mensajes):
                     respuesta_img = await _analizar_y_responder_imagen(
                         msg, historial_vision, asesor
                     )
-                    await guardar_mensaje(msg.telefono, "assistant", respuesta_img)
+                    await guardar_mensaje(msg.telefono, "assistant", _para_historial(respuesta_img))
                     await proveedor.enviar_mensaje(msg.telefono, respuesta_img)
                     continue
 
@@ -778,7 +849,7 @@ async def _procesar_lote_mensajes(mensajes):
                     respuesta_vid = await _analizar_y_responder_video(
                         msg, historial_vision, asesor
                     )
-                    await guardar_mensaje(msg.telefono, "assistant", respuesta_vid)
+                    await guardar_mensaje(msg.telefono, "assistant", _para_historial(respuesta_vid))
                     await proveedor.enviar_mensaje(msg.telefono, respuesta_vid)
                     continue
 
@@ -953,7 +1024,7 @@ async def _procesar_lote_mensajes(mensajes):
                 respuesta = quitar_tags(respuesta)
 
                 await guardar_mensaje(msg.telefono, "user", msg.texto)
-                await guardar_mensaje(msg.telefono, "assistant", respuesta)
+                await guardar_mensaje(msg.telefono, "assistant", _para_historial(respuesta))
                 await proveedor.enviar_mensaje(msg.telefono, respuesta)
 
                 # ── Detectar dispositivo en background (no bloquea) ──

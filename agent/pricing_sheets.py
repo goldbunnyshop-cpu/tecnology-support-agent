@@ -6,12 +6,16 @@
 #   2. BATERÍAS ANDROID (rows 5-216): Nombre | P. Unitario | Mayoreo1 | Mayoreo2
 #   3. BATERÍAS iPHONE (rows 5-103): Nombre | P. Unitario | 20pz Surtido | 50pz Surtido
 #
-# Implementa caché con TTL de 1 hora. Usa credenciales de Google Sheets API.
+# Caché en dos niveles:
+#   1. Memoria (rápido, se pierde al reiniciar)
+#   2. SQLite local en Railway (persiste entre reinicios, TTL 24h)
+# Google Sheets solo se consulta cuando ambos cachés están vacíos o expirados.
 
 import os
 import re
 import csv
 import io
+import json
 import time
 import asyncio
 import logging
@@ -19,6 +23,7 @@ from collections import defaultdict
 from typing import Optional, Dict, List, Tuple
 
 import httpx
+import aiosqlite
 
 from agent.pricing import (
     clasificar_calidad_titulo,
@@ -31,8 +36,11 @@ logger = logging.getLogger("agentkit")
 
 # ── Configuración ─────────────────────────────────────────────────────────────
 SHEET_ID = os.getenv("GOOGLE_SHEETS_ID", "1sMVr7rUp2dz_4h4NUEwFjH-iVqOjUWjJNYx5ptfgT2U")
-CACHE_TTL = int(os.getenv("PRICING_SHEETS_CACHE_TTL", str(1 * 3600)))  # 1 hora
+# TTL del catálogo: 24 horas (Google Sheets solo se consulta una vez al día)
+CACHE_TTL = int(os.getenv("PRICING_SHEETS_CACHE_TTL", str(24 * 3600)))
 HTTP_TIMEOUT = 15
+# Ruta del SQLite de catálogo (separado del SQLite de conversaciones)
+CATALOG_DB_PATH = os.getenv("CATALOG_DB_PATH", "./catalog_cache.db")
 
 # GIDs de las hojas específicas (obtenidas del mapeo)
 GIDS_SHEETS = {
@@ -60,6 +68,77 @@ def _cache_get(clave: str):
 def _cache_set(clave: str, valor):
     """Guarda valor en caché con timestamp."""
     _cache[clave] = (time.monotonic(), valor)
+
+
+# ── Caché SQLite (persiste entre reinicios de Railway) ────────────────────────
+
+async def _init_catalog_db() -> None:
+    """Crea la tabla del catálogo en SQLite si no existe. Llamar al arrancar."""
+    async with aiosqlite.connect(CATALOG_DB_PATH) as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS catalogo_cache (
+                id       INTEGER PRIMARY KEY,
+                datos    TEXT    NOT NULL,
+                guardado REAL    NOT NULL
+            )
+        """)
+        await db.commit()
+
+
+async def _cargar_desde_sqlite() -> Optional[Dict]:
+    """
+    Lee el catálogo desde SQLite si tiene menos de CACHE_TTL segundos.
+    Retorna el catálogo parseado o None si está vacío/expirado.
+    """
+    try:
+        async with aiosqlite.connect(CATALOG_DB_PATH) as db:
+            async with db.execute(
+                "SELECT datos, guardado FROM catalogo_cache ORDER BY guardado DESC LIMIT 1"
+            ) as cur:
+                fila = await cur.fetchone()
+        if not fila:
+            logger.info("[SHEETS] SQLite: sin catálogo guardado")
+            return None
+        datos_json, ts_guardado = fila
+        edad_h = (time.time() - ts_guardado) / 3600
+        if (time.time() - ts_guardado) > CACHE_TTL:
+            logger.info(f"[SHEETS] SQLite expirado (edad={edad_h:.1f}h) → recargando desde Sheets")
+            return None
+        catalogo = json.loads(datos_json)
+        total = sum(len(v) for v in catalogo.values())
+        logger.info(f"[SHEETS] Catálogo desde SQLite ({total} productos, edad={edad_h:.1f}h)")
+        return catalogo
+    except Exception as e:
+        logger.warning(f"[SHEETS] Error leyendo SQLite: {e}")
+        return None
+
+
+async def _guardar_en_sqlite(catalogo: Dict) -> None:
+    """Persiste el catálogo completo en SQLite (reemplaza el anterior)."""
+    try:
+        async with aiosqlite.connect(CATALOG_DB_PATH) as db:
+            await db.execute("DELETE FROM catalogo_cache")
+            await db.execute(
+                "INSERT INTO catalogo_cache (datos, guardado) VALUES (?, ?)",
+                (json.dumps(catalogo, ensure_ascii=False), time.time()),
+            )
+            await db.commit()
+        total = sum(len(v) for v in catalogo.values())
+        logger.info(f"[SHEETS] Catálogo persistido en SQLite ({total} productos)")
+    except Exception as e:
+        logger.warning(f"[SHEETS] Error guardando en SQLite: {e}")
+
+
+async def recargar_catalogo_forzado() -> Dict:
+    """
+    Descarga el catálogo desde Google Sheets ignorando cualquier caché.
+    Actualiza SQLite y memoria. Llamar desde /admin/reload-catalogo o el cron diario.
+    """
+    logger.info("[SHEETS] Recarga forzada del catálogo desde Google Sheets")
+    # Limpiar caché en memoria para forzar descarga
+    _cache.pop("sheets::catalogo_completo", None)
+    # Descargar y reparar (guardará en SQLite y memoria internamente)
+    return await _cargar_catalogo_sheets()
 
 
 def _limpiar_precio(valor) -> Optional[float]:
@@ -234,17 +313,28 @@ async def _descargar_sheet_csv(gid: str) -> str:
 
 async def _cargar_catalogo_sheets() -> Dict[str, List[Dict]]:
     """
-    Descarga y parsea todas las 3 hojas.
-    Retorna {hoja_name: [productos]}
+    Carga el catálogo con prioridad:
+      1. Caché en memoria (más rápido, se pierde al reiniciar)
+      2. SQLite local en Railway (persiste entre reinicios, hasta 24h)
+      3. Google Sheets (solo si los dos anteriores están vacíos o expirados)
     """
     clave = "sheets::catalogo_completo"
+
+    # Nivel 1: memoria
     cacheado = _cache_get(clave)
     if cacheado is not None:
-        logger.info(f"[SHEETS] Catálogo desde caché ({sum(len(v) for v in cacheado.values())} productos)")
+        logger.info(f"[SHEETS] Catálogo desde memoria ({sum(len(v) for v in cacheado.values())} productos)")
         return cacheado
 
+    # Nivel 2: SQLite (sobrevive reinicios de Railway)
+    desde_sqlite = await _cargar_desde_sqlite()
+    if desde_sqlite is not None:
+        _cache_set(clave, desde_sqlite)  # cargar también en memoria
+        return desde_sqlite
+
+    # Nivel 3: Google Sheets (máximo una vez al día)
     logger.info(f"[SHEETS] Descargando catálogo desde Google Sheets (SHEET_ID={SHEET_ID[:20]}...)")
-    catalogo = {}
+    catalogo: Dict[str, List[Dict]] = {}
 
     # DISPLAYS
     logger.info("[SHEETS] Descargando DISPLAYS...")
@@ -274,9 +364,11 @@ async def _cargar_catalogo_sheets() -> Dict[str, List[Dict]]:
         logger.warning("[SHEETS] BATERÍAS iPHONE: no se pudo descargar (csv vacío)")
 
     total = sum(len(v) for v in catalogo.values())
-    logger.info(f"[SHEETS] Catálogo completo cargado: {total} productos de {len(catalogo)} hojas")
+    logger.info(f"[SHEETS] Catálogo completo desde Sheets: {total} productos de {len(catalogo)} hojas")
 
+    # Guardar en ambos niveles de caché
     _cache_set(clave, catalogo)
+    await _guardar_en_sqlite(catalogo)
     return catalogo
 
 
