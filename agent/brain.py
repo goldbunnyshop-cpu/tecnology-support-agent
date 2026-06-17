@@ -316,8 +316,20 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
         marca_ctx = marca_actual or _buscar_ultima_marca_historial(historial)
         return await _resolver_pricing_desde_texto(mensaje, marca_ctx)
 
-    # Pidió pantalla pero sin modelo aún (ej: "cuánto cuesta la pantalla de un iphone").
+    # Pidió pantalla pero sin modelo en el mensaje actual.
+    # Antes de buscar con el texto crudo (que no es un modelo), intentar recuperar
+    # marca+modelo del historial reciente (ej: cliente dijo "Motorola Stylus 2023"
+    # en turno anterior y ahora dice "la pantalla se le cayó").
     if es_display:
+        modelo_hist = _buscar_ultimo_modelo_historial(historial)
+        marca_hist = _buscar_ultima_marca_historial(historial)
+        if modelo_hist:
+            logger.info(
+                f"[PRICING-DEBUG] Display sin modelo actual → usando historial: "
+                f"marca='{marca_hist}' modelo='{modelo_hist}'"
+            )
+            r = await cotizar_con_fallback(marca_hist or "", modelo_hist)
+            return _limpiar_respuesta_pricing(r)
         return await _resolver_pricing_desde_texto(mensaje)
 
     marca_suelta = _es_respuesta_marca(mensaje)

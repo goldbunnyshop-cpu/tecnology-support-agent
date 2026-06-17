@@ -185,17 +185,9 @@ async def guardar_cita_automatica(
         db_kind = "PostgreSQL" if "postgresql" in DATABASE_URL else ("SQLite" if "sqlite" in DATABASE_URL else "desconocido")
         logger.info(f"[CITA_DETECTOR] BD destino: {db_kind}")
 
-        # Crear evento en Google Calendar si está configurado (no crítico)
-        try:
-            await crear_en_google_calendar(
-                nombre=nombre,
-                dispositivo=dispositivo,
-                problema=problema,
-                fecha_hora=fecha_hora,
-                asesor=asesor
-            )
-        except Exception as cal_e:
-            logger.warning(f"[CITA_DETECTOR] Google Calendar saltado (no crítico): {cal_e}")
+        # NOTA: Google Calendar ya fue creado por agendar_cita() en google_calendar.py
+        # antes de llamar a esta función. NO crear aquí — causaría evento duplicado
+        # que triplica las notificaciones al grupo interno de WhatsApp.
 
         # Guardar en PostgreSQL directamente con SQLAlchemy
         logger.info("[CITA_DETECTOR] Abriendo sesión SQLAlchemy…")
@@ -205,12 +197,14 @@ async def guardar_cita_automatica(
                 INSERT INTO citas (nombre, telefono, dispositivo, problema, fecha_hora, asesor, fuente)
                 VALUES (:nombre, :telefono, :dispositivo, :problema, :fecha_hora, :asesor, :fuente)
             """)
+            # PostgreSQL usa TIMESTAMP WITHOUT TIME ZONE — quitar tzinfo antes de insertar
+            fecha_hora_naive = fecha_hora.replace(tzinfo=None) if fecha_hora else None
             params = {
                 "nombre": nombre,
                 "telefono": telefono,
                 "dispositivo": dispositivo,
                 "problema": problema,
-                "fecha_hora": fecha_hora,
+                "fecha_hora": fecha_hora_naive,
                 "asesor": asesor,
                 "fuente": "automatica",
             }
