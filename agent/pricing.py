@@ -327,6 +327,17 @@ def _parsear_chunk_descripcion(chunk: str, marca_header: str) -> tuple[str | Non
         variante = ' '.join(filter(None, [sufijo, resto])).strip() or None
         return base, variante
 
+    # FIX Bug 3 (Poco M5s): Si el primer token es una marca conocida (POCO, REDMI…)
+    # dentro de una descripción, stripearla y re-parsear el modelo real.
+    # Ej: 'POCO M5S' → strip 'poco' → re-parsear 'm5s' → ('m5', 's')
+    # Ej: 'POCO M4'  → strip 'poco' → re-parsear 'm4'  → ('m4', None)
+    # Esto ocurre en descripciones XIAOMI como "NOTE10 4G/10S/POCO M5S".
+    if primer in ALIAS_MARCAS and len(tokens) > 1:
+        sub_chunk = ' '.join(tokens[1:])
+        sub_par = _parsear_chunk_descripcion(sub_chunk, marca_header)
+        if sub_par and sub_par[0]:
+            return sub_par
+
     # Fallback: primer token como base, resto como variante (ej "EDGE 40")
     return primer, resto
 
@@ -576,15 +587,15 @@ def _mensaje_no_disponible(marca: str, modelo: str) -> str:
             "Si no estás seguro del modelo, lo encuentras en *Configuración > Acerca del teléfono*."
         )
 
-    # Si tenemos marca y modelo pero no existe
-    # CRÍTICO: Ser muy claro que NO lo tenemos en stock
+    # Si tenemos marca y modelo pero no existe en catálogo
+    # → No rechazar: invitar al cliente a dejar contacto para que el técnico lo busque
     return (
-        f"❌ Disculpa, no tenemos *{marca_limpia.upper()} {modelo_limpio}* disponible en este momento.\n\n"
-        f"✅ Pero tenemos estas marcas/modelos en stock:\n"
-        f"• Samsung (A12, A21, A32, S21, S21 Ultra)\n"
-        f"• iPhone (11, 12, 13, 14, 15)\n"
-        f"• Motorola (G10, G31, G42)\n\n"
-        f"¿Alguno de estos? O confirma el modelo exacto de tu dispositivo."
+        f"❌ Aún no tenemos display para *{marca_limpia.upper()} {modelo_limpio}* en inventario.\n\n"
+        f"Pero nuestro técnico puede conseguirlo especialmente para ti. 🔍\n\n"
+        f"Solo déjame:\n"
+        f"📛 *Tu nombre*\n"
+        f"📞 *¿Prefieres WhatsApp o llamada?*\n\n"
+        f"Te confirmamos precio y disponibilidad en menos de 24 horas. ¿Te parece?"
     )
 
 

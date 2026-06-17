@@ -332,6 +332,44 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
             return _limpiar_respuesta_pricing(r)
         return await _resolver_pricing_desde_texto(mensaje)
 
+    # ── NUEVO: Cliente responde con marca+modelo tras pregunta de fallback de pricing ──
+    # Caso: bot preguntó "¿de qué equipo es?" y cliente responde "Huawei P40"
+    # Sin esta detección: modelo_actual='p40', marca_actual='huawei' pero ninguna
+    # flag de pricing activa → delegaba a Claude → Claude decía "déjame verificar"
+    # sin nunca buscar el precio real.
+    if modelo_actual and marca_actual and not es_display and not es_consulta_precio:
+        _ult_asistente = next(
+            (h["content"] for h in reversed(historial) if h["role"] == "assistant"), ""
+        ).lower()
+        _FALLBACK_TRIGGERS = (
+            "solo dime de qué equipo es",
+            "de qué equipo es",
+            "¿de qué modelo",
+            "dime el modelo",
+            "dime de qué",
+            "qué equipo tienes",
+            "solo dime el modelo",
+        )
+        if any(t in _ult_asistente for t in _FALLBACK_TRIGGERS):
+            logger.info(
+                f"[PRICING-DEBUG] Respuesta a fallback de pricing: "
+                f"marca='{marca_actual}' modelo='{modelo_actual}'"
+            )
+            r = await cotizar_con_fallback(marca_actual, modelo_actual)
+            return _limpiar_respuesta_pricing(r)
+
+        # FIX Bug 2 (ZTE V41 Smart): Mensaje breve con marca+modelo = consulta implícita.
+        # En taller de reparación, quien menciona un equipo sin más contexto pregunta precio.
+        # Ej: "ZTE V41 Smart" (3 tokens) → cotizar sin necesitar palabras clave explícitas.
+        _msg_norm = _normalizar_consulta_pricing(mensaje)
+        if len(_msg_norm.split()) <= 4:
+            logger.info(
+                f"[PRICING-DEBUG] Mensaje breve ({len(_msg_norm.split())} tokens) con "
+                f"marca+modelo → cotizando implícitamente: {marca_actual} {modelo_actual}"
+            )
+            r = await cotizar_con_fallback(marca_actual, modelo_actual)
+            return _limpiar_respuesta_pricing(r)
+
     marca_suelta = _es_respuesta_marca(mensaje)
     modelo_prev = _buscar_ultimo_modelo_historial(historial)
     marca_prev = _buscar_ultima_marca_historial(historial)

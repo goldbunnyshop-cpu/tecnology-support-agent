@@ -507,6 +507,19 @@ async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
         logger.info(f"[PRICING] Hugo pide variante para {marca} {modelo}")
         return hugo["respuesta"]
 
+    # FIX Bug 1 (S24 Ultra): Si Hugo falló Y no había marca explícita, buscar el modelo
+    # en todo Hugo antes de ir a Sheets. Sheets aplica ×4 sobre precios ya en MXN → precio
+    # inflado. Hugo tiene el precio correcto si se busca por modelo sin restringir marca.
+    # Ej: cliente dice "s24 ultra" sin decir "samsung" → Hugo("", "s24 ultra") falla,
+    #     pero buscar_modelo_sin_marca("s24 ultra") encuentra SAMSUNG → $1875×4 = $7500 MXN.
+    if hugo["tipo"] not in ("ok", "variante") and not (marca or "").strip():
+        from agent.pricing import buscar_modelo_sin_marca
+        logger.info(f"[PRICING] Hugo sin marca para '{modelo}' → buscando sin marca en Hugo")
+        resp_sm = await buscar_modelo_sin_marca(modelo)
+        if resp_sm and not es_respuesta_no_disponible(resp_sm):
+            logger.info(f"[PRICING] buscar_modelo_sin_marca resolvió '{modelo}' ✓")
+            return resp_sm
+
     # 2. Google Sheets (para complementar calidades faltantes o como primario)
     sheets = await recolectar_categorias_display_sheets(marca, modelo)
 
