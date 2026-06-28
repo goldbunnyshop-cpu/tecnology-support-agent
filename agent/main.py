@@ -892,7 +892,7 @@ async def _procesar_lote_mensajes(mensajes):
 
                 contexto_cliente = "\n\n".join(partes_ctx)
 
-                historial = await obtener_historial(msg.telefono)
+                historial = await obtener_historial(msg.telefono, limite=10)  # 10 msgs c/ compresión = suficiente contexto y 50% menos tokens
 
                 # Si la última respuesta del agente fue una confirmación de cita,
                 # indicarle a Claude que ya está agendada y responda preguntas normalmente

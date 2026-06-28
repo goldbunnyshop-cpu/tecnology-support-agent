@@ -73,8 +73,8 @@ CONFIANZA: [ALTA | MEDIA | BAJA]
 
     try:
         response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=500,
+            model="claude-haiku-4-5-20251001",  # Haiku: clasificación simple, 4× más barato
+            max_tokens=200,
             messages=[{"role": "user", "content": prompt}]
         )
 

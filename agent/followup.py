@@ -159,8 +159,8 @@ Reglas del mensaje:
 
     try:
         response = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=250,
+            model="claude-haiku-4-5-20251001",  # Haiku: mensajes cortos de seguimiento, 4× más barato
+            max_tokens=200,
             messages=[{"role": "user", "content": prompt}],
         )
         texto = response.content[0].text.strip()
