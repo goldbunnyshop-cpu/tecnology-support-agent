@@ -171,7 +171,7 @@ async def obtener_retomas_pendientes() -> list[Lead]:
 _INTERVALOS_SEGUIMIENTO = {
     0: timedelta(hours=2),    # Seg 1: 2h desde el último mensaje del cliente
     1: timedelta(hours=24),   # Seg 2: 24h desde que se envió el seguimiento 1
-    2: timedelta(hours=36),   # Seg 3: 36h desde que se envió el seguimiento 2
+    2: timedelta(hours=72),   # Seg 3: 72h (3 días) desde que se envió el seguimiento 2
     3: timedelta(days=7),     # Seg 4: 7 días desde que se envió el seguimiento 3
 }
 MAX_SEGUIMIENTOS = 4
@@ -239,9 +239,17 @@ async def registrar_seguimiento_enviado(telefono: str, prioridad: str = "medio")
         if lead:
             lead.seguimientos_enviados += 1
             lead.seguimiento_enviado_en = datetime.utcnow()
-            lead.seguimiento_realizado  = True
             lead.prioridad              = prioridad
-            lead.estado = "perdido" if lead.seguimientos_enviados >= MAX_SEGUIMIENTOS else "en_seguimiento"
+            if lead.seguimientos_enviados >= MAX_SEGUIMIENTOS:
+                # Secuencia completa: marcar como terminado
+                lead.seguimiento_realizado = True
+                lead.estado = "perdido"
+            else:
+                # Quedan más seguimientos pendientes: resetear a False para que
+                # el scheduler lo recoja de nuevo cuando venza el siguiente intervalo.
+                # BUG FIX: sin este reset, seguimientos 2/3/4 nunca se enviaban.
+                lead.seguimiento_realizado = False
+                lead.estado = "en_seguimiento"
         await session.commit()
 
 
