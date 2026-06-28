@@ -64,7 +64,10 @@ TEXTO_MENU = (
     "*noshow:* [número] — Cliente agendó pero no vino + cupón 10% desc (válido 8 días)\n\n"
     "*── Reportes ──*\n"
     "*reporte* → Resumen del día (leads + CRM + pendientes)\n"
-    "*pendientes* → Pendientes de seguimiento"
+    "*pendientes* → Pendientes de seguimiento\n\n"
+    "*── Seguimiento masivo ──*\n"
+    "*masivo preview* → Ver lista de leads que recibirían el masivo (sin enviar)\n"
+    "*masivo* → Enviar seguimiento personalizado a todos los leads sin cita confirmada"
 )
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -403,6 +406,144 @@ def extraer_nombre_cliente(historial: list[dict]) -> str:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# SEGUIMIENTO MASIVO
+# ════════════════════════════════════════════════════════════════════════════
+
+async def _cmd_masivo_preview(chat_id_raw, proveedor):
+    """
+    Comando: masivo preview
+    Muestra la lista de leads que RECIBIRÍAN el masivo — sin enviar nada.
+    Útil para revisar antes de ejecutar.
+    """
+    from agent.leads import obtener_leads_sin_cita
+    from agent.memory import numero_esta_stopped
+
+    leads = await obtener_leads_sin_cita(min_inactividad_horas=2)
+
+    if not leads:
+        await proveedor.enviar_mensaje(
+            chat_id_raw,
+            "✅ *Preview masivo* — No hay leads pendientes de seguimiento.\n"
+            "Todos tienen cita, están en stopped, son noshow o recibieron seguimiento reciente."
+        )
+        return
+
+    ahora = datetime.now()
+    lineas = [f"👁️ *Preview masivo — {len(leads)} leads elegibles*\n(no se ha enviado nada)\n"]
+
+    for lead in leads:
+        stopped = await numero_esta_stopped(lead.telefono)
+        icono = "⛔" if stopped else "📨"
+        telefono_corto = lead.telefono[-6:]
+
+        dias_sin_respuesta = ""
+        if lead.ultimo_mensaje:
+            delta = datetime.utcnow() - lead.ultimo_mensaje
+            h = int(delta.total_seconds() // 3600)
+            dias_sin_respuesta = f"{h}h sin resp" if h < 48 else f"{h // 24}d sin resp"
+
+        lineas.append(
+            f"{icono} ...{telefono_corto} | {lead.estado} | "
+            f"seg {lead.seguimientos_enviados}/4 | {dias_sin_respuesta}"
+            + (" ← NO se enviará (stopped)" if stopped else "")
+        )
+
+    lineas.append(
+        f"\n✏️ Para enviar, escribe: *masivo*\n"
+        f"Para excluir un número: *stop: NÚMERO* antes de ejecutar masivo."
+    )
+
+    await proveedor.enviar_mensaje(chat_id_raw, "\n".join(lineas))
+
+
+async def _cmd_seguimiento_masivo(chat_id_raw, proveedor, guardar_mensaje_fn, obtener_historial_fn):
+    """
+    Comando: masivo
+    Envía un seguimiento personalizado a todos los leads sin cita confirmada.
+    - Excluye: convertidos, perdidos, stopped, activos en los últimos 2h.
+    - Genera mensaje con Haiku (leadgen contextual, no genérico).
+    - Reporta resumen al grupo al finalizar.
+    """
+    import asyncio as _asyncio
+    from agent.leads import obtener_leads_sin_cita, registrar_seguimiento_enviado
+    from agent.followup import generar_mensaje_seguimiento, es_horario_habil
+    from agent.memory import numero_esta_stopped
+
+    await proveedor.enviar_mensaje(
+        chat_id_raw,
+        "⏳ Iniciando seguimiento masivo... espera un momento."
+    )
+
+    if not es_horario_habil():
+        await proveedor.enviar_mensaje(
+            chat_id_raw,
+            "⛔ Fuera de horario hábil. El seguimiento masivo solo corre de L-V 10-21h y S-D 11-20h.\n"
+            "Puedes volver a intentarlo dentro del horario."
+        )
+        return
+
+    leads = await obtener_leads_sin_cita(min_inactividad_horas=2)
+
+    if not leads:
+        await proveedor.enviar_mensaje(
+            chat_id_raw,
+            "✅ No hay leads pendientes de seguimiento en este momento.\n"
+            "Todos están activos, tienen cita confirmada o ya recibieron todos sus seguimientos."
+        )
+        return
+
+    enviados = []
+    omitidos = []
+
+    for lead in leads:
+        try:
+            # Saltar números stopped
+            if await numero_esta_stopped(lead.telefono):
+                omitidos.append(f"  ⛔ {lead.telefono} (stopped)")
+                continue
+
+            historial = await obtener_historial_fn(lead.telefono, limite=10)
+            asesor = lead.asesor_asignado or "Valeria"
+
+            mensaje, prioridad = await generar_mensaje_seguimiento(
+                historial,
+                lead.seguimientos_enviados,
+                asesor,
+            )
+
+            enviado = await proveedor.enviar_mensaje(lead.telefono, mensaje)
+            if enviado:
+                await guardar_mensaje_fn(lead.telefono, "assistant", mensaje)
+                await registrar_seguimiento_enviado(lead.telefono, prioridad)
+                # Extraer nombre del historial para el reporte
+                nombre = extraer_nombre_cliente(historial) or lead.telefono[-4:]
+                enviados.append(f"  ✅ {nombre} ({lead.telefono[-4:]}) [{prioridad}] — seg {lead.seguimientos_enviados + 1}/4")
+                logger.info(f"[MASIVO] Enviado a {lead.telefono} seg {lead.seguimientos_enviados + 1}/4")
+            else:
+                omitidos.append(f"  ❌ {lead.telefono} (fallo envío)")
+
+            # Pequeña pausa entre mensajes para no saturar Whapi
+            await _asyncio.sleep(0.8)
+
+        except Exception as e:
+            omitidos.append(f"  ⚠️ {lead.telefono} (error: {str(e)[:40]})")
+            logger.error(f"[MASIVO] Error en {lead.telefono}: {e}")
+
+    # Reporte final al grupo
+    resumen = f"📊 *Seguimiento masivo completado*\n\n"
+    resumen += f"*Enviados: {len(enviados)}*\n"
+    if enviados:
+        resumen += "\n".join(enviados[:20])  # máx 20 líneas
+        if len(enviados) > 20:
+            resumen += f"\n  ... y {len(enviados) - 20} más"
+    if omitidos:
+        resumen += f"\n\n*Omitidos: {len(omitidos)}*\n"
+        resumen += "\n".join(omitidos[:10])
+
+    await proveedor.enviar_mensaje(chat_id_raw, resumen)
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # PROCESADOR PRINCIPAL DE COMANDOS
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -440,6 +581,16 @@ async def procesar_comando_grupo(
     # ── reporte ──
     if texto_lower == "reporte" or texto_lower == "reporte:":
         await _cmd_reporte_dia(chat_id_raw, proveedor, obtener_historial_fn)
+        return True
+
+    # ── masivo: seguimiento a todos los leads sin cita confirmada ──
+    if texto_lower in ("masivo", "masivo:"):
+        await _cmd_seguimiento_masivo(chat_id_raw, proveedor, guardar_mensaje_fn, obtener_historial_fn)
+        return True
+
+    # ── masivo preview: ver lista sin enviar ──
+    if texto_lower in ("masivo preview", "masivo: preview", "preview masivo"):
+        await _cmd_masivo_preview(chat_id_raw, proveedor)
         return True
 
     # ── reanudar todo ──
@@ -878,6 +1029,10 @@ async def procesar_comando_grupo(
                 cupon=cupon,
                 fecha_expira=fecha_expira_fmt
             )
+
+            # Marcar en BD como noshow para excluirlo del seguimiento masivo automático
+            from agent.leads import marcar_lead_noshow
+            await marcar_lead_noshow(phone_fmt)
 
             # Enviar mensaje al cliente
             exito = await proveedor.enviar_mensaje(phone_fmt, mensaje_noshow)

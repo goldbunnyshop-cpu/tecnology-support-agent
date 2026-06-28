@@ -108,7 +108,8 @@ async def crear_o_actualizar_lead(
         lead = result.scalar_one_or_none()
         if lead:
             lead.ultimo_mensaje = datetime.utcnow()
-            if lead.estado in ("en_seguimiento", "perdido"):
+            if lead.estado in ("en_seguimiento", "perdido", "noshow"):
+                # Cliente volvió a escribir → reactivar secuencia de seguimiento
                 lead.estado = "activo"
                 lead.seguimientos_enviados = 0
                 lead.seguimiento_enviado_en = None
@@ -195,6 +196,7 @@ async def obtener_leads_para_seguimiento() -> list[Lead]:
                 Lead.seguimiento_realizado == False,   # noqa: E712 — SQLAlchemy requiere ==
                 Lead.estado != "perdido",
                 Lead.estado != "convertido",
+                Lead.estado != "noshow",   # noshow: tuvo cita pero no vino — excluir del auto-scheduler
             )
         )
         todos = result.scalars().all()
@@ -271,13 +273,29 @@ async def marcar_seguimiento_manual(identificador: str):
 
 
 async def marcar_como_convertido(telefono: str):
-    """Marca el lead como convertido."""
+    """Marca el lead como convertido (agendó cita y se presentó)."""
     async with async_session() as session:
         result = await session.execute(select(Lead).where(Lead.telefono == telefono))
         lead = result.scalar_one_or_none()
         if lead:
             lead.estado = "convertido"
         await session.commit()
+
+
+async def marcar_lead_noshow(telefono: str):
+    """
+    Marca el lead como 'noshow': agendó cita pero no se presentó.
+    El estado 'noshow' lo excluye del seguimiento masivo automático (comando masivo)
+    y del scheduler normal. Solo se reactiva si el cliente vuelve a escribir.
+    """
+    async with async_session() as session:
+        result = await session.execute(select(Lead).where(Lead.telefono == telefono))
+        lead = result.scalar_one_or_none()
+        if lead:
+            lead.estado = "noshow"
+            lead.seguimiento_realizado = True  # pausar secuencia automática
+        await session.commit()
+        logger.info(f"[LEAD] {telefono} marcado como noshow")
 
 
 async def obtener_todos_los_leads() -> list[Lead]:
@@ -309,6 +327,43 @@ async def obtener_leads_sin_respuesta_presupuesto(horas: int = 24) -> list[Lead]
                 Lead.presupuesto_enviado_en <= limite,
                 Lead.ultimo_mensaje <= limite,  # no han respondido
             )
+        )
+        return list(result.scalars().all())
+
+
+async def obtener_leads_sin_cita(min_inactividad_horas: int = 2) -> list[Lead]:
+    """
+    Leads elegibles para seguimiento masivo: sin cita confirmada y sin actividad reciente.
+
+    INCLUYE:
+      - estado 'activo' o 'en_seguimiento' (no convertido, no perdido, no noshow)
+      - ultimo_mensaje hace más de min_inactividad_horas (no interrumpe conversaciones activas)
+      - seguimientos_enviados < MAX_SEGUIMIENTOS
+
+    EXCLUYE automáticamente:
+      - convertido   → tiene cita confirmada (viene + pagó)
+      - perdido      → ya agotó los 4 seguimientos
+      - noshow       → tuvo cita pero no se presentó (se maneja con comando noshow:)
+      - seguimiento_enviado_en < 12h → el scheduler ya envió uno reciente, no pisar
+      - Números en stopped_numbers  → se filtran en el loop del comando masivo
+    """
+    corte_actividad = datetime.utcnow() - timedelta(hours=min_inactividad_horas)
+    corte_seguimiento = datetime.utcnow() - timedelta(hours=12)  # no pisar al scheduler
+
+    from sqlalchemy import or_
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Lead).where(
+                Lead.estado.in_(["activo", "en_seguimiento"]),
+                Lead.seguimientos_enviados < MAX_SEGUIMIENTOS,
+                Lead.ultimo_mensaje <= corte_actividad,
+                # No enviar si el scheduler ya mandó uno hace menos de 12h
+                or_(
+                    Lead.seguimiento_enviado_en.is_(None),
+                    Lead.seguimiento_enviado_en <= corte_seguimiento,
+                ),
+            ).order_by(Lead.ultimo_mensaje.asc())
         )
         return list(result.scalars().all())
 
