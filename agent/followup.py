@@ -207,6 +207,12 @@ async def ejecutar_seguimientos():
 
     for lead in leads:
         try:
+            # Respetar stop: — nunca enviar seguimientos a números silenciados
+            from agent.memory import numero_esta_stopped
+            if await numero_esta_stopped(lead.telefono):
+                logger.info(f"[SEGUIMIENTO] Omitido — {lead.telefono} está STOPPED")
+                continue
+
             historial = await obtener_historial(lead.telefono, limite=30)
             asesor = lead.asesor_asignado or "Valeria"
             mensaje, prioridad = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados, asesor)
@@ -244,6 +250,12 @@ async def ejecutar_retomas():
 
     for lead in leads:
         try:
+            # Respetar stop: — nunca enviar retomas a números silenciados
+            from agent.memory import numero_esta_stopped
+            if await numero_esta_stopped(lead.telefono):
+                logger.info(f"[RETOMA] Omitida — {lead.telefono} está STOPPED")
+                continue
+
             # Si el cliente ya respondió después de que se programó la retoma, cancelar
             retoma_desde = lead.retoma_desde
             ultimo = lead.ultimo_mensaje
