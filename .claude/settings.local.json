@@ -21,7 +21,22 @@
       "Grep",
       "Bash(python *)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(PYTHONIOENCODING=utf-8 python *)"
+      "Bash(PYTHONIOENCODING=utf-8 python *)",
+      "Bash(PYTHONUTF8=1 python -c ' *)",
+      "Bash(PYTHONUTF8=1 python tests/eval/run_eval.py --solo m01-precio-display,m07-display-samsung,c01-display-ambiguo,c04-pricing-contextual,c10-display-no-inventario)",
+      "Bash(curl -sL \"https://docs.google.com/spreadsheets/d/1sMVr7rUp2dz_4h4NUEwFjH-iVqOjUWjJNYx5ptfgT2U/export?format=csv&gid=1452574805\")",
+      "Bash(tee tests/eval/_run_fix.log)",
+      "Bash(tee tests/eval/_run_fix2.log)",
+      "Bash(grep -nA 30 \"def _variantes_telefono\" agent/memory.py)",
+      "Bash(grep -vE \"\\\\.db$\")",
+      "Bash(sed -n '18,80p' agent/leads.py)",
+      "Bash(sed -n '195,245p' agent/cita_detector.py)",
+      "Bash(sed -n '585,600p' agent/memory.py)",
+      "Bash(grep -vE \"\\\\.db$|settings.local|scheduled_tasks\")",
+      "Bash(grep -nA 12 \"class Pausa\" agent/memory.py)",
+      "Bash(grep -nA 18 \"def normalizar_numero\" agent/pausa_manager.py)",
+      "Bash(grep -nA 10 \"_es_numero_excepcion_pruebas\\\\|def _es_numero_interno\" agent/main.py)",
+      "Bash(grep -vE \"settings.local|scheduled_tasks|\\\\.db$\")"
     ]
   }
 }

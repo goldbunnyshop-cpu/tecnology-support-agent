@@ -141,6 +141,81 @@ Se aplica en los 5 puntos donde se guarda `guardar_mensaje(..., "assistant", ...
 
 ---
 
+## Bug 4 — Doble recordatorio al cliente y al grupo (efecto cascada del Bug 1)
+
+**Síntoma:** José de Jesús recibió 2 mensajes de recordatorio en su WhatsApp personal Y el grupo interno recibió 2 mensajes de "⏰ RECORDATORIO" para la misma cita. Lo mismo con Rodolfo.
+
+**Log (líneas 596–612):**
+```
+[CITAS GRUPO] 🔄 Intento 1/2 — Enviando... — ⏰ *RECORDATORIO: Cita de José de Jesús...*
+[CITAS GRUPO] ✅ Mensaje enviado al grupo exitosamente
+[CITAS] Recordatorio 1h — José de Jesús 2:00 p.m. ...
+[CITAS GRUPO] 🔄 Intento 1/2 — ... ← SEGUNDA VEZ (duplicado)
+...
+[RECORDATORIO] ✅ Enviado a 5215572114286 (José de Jesús)
+[RECORDATORIO] ✅ Enviado a 5215572114286 (José de Jesús) ← SEGUNDA VEZ
+```
+
+**Causa raíz:** El Bug 1 creaba dos eventos de Google Calendar para cada cita. El poller de recordatorios consultaba el Calendar y encontraba DOS eventos "José de Jesús a las 2:00 PM" con IDs distintos. Como el anti-duplicados usa `evento_id`, ambos pasaban el filtro y disparaban recordatorio independiente.
+
+**Fix:** Es efecto cascada del Bug 1. Al eliminar la segunda creación de evento en `cita_detector.py`, el Calendar solo tendrá UN evento por cita y los recordatorios también serán únicos. **No requiere cambio adicional de código.**
+
+---
+
+## Bug 5 — Precio no consultado cuando cliente responde "marca modelo" al fallback
+
+**Síntoma:** El bot preguntaba "¿de qué equipo es?" y el cliente respondía con marca+modelo ("Huawei p40"). El motor de pricing NO detectaba eso como consulta de precio y delegaba a Claude. Claude respondía "déjame verificar" pero nunca hacía la búsqueda real.
+
+**Log (líneas 947–953):**
+```
+[PRICING-DEBUG] Mensaje: 'Huawei p40'
+[PRICING-DEBUG] es_consulta_precio=False, es_display=False, es_no_display=False, es_modelo_breve=False
+[PRICING-DEBUG] marca_actual='huawei', modelo_actual='p40'
+[PRICING-DEBUG] NO ES CONSULTA PRECIO → delegando a Claude
+→ Claude: "Para el Huawei P40 déjame verificar disponibilidad y precio exacto..."
+```
+
+**Causa raíz:** La condición en `brain.py` para activar el motor de pricing requería que al menos un flag fuera `True` (`es_display`, `es_consulta_precio`, o `es_modelo_breve`). Un mensaje como "Huawei p40" solo tiene marca+modelo detectados, sin keywords de precio → ningún flag activo → se delegaba a Claude.
+
+**Fix aplicado — `agent/brain.py` (nuevo bloque antes de `marca_suelta`):**
+
+```python
+# Si cliente responde con marca+modelo al fallback "solo dime de qué equipo es"
+if modelo_actual and marca_actual and not es_display and not es_consulta_precio:
+    _ult_asistente = next(
+        (h["content"] for h in reversed(historial) if h["role"] == "assistant"), ""
+    ).lower()
+    _FALLBACK_TRIGGERS = ("solo dime de qué equipo es", "de qué equipo es", ...)
+    if any(t in _ult_asistente for t in _FALLBACK_TRIGGERS):
+        r = await cotizar_con_fallback(marca_actual, modelo_actual)
+        return _limpiar_respuesta_pricing(r)
+```
+
+---
+
+## Mejora 3 — Captura de lead cuando el precio no está disponible
+
+**Problema:** Cuando marca+modelo eran conocidos pero no había precio en catálogo, `_mensaje_no_disponible()` respondía con una lista de "equipos que SÍ tenemos" y no pedía datos de contacto. El cliente quedaba bloqueado sin opción de ser contactado por el técnico.
+
+**Log:** Cliente pregunta display Huawei P40 → no encontrado → bot lista otros equipos → cliente abandona (o Claude improvisa captura fragile).
+
+**Fix aplicado — `agent/pricing.py` (`_mensaje_no_disponible()`):**
+
+```python
+# ANTES:
+"❌ Disculpa, no tenemos *MARCA MODELO* disponible...\n✅ Pero tenemos: Samsung, iPhone..."
+
+# DESPUÉS:
+"❌ Aún no tenemos display para *MARCA MODELO* en inventario.\n"
+"Pero nuestro técnico puede conseguirlo especialmente para ti. 🔍\n\n"
+"Solo déjame:\n📛 *Tu nombre*\n📞 *¿Prefieres WhatsApp o llamada?*\n\n"
+"Te confirmamos precio y disponibilidad en menos de 24 horas. ¿Te parece?"
+```
+
+El cliente da su nombre, el bot ya tiene su número de WhatsApp. Claude se encarga de guardar el contexto como lead calificado (instrucción en system prompt).
+
+---
+
 ## Variables de entorno relacionadas
 
 | Variable | Descripción | Default |
