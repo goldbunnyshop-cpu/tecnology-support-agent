@@ -1,7 +1,7 @@
 # TECNOLOGY SUPPORT — Estado del Proyecto WhatsApp Agent
 
 > **Archivo único de referencia.** Consolida estado, historial de bugs, arquitectura y pendientes.
-> Última actualización: **27 de junio 2026 (sesión 2)**.
+> Última actualización: **10 de julio 2026 (sesión 3)**.
 > Para no romper nada: leer `COTIZADOR.md` (motor de precios) y `COMANDOS.md` (grupo interno)
 > antes de tocar `pricing.py`, `pricing_fallback.py`, `brain.py` o `commands*.py`.
 
@@ -337,6 +337,36 @@ _cotizar_display_fusionado(marca, modelo)
 
 ---
 
+### Julio 10, 2026 (sesión 3) — Fix `stop:` no silenciaba seguimientos automáticos
+
+**Bug crítico: números bloqueados con `stop:` seguían recibiendo seguimientos**
+- Causa: `ejecutar_seguimientos()` y `ejecutar_retomas()` en `agent/followup.py` no consultaban la tabla `stopped_numbers`. El guard `numero_esta_stopped()` solo existía en `main.py` (mensajes entrantes). Las tareas del scheduler corrían su loop sin ningún filtro de stop.
+- Resultado: un cliente al que se le aplicaba `stop:` dejaba de recibir respuestas del agente, pero seguía recibiendo los seguimientos automáticos cada 2h / 24h / 72h / 7d y las retomas nocturnas.
+- Fix `agent/followup.py` (`ejecutar_seguimientos`):
+  ```python
+  from agent.memory import numero_esta_stopped
+  if await numero_esta_stopped(lead.telefono):
+      logger.info(f"[SEGUIMIENTO] Omitido — {lead.telefono} está STOPPED")
+      continue
+  ```
+- Fix `agent/followup.py` (`ejecutar_retomas`): mismo check con log `[RETOMA] Omitida — STOPPED`.
+- Los números ya bloqueados en la BD actúan de inmediato sin necesidad de volver a bloquearlos.
+- El comando `masivo` ya tenía el check desde la sesión anterior (no necesitó cambio).
+
+**Bug: git HEAD desconectado — Railway no desplegaba**
+- Causa: HEAD estaba `detached from 812e121`. Los commits nuevos existían localmente pero no estaban en la rama `main`. Railway jalona `origin/main` → nunca detectaba cambios.
+- Además: `.git/index.lock` y `.git/HEAD.lock` bloqueaban `git status` y `git add`.
+- Fix (PowerShell):
+  ```powershell
+  Remove-Item ".git\index.lock" -Force -ErrorAction SilentlyContinue
+  Remove-Item ".git\HEAD.lock" -Force -ErrorAction SilentlyContinue
+  git branch -f main 7729d7d   # apuntar main al commit más reciente
+  git checkout main
+  git push origin main
+  ```
+
+---
+
 ## 5. REGLAS PARA NO ROMPER NADA
 
 ### Reglas de oro aprendidas de bugs pasados
@@ -356,6 +386,8 @@ _cotizar_display_fusionado(marca, modelo)
 7. **El motor de pricing intercepta ANTES de Claude**. Si `_intentar_respuesta_pricing_contextual()` retorna algo, Claude no se llama. Si retorna `None`, Claude toma el control.
 
 8. **Para agregar soporte a un modelo nuevo**: solo agregarlo al CSV (`knowledge/hugo_shop.csv`) bajo la sección de su marca. El matching es automático.
+
+9. **`stop:` debe silenciar TODAS las salidas**: el guard `numero_esta_stopped()` debe estar tanto en `main.py` (mensajes entrantes) como en `followup.py` (`ejecutar_seguimientos` y `ejecutar_retomas`). Si se agrega un nuevo punto de envío, añadir el check ahí también.
 
 ---
 
