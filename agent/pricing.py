@@ -674,8 +674,21 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
         logger.info(f"[PRICING] Hugo base sin variantes: {marca} {base_q}")
         return {"tipo": "ok", "modelo": base_q, "productos": productos_base}
 
-    # Hay variantes (con o sin base): preguntar antes de cotizar.
-    # Regla estricta: NO cotizar hasta confirmar variante exacta.
+    # FIX: Si el base existe como producto propio (__base__ está en variantes),
+    # cotizarlo directamente sin preguntar. Ej: cliente dice "A50" → quiere A50,
+    # no hay ambigüedad real; si quisiera A50S lo diría explícitamente.
+    # Antes: pedía variante en loop infinito (primera pregunta → cliente dice "A50" → misma pregunta).
+    if '__base__' in variantes_csv:
+        productos_base = [p for p, vs in matches if any(v is None for v in vs)]
+        if productos_base:
+            otras = [v for v in variantes_csv if v != '__base__']
+            logger.info(
+                f"[PRICING] Base existe entre variantes: {marca} {base_q} → cotizando base. "
+                f"Otras variantes disponibles: {otras}"
+            )
+            return {"tipo": "ok", "modelo": base_q, "productos": productos_base}
+
+    # Hay variantes pero el base NO existe como producto propio: preguntar al cliente.
     logger.info(f"[PRICING] Pidiendo variante a cliente para {marca} {base_q}. Disponibles: {variantes_csv}")
     return {"tipo": "variante", "respuesta": _formatear_pregunta_variantes(marca, base_q, variantes_csv)}
 

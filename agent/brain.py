@@ -269,11 +269,11 @@ async def _resolver_pricing_desde_texto(mensaje: str, marca_ctx: str | None = No
             r = await cotizar_con_fallback("", modelo, refaccion)
             logger.info(f"[PRICING] Respuesta fallback: {r[:100] if r else 'None'}")
             return _limpiar_respuesta_pricing(r)
-        # Sin modelo: pedir información
-        logger.info(f"[PRICING] Sin modelo específico, usando mensaje completo")
-        r = await cotizar_con_fallback("", mensaje, refaccion)
-        logger.info(f"[PRICING] Respuesta fallback: {r[:100] if r else 'None'}")
-        return _limpiar_respuesta_pricing(r)
+        # Sin modelo: no hay dispositivo que cotizar → delegar a Claude
+        # (pasar el mensaje completo como modelo genera "¡Con mucho gusto te cotizo!"
+        # para mensajes conversacionales como "no pude avanzar con el presupuesto")
+        logger.info(f"[PRICING] Sin modelo en el mensaje → delegando a Claude")
+        return None
     except Exception as e:
         logger.error(f"[PRICING] Error en consulta directa: {e}", exc_info=True)
         return None
