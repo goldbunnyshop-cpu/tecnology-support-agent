@@ -1,7 +1,7 @@
 # TECNOLOGY SUPPORT — Estado del Proyecto WhatsApp Agent
 
 > **Archivo único de referencia.** Consolida estado, historial de bugs, arquitectura y pendientes.
-> Última actualización: **10 de julio 2026 (sesión 3)**.
+> Última actualización: **10 de julio 2026 (sesión 3 — parte 2)**.
 > Para no romper nada: leer `COTIZADOR.md` (motor de precios) y `COMANDOS.md` (grupo interno)
 > antes de tocar `pricing.py`, `pricing_fallback.py`, `brain.py` o `commands*.py`.
 
@@ -364,6 +364,51 @@ _cotizar_display_fusionado(marca, modelo)
   git checkout main
   git push origin main
   ```
+
+---
+
+### Julio 10, 2026 (sesión 3 — parte 2) — Bugs de pricing y actualización de precios consolas
+
+**Bug: loop infinito en variantes A50/A50S, A05/A05S (y similares)**
+- Causa: `_resolver_match_hugo` en `pricing.py` siempre preguntaba "¿A50 o A50S?" cuando `var_q=None` y había más de una variante en el CSV — incluso si el cliente ya había respondido "A50". El cliente respondía "A50" → `var_q=None` → mismo resultado → loop sin salida.
+- El CSV almacena `A50/A50S` como una fila con dos variantes: `__base__` (A50) y `s` (A50S). Cuando el cliente dice "A50" el parser extrae `base='a50', var_q=None`, lo que coincide con ambas variantes y siempre disparaba la pregunta.
+- Fix `agent/pricing.py` (`_resolver_match_hugo`): si `__base__` está en `variantes_csv` (el modelo base es un producto real), cotizar el base directamente sin preguntar. El cliente que quiere A50S lo dirá explícitamente.
+  ```python
+  if '__base__' in variantes_csv:
+      productos_base = [p for p, vs in matches if any(v is None for v in vs)]
+      if productos_base:
+          return {"tipo": "ok", "modelo": base_q, "productos": productos_base}
+  ```
+
+**Bug: mensaje conversacional de regreso tras seguimiento disparaba "¡Con mucho gusto te cotizo tu pantalla!"**
+- Causa: cuando un cliente respondía al seguimiento automático con un mensaje que contenía una palabra de precio (ej: "presupuesto", "costo") pero sin nombrar ningún dispositivo, `_intentar_respuesta_pricing_contextual` llegaba a `_resolver_pricing_desde_texto`. Ahí, sin marca ni modelo, el código pasaba el MENSAJE COMPLETO como nombre de modelo a `cotizar_con_fallback("", mensaje_completo, "display")` → no encontraba nada → devolvía `_mensaje_no_disponible` = "¡Con mucho gusto te cotizo tu pantalla! 😊" aunque el cliente no había pedido ningún precio.
+- Fix `agent/brain.py` (`_resolver_pricing_desde_texto`): si no hay modelo extraído del mensaje, retornar `None` (delegar a Claude) en lugar de llamar `cotizar_con_fallback` con el texto completo.
+  ```python
+  # Antes: r = await cotizar_con_fallback("", mensaje, refaccion)
+  # Ahora:
+  logger.info(f"[PRICING] Sin modelo en el mensaje → delegando a Claude")
+  return None
+  ```
+
+**Actualización: precios de mantenimiento de consolas (`config/prompts.yaml`)**
+- Todos los precios revisados y reorganizados por familia (PlayStation / Xbox / Nintendo).
+- Precios actualizados:
+
+| Consola | Precio anterior | Precio nuevo |
+|---|---|---|
+| PS5 | $1,300 | $1,400 MXN |
+| PS4 / PS4 Slim / PS4 Pro | $850 | $900 MXN |
+| PS3 Fat / PS3 Slim | $450 | $600 MXN |
+| Xbox Original (2001) | — (no existía) | $500 MXN |
+| Xbox 360 | — (no existía) | $600 MXN |
+| Xbox One S / Xbox One X | $600 | $800 MXN |
+| Xbox One Original | $950 | eliminado (no es S ni X) |
+| Xbox Series S | $1,100 | $1,200 MXN |
+| Xbox Series X | — (no existía) | $1,400 MXN |
+| Nintendo Switch (1ª gen) | $500 | $500 MXN (sin cambio) |
+| Nintendo Switch OLED | — (no existía) | $800 MXN |
+
+- Consolas no listadas: el agente ahora indica acudir al módulo o llamar al **55 9730 7793** para cotización personalizada.
 
 ---
 
