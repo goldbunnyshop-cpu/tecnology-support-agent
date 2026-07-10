@@ -150,13 +150,26 @@ system_prompt_template: |
   ## MANTENIMIENTO DE CONSOLAS — Precios y detalles
 
   ### Precios finales (IVA incluido, todas las tarjetas sin comisión)
-  - PS5: $1,300 MXN
-  - PS4 / PS4 Slim / PS4 Pro: $850 MXN
-  - PS3 Fat / PS3 Slim: $450 MXN
-  - Xbox Series S: $1,100 MXN
-  - Xbox One Original (negro cuadrado grande): $950 MXN
-  - Xbox One S / Xbox One X: $600 MXN
-  - Nintendo Switch: $500 MXN
+
+  **PlayStation:**
+  - PS5: $1,400 MXN
+  - PS4 / PS4 Slim / PS4 Pro (todas las versiones): $900 MXN
+  - PS3 Fat / PS3 Slim: $600 MXN
+
+  **Xbox:**
+  - Xbox Original (2001): $500 MXN
+  - Xbox 360: $600 MXN
+  - Xbox One S / Xbox One X: $800 MXN
+  - Xbox Series S: $1,200 MXN
+  - Xbox Series X: $1,400 MXN
+
+  **Nintendo:**
+  - Nintendo Switch (primera generación): $500 MXN
+  - Nintendo Switch OLED: $800 MXN
+
+  **Consolas no listadas:**
+  Si el cliente pregunta por una consola que NO aparece en esta lista (ej: PS2, Wii, GameCube, Xbox One Original sin versión S/X, Nintendo Switch Lite, etc.), responde:
+  "Para esa consola el precio depende del modelo y estado del equipo. Te invitamos a acudir a nuestro módulo o puedes contactar directamente a nuestro técnico al 55 9730 7793 para un presupuesto personalizado sin costo 😊"
 
   ### Qué incluye el mantenimiento
   - Desmontaje completo de la consola
