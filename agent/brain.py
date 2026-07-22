@@ -281,6 +281,24 @@ async def _resolver_pricing_desde_texto(mensaje: str, marca_ctx: str | None = No
 
 async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[dict]) -> str | None:
     m = (mensaje or "").lower()
+
+    # ── Selector de calidad: cliente elige entre opciones ya mostradas ──────────
+    # Caso: agente mostró "Genérica $X / Original $Y" y cliente responde solo "Original"
+    # Sin esta detección: _extraer_marca_modelo("Original") → (None,None) → Claude responde
+    # conversacionalmente ("¡Perfecto!") en lugar de confirmar el precio.
+    _CALIDAD_SELECTORES = {"original", "oled", "oem", "generica", "genérica", "china", "alternativa", "compatible"}
+    _m_stripped = m.strip().rstrip(".,!? ")
+    if _m_stripped in _CALIDAD_SELECTORES:
+        _modelo_hist = _buscar_ultimo_modelo_historial(historial)
+        _marca_hist = _buscar_ultima_marca_historial(historial)
+        if _modelo_hist:
+            logger.info(
+                f"[PRICING-DEBUG] Selector de calidad '{_m_stripped}' con dispositivo "
+                f"en historial: {_marca_hist} {_modelo_hist} → re-cotizando"
+            )
+            r = await cotizar_con_fallback(_marca_hist or "", _modelo_hist)
+            return _limpiar_respuesta_pricing(r)
+
     es_consulta_precio = any(re.search(p, m) for p in _PATRONES_PRECIO)
     es_display = bool(_PATRON_DISPLAY.search(m))
     es_no_display = bool(_PATRON_NO_DISPLAY.search(m))
@@ -366,6 +384,18 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
             logger.info(
                 f"[PRICING-DEBUG] Mensaje breve ({len(_msg_norm.split())} tokens) con "
                 f"marca+modelo → cotizando implícitamente: {marca_actual} {modelo_actual}"
+            )
+            r = await cotizar_con_fallback(marca_actual, modelo_actual)
+            return _limpiar_respuesta_pricing(r)
+
+        # FIX Bug S24FE: Mensaje largo pero con marca+modelo completos Y hay contexto
+        # reciente de precio en historial → cotizar aunque el mensaje no lo pida explícitamente.
+        # Caso: cliente preguntó precio antes ("¿cuánto pantalla Samsung S24?") y ahora
+        # especifica variante: "Buenas tardes sería un Samsung S24 fe"
+        if hay_contexto_precio:
+            logger.info(
+                f"[PRICING-DEBUG] marca+modelo con contexto de precio en historial → "
+                f"cotizando implícitamente: {marca_actual} {modelo_actual}"
             )
             r = await cotizar_con_fallback(marca_actual, modelo_actual)
             return _limpiar_respuesta_pricing(r)
