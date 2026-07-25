@@ -186,3 +186,206 @@ Tengo un iPhone 14 con pantalla rota
 ---
 
 ¡Los fixes están listos! 🚀
+
+---
+
+---
+
+# 🔧 Fixes — Sesión 24 de Julio, 2026
+
+Fecha: 24 de julio de 2026  
+Problemas resueltos: **3 bugs críticos + 2 mejoras de comportamiento**
+
+---
+
+## ✅ FIX #4: Falso positivo "Celular" cuando cliente menciona "teléfono"
+
+### Problema
+El agente registraba incorrectamente el dispositivo como **"Celular"** cuando el cliente
+mencionaba la palabra "teléfono" en cualquier contexto (ej: "mi número de teléfono es...",
+"te doy mi teléfono", "¿cuál es el teléfono del módulo?").
+
+### Causa raíz
+`agent/profile.py` — `_DISPOSITIVOS` tenía `"teléfono"` y `"telefono"` como keywords del tipo "Celular".
+Esas palabras son demasiado genéricas y disparan falsos positivos.
+
+### Solución
+**Archivo:** `agent/profile.py`
+
+```python
+# ANTES:
+("Celular", ["celular", "teléfono", "telefono"]),
+
+# DESPUÉS:
+("Celular", ["celular"]),  # "teléfono" eliminado — demasiado genérico
+```
+
+### Impacto
+- El perfil del cliente ya no se contamina con dispositivos fantasma
+- La instrucción "último dispositivo = Celular" no se activa incorrectamente
+- El asesor deja de asumir que el cliente tiene un celular cuando solo mencionó un número de teléfono
+
+---
+
+## ✅ FIX #5: Motor de pantallas disparaba cotizaciones de celular en contexto de laptop
+
+### Problema
+Cuando una conversación tenía contexto de laptop/PC y el cliente mencionaba "pantalla",
+el agente activaba el motor de cotización de displays de celular y cotizaba pantallas de
+teléfono en lugar de responder correctamente que laptops no están en el inventario de displays.
+
+**Log del error:**
+```
+[PRICING-DEBUG] es_display=True pantalla → intentando buscar display...
+# Luego cotizaba un display de celular sin sentido en contexto de laptop
+```
+
+### Causa raíz
+`agent/brain.py` — `_intentar_respuesta_pricing_contextual()` evaluaba `es_display=True`
+antes de verificar si el contexto era de laptop. El guard de `es_no_display` no cubría
+el caso porque es intencional que `es_display` tenga prioridad sobre `es_no_display`
+(para casos como "iPad pantalla" + "controles PS5").
+
+### Solución
+**Archivo:** `agent/brain.py`
+
+Se agregó `_PATRON_LAPTOP_PC` y la función `_es_contexto_laptop_pc()` que revisa los
+últimos 8 mensajes del historial. El guard se inyecta ANTES del bloque `if es_display:`
+y solo aplica cuando no hay marca de celular explícita en el mensaje actual:
+
+```python
+_PATRON_LAPTOP_PC = re.compile(
+    r"\b(laptop|lapto|notebook|computadora|pc\s*gamer|desktop|macbook|lenovo|dell|asus|acer|msi|gaming\s*\d)\b",
+    re.I,
+)
+
+def _es_contexto_laptop_pc(historial: list[dict]) -> bool:
+    for msg in (historial or [])[-8:]:
+        if _PATRON_LAPTOP_PC.search(msg.get("content") or ""):
+            return True
+    return False
+
+# Guard aplicado en _intentar_respuesta_pricing_contextual():
+if _es_contexto_laptop_pc(historial) and not marca_actual:
+    logger.info("[PRICING-DEBUG] Contexto laptop/PC sin marca de celular → delegando a Claude")
+    return None
+```
+
+### Impacto
+- El motor de displays de celular ya no aplica en conversaciones de laptop/PC
+- Si el cliente menciona explícitamente una marca de celular, el motor sigue funcionando normal
+- Claude maneja el caso de laptop/pantalla con su propio criterio
+
+---
+
+## ✅ FIX #6: Multiplicador incorrecto para pantallas ORIGINAL y OLED — precio inflado
+
+### Problema
+Las pantallas con calidad ORIGINAL (incluye OLED, ORIG, COF, FHD, DD SOFT) se multiplicaban
+por ×4 en lugar de ×3, inflando el precio final en un 33%.
+
+**Caso real detectado en live:**
+- Motorola Edge 30 Neo — OLED S/M — PRECIO_1: $1,081 USD
+- Precio cotizado por el agente: **$4,324 MXN** (×4)
+- Precio correcto: **$3,243 MXN** (×3)
+- El cliente dejó de contestar — precio equivale al costo de un equipo nuevo
+
+### Causa raíz
+`agent/pricing.py` — `MULTIPLICADOR_POR_CATEGORIA` tenía `'ORIGINAL': 4`.
+La función `obtener_categoria()` clasifica "OLED S/M" → strip → "OLED" → ORIGINAL.
+Como ORIGINAL tenía multiplicador ×4, el cálculo era incorrecto.
+
+### Solución
+**Archivo:** `agent/pricing.py`
+
+```python
+# ANTES:
+MULTIPLICADOR_POR_CATEGORIA = {
+    'GENERICO': 4,
+    'ORIGINAL': 4,  # ← ERROR
+    'AMOLED': 3,
+}
+
+# DESPUÉS (reglas confirmadas jul-2026):
+MULTIPLICADOR_POR_CATEGORIA = {
+    'GENERICO': 4,   # INCELL, COG, TLED, CARTAN INCELL
+    'ORIGINAL': 3,   # OLED, ORIG, COF, FHD, DD SOFT, HG ORIG
+    'AMOLED':   3,   # AMOLED
+}
+```
+
+**Regla comercial vigente:**
+| Calidad | Multiplicador | Incluye |
+|---------|--------------|---------|
+| GENERICO | ×4 | INCELL, COG, TLED, CARTAN INCELL |
+| ORIGINAL | ×3 | OLED, ORIG, COF, FHD, DD SOFT, HG ORIG |
+| AMOLED   | ×3 | AMOLED |
+
+**Nota:** El sistema siempre usa `PRECIO_1` (columna 5 del CSV) como base. `PRECIO_2` no se usa.
+
+### Impacto
+- Motorola Edge 30 Neo: $1,081 × 3 = **$3,243 MXN** ✅
+- Todas las pantallas OLED/ORIGINAL ahora cotizan correctamente
+- Sin riesgo de espantar leads con precios inflados
+
+---
+
+## ✅ MEJORA #1: Comportamiento del agente ante "diagnóstico supuesto" del cliente
+
+### Problema
+Cuando un cliente asumía que sabía exactamente cuál era la falla (ej: "solo es el puerto
+HDMI de la PS5", "solo es el display"), el agente cotizaba esa pieza sin mencionar que
+el accidente pudo haber dañado componentes adicionales no visibles.
+
+Casos críticos:
+- **PS5 HDMI**: el golpe puede dañar trazas de placa madre o líneas del procesador de video
+- **Display de celular**: el golpe puede dañar el flex, el digitalizador o líneas en la placa
+  que solo fallan al instalar el display nuevo
+
+### Solución
+**Archivo:** `config/prompts.yaml`
+
+Se agregó la sección **"DIAGNÓSTICO SUPUESTO"** con instrucciones para tres escenarios:
+- **Caso A** — Puerto HDMI de consola: validar + explicar riesgo de daño en placa + invitar al módulo
+- **Caso B** — Display de celular: cotizar SI hay precio, pero SIEMPRE acompañar con nota honesta
+- **Regla general**: validar → honestidad técnica → invitar → si insiste en número, dar rango
+
+### Principio
+El agente no rechaza dar un número, pero educa al cliente sobre por qué el diagnóstico
+físico puede cambiar el alcance de la reparación. Convierte la situación en una visita,
+no en un rechazo.
+
+---
+
+## ✅ MEJORA #2: Cierre temporal — Domingo 26 de julio de 2026
+
+### Motivo
+El módulo permanecerá cerrado únicamente el domingo 26 de julio de 2026 por día de descanso.
+
+### Solución
+**Archivo:** `config/prompts.yaml` — al inicio del `system_prompt_template`
+
+Instrucción de alta prioridad, auto-expirable:
+- Bloquea citas para el 26 de julio
+- Redirige al cliente al sábado 25 o lunes 27
+- A partir del 27 de julio, el agente ignora esta instrucción automáticamente
+
+---
+
+## 📦 Archivos modificados en esta sesión
+
+| Archivo | Tipo | Fix |
+|---------|------|-----|
+| `agent/profile.py` | Bug fix | Eliminado "teléfono"/"telefono" de keywords Celular |
+| `agent/brain.py` | Bug fix | Guard `_es_contexto_laptop_pc()` antes del motor de displays |
+| `agent/pricing.py` | Bug fix | Multiplicador ORIGINAL corregido a ×3 |
+| `config/prompts.yaml` | Mejora | Sección "DIAGNÓSTICO SUPUESTO" + cierre dom 26 jul |
+| `knowledge/hugo_shop.csv` | Datos | Lista Hugo Shop julio 2026 (902 productos) |
+
+## ⚠️ Verificación de inconsistencias
+
+No se detectaron conflictos con fixes anteriores:
+- Los multiplicadores anteriores solo documentaban `AMOLED=×3`. Esta sesión alinea también `ORIGINAL=×3` — sin contradicción.
+- El guard de laptop/PC en brain.py es aditivo — no modifica el comportamiento existente de cotización de celulares.
+- La eliminación de "teléfono" en profile.py no afecta la detección de otros dispositivos.
+- La sección "DIAGNÓSTICO SUPUESTO" en prompts.yaml complementa las reglas existentes de cotización — no las reemplaza.
