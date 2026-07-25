@@ -26,13 +26,13 @@ logger = logging.getLogger("agentkit")
 #   ORIGINAL:  ORIG, OLED, COF, FHD, DD SOFT, DD SOFT OLED, HG ORIG
 #   AMOLED:    AMOLED
 MULTIPLICADOR_USD_A_MXN = 4
-# Regla comercial confirmada:
-# - GENERICO: x4
-# - ORIGINAL: x4
+# Regla comercial (actualizada jul-2026):
+# - GENERICO (INCELL, COG, TLED, CARTAN INCELL): x4
+# - ORIGINAL (OLED, ORIG, COF, FHD, DD SOFT, HG ORIG):  x3
 # - AMOLED:  x3
 MULTIPLICADOR_POR_CATEGORIA = {
     'GENERICO': 4,
-    'ORIGINAL': 4,
+    'ORIGINAL': 3,
     'AMOLED': 3,
 }
 RUTA_CSV_HUGO = "knowledge/hugo_shop.csv"
@@ -40,9 +40,11 @@ RUTA_CSV_HUGO = "knowledge/hugo_shop.csv"
 # Marcas que aparecen como filas-header en el CSV (separadoras de seccion)
 MARCAS_HEADER = {
     'ALCATEL', 'CUBOT', 'GOOGLE', 'HISENSE', 'HONOR', 'HUAWEI',
+    'INFINIX',  # nueva marca en lista jul-2026
     'IPHONE', 'LG', 'NOKIA', 'OPPO', 'SAMSUNG', 'TCL', 'VIVO',
     'XIAOMI', 'ZTE', 'MOTOROLA', 'MOTO', 'POCO', 'REDMI',
-    'ONEPLUS', 'REALME',
+    'ONEPLUS', 'ONE PLUS',  # CSV jul-2026 usa "ONE PLUS" con espacio
+    'REALME',
 }
 
 # Typos y alias de variantes — normaliza lo que escribe el cliente → variante real en CSV
@@ -82,7 +84,9 @@ ALIAS_MARCAS = {
     'redmi': 'XIAOMI',
     'oppo': 'OPPO',
     'realme': 'REALME',
-    'oneplus': 'ONEPLUS',
+    'oneplus': 'ONE PLUS',
+    'one plus': 'ONE PLUS',
+    'infinix': 'INFINIX',
     'vivo': 'VIVO',
     'tcl': 'TCL',
     'zte': 'ZTE',
@@ -215,6 +219,10 @@ def obtener_categoria(calidad_str: str) -> str | None:
 
     if 'AMOLED' in c:
         return 'AMOLED'
+
+    # Compuestos genéricos: TLED y CARTAN TLED son paneles LCD baratos (como INCELL)
+    if 'TLED' in c:
+        return 'GENERICO'
 
     # Compuesto: CARTAN INCELL es generico (predomina INCELL)
     if 'CARTAN INCELL' in c:
@@ -365,7 +373,10 @@ def normalizar_modelo_query(modelo_str: str, marca: str) -> tuple[str | None, st
     tokens = m.split()
     if not tokens:
         return None, None
-    primer = tokens[0]
+    # Limpiar puntuación residual del primer token (ej: "e32," → "e32")
+    primer = re.sub(r'[^a-z0-9\+\-]', '', tokens[0])
+    if not primer:
+        primer = tokens[0]  # fallback: usar token original
     resto = ' '.join(tokens[1:]).strip() or None
 
     marca_norm = (ALIAS_MARCAS.get(marca.lower().strip(), '') or '').upper()

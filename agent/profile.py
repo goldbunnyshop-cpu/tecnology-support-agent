@@ -29,7 +29,7 @@ _DISPOSITIVOS = [
     ("Samsung",        ["samsung"]),
     ("Laptop",         ["laptop", "lapto"]),
     ("PC",             ["computadora", "pc gamer", "desktop"]),
-    ("Celular",        ["celular", "teléfono", "telefono"]),
+    ("Celular",        ["celular"]),  # "teléfono" eliminado — demasiado genérico (número de tel., etc.)
 ]
 
 

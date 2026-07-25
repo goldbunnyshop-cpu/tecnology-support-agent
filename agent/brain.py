@@ -49,6 +49,22 @@ _PATRON_NO_DISPLAY = re.compile(
     re.I,
 )
 
+# Palabras clave de laptop/PC. Si el historial reciente las contiene y el mensaje
+# actual no trae una marca de celular explícita, el motor de precios de pantallas
+# de celular NO debe dispararse.
+_PATRON_LAPTOP_PC = re.compile(
+    r"\b(laptop|lapto|notebook|computadora|pc\s*gamer|desktop|macbook|lenovo|dell|asus|acer|msi|gaming\s*\d)\b",
+    re.I,
+)
+
+
+def _es_contexto_laptop_pc(historial: list[dict]) -> bool:
+    """True si los últimos mensajes sugieren que el dispositivo es una laptop o PC."""
+    for msg in (historial or [])[-8:]:
+        if _PATRON_LAPTOP_PC.search(msg.get("content") or ""):
+            return True
+    return False
+
 _PATRON_MODELO_CORTO = re.compile(
     r"^\s*(?:el\s+|del\s+|de\s+|es\s+un\s+|tengo\s+un\s+)?"
     r"[a-z]?\d{1,4}"
@@ -115,7 +131,11 @@ def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
                 resto = tokens[i + n:]
                 if not resto:
                     resto = tokens[:i]
-                modelo = " ".join(resto).strip(" :,-")
+                # FIX: Limpiar puntuación y filtrar palabras de conversación.
+                # Caso: "tengo un moto E32, ¿cuánto cuesta?" → tokens resto:
+                # ["e32,", "cuánto", "cuesta"] → queremos solo ["e32"].
+                # La coma pegada a "e32," rompe todos los regex de matching.
+                modelo = _extraer_modelo_de_tokens(resto)
                 # Solo aceptar el modelo si parece un modelo real (tiene dígito);
                 # de lo contrario marca conocida pero sin modelo → se pedirá el modelo.
                 return marca, _modelo_plausible(modelo)
@@ -124,6 +144,59 @@ def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
     if m:
         return None, m.group(1).strip()
     return None, _modelo_plausible(txt_limpio)
+
+
+# Palabras conversacionales que NO son parte del modelo de un dispositivo.
+# Al encontrar una de estas después de ya tener tokens de modelo, se para.
+_CHATARRA_MODELO = {
+    # Palabras de precio/cotización
+    'precio', 'precios', 'costo', 'costos', 'cotizar', 'cotizacion', 'cotización',
+    'presupuesto', 'cuánto', 'cuanto', 'cuesta', 'cuestan', 'sale', 'salen', 'vale',
+    # Artículos y pronombres
+    'la', 'el', 'los', 'las', 'lo', 'le', 'les',
+    'me', 'te', 'se', 'nos',
+    'mi', 'su', 'sus', 'mis', 'tu', 'tus',
+    'un', 'una', 'unos', 'unas',
+    # Verbos frecuentes
+    'tengo', 'tiene', 'tienen', 'tener',
+    'es', 'son', 'hay', 'hay',
+    'pueden', 'puede', 'puedo',
+    # Preposiciones y conjunciones
+    'para', 'de', 'del', 'al', 'a', 'en',
+    'con', 'sin', 'por', 'que', 'qué',
+    'como', 'cómo', 'y', 'o', 'e',
+    # Adverbios y otros
+    'ya', 'si', 'no', 'favor',
+    'porfavor', 'porfa', 'please',
+    # Saludos
+    'hola', 'buen', 'buenas', 'buenos', 'dias', 'días', 'tardes', 'noches',
+    # Pronombres demostrativos
+    'esta', 'este', 'esto', 'eso', 'esa', 'ese', 'esos', 'esas',
+}
+
+
+def _extraer_modelo_de_tokens(tokens: list[str]) -> str:
+    """Extrae el nombre del modelo de una lista de tokens, descartando palabras
+    conversacionales y limpiando puntuación residual.
+
+    Ej: ["e32,", "cuánto", "cuesta", "la"] → "e32"
+    Ej: ["edge", "40", "neo", "cuesta"] → "edge 40 neo"
+    Ej: ["14", "pro", "max", "tengo"] → "14 pro max"
+    """
+    modelo_tokens: list[str] = []
+    for tok in tokens:
+        # Quitar puntuación pegada al token (coma, punto, signos de pregunta, etc.)
+        tok_clean = re.sub(r'[,;:!?¡¿\(\)\[\]"\']+', '', tok).strip()
+        if not tok_clean:
+            continue
+        if tok_clean in _CHATARRA_MODELO:
+            # Si ya acumulamos tokens de modelo, parar aquí.
+            # Si aún no tenemos modelo, ignorar esta palabra y seguir buscando.
+            if modelo_tokens:
+                break
+            continue
+        modelo_tokens.append(tok_clean)
+    return " ".join(modelo_tokens).strip(" :,-")
 
 
 def _normalizar_consulta_pricing(texto: str) -> str:
@@ -310,6 +383,15 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     logger.info(f"[PRICING-DEBUG] Mensaje: '{mensaje}'")
     logger.info(f"[PRICING-DEBUG] es_consulta_precio={es_consulta_precio}, es_display={es_display}, es_no_display={es_no_display}, es_modelo_breve={es_modelo_breve}")
     logger.info(f"[PRICING-DEBUG] marca_actual='{marca_actual}', modelo_actual='{modelo_actual}'")
+
+    # GUARD LAPTOP/PC: Si el contexto de la conversación es de laptop o PC y el mensaje
+    # actual no trae una marca de celular explícita, el motor de pantallas de celular
+    # no aplica. "ya no prendió la pantalla" sobre una laptop NO es una cotización de
+    # display de celular. Sin esta guarda, el motor buscaba "Lenovo 3" en el CSV y
+    # devolvía "¡Con mucho gusto te cotizo tu pantalla!" de forma incorrecta.
+    if _es_contexto_laptop_pc(historial) and not marca_actual:
+        logger.info("[PRICING-DEBUG] Contexto laptop/PC sin marca de celular → delegando a Claude")
+        return None
 
     # CRÍTICO: Si menciona display/pantalla/cambio pantalla EXPLÍCITAMENTE,
     # eso tiene prioridad sobre mencionar casualmente "PS5" o "consola".
