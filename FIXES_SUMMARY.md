@@ -5,6 +5,43 @@ Problemas resueltos: **3 críticos**
 
 ---
 
+## ✅ FIX #8: Piso mínimo + tier Con Marco (29 Jul 2026)
+
+### Problema
+- Displays baratos (ej. Samsung J4 INCELL $130 → $520 calculado) se mostraban a precio real, devaluando el servicio.
+- Variantes "Con Marco" (C/M en CSV) se promediaban junto con las variantes sin marco, distorsionando el precio del tier ORIGINAL.
+
+### Solución — `agent/pricing.py`
+
+**Constantes nuevas:**
+```python
+PISO_GENERICO = 600   # MXN
+PISO_ORIGINAL = 900   # MXN
+```
+
+**Helper `_es_con_marco()`:** detecta ` C/M` o `CON MARCO` en columna CALIDAD.
+
+**`_categorias_finales()`:** productos C/M van al bucket `'CON_MARCO'` (separados de ORIGINAL).
+
+**`formatear_cotizacion_tiers()` — lógica completa:**
+- Si `min(GENERICO + ORIGINAL prices) < 600` → activar piso → mostrar $600 / $900
+- AMOLED: siempre precio real (no entra en piso)
+- Con Marco: solo aparece si `precio_cm > original_mostrado` (si no, se omite — error de datos)
+
+### Escenarios verificados
+
+| Caso | Input | Output |
+|------|-------|--------|
+| Solo GEN < $600 | INCELL $130→$520 | Genérica $600 / Original $900 |
+| Solo ORIG < $600 | ORIG $129→$516 | Genérica $600 / Original $900 |
+| ORIG < $600 + C/M $960 | ORIG S/M $143→$572, C/M $240→$960 | Genérica $600 / Original $900 / Con Marco $960 |
+| Solo ORIG ≥ $600 | ORIG $185→$740 | Original $740 |
+| GEN + ORIG ambos ≥ $600 | INCELL $300→$1,200 / OLED $400→$1,600 | Genérica $1,200 / Original $1,600 |
+| ORIG < $600 + C/M $984 | S/M $149→$596, C/M $246→$984 | Genérica $600 / Original $900 / Con Marco $984 |
+| C/M < ORIG → ocultar | C/M $800 < ORIG $1,600 | Original $1,600 (C/M omitido) |
+
+---
+
 ## ✅ FIX #1: Caracteres Mojibake (UTF-8 Corruption)
 
 ### Problema
@@ -369,6 +406,92 @@ Instrucción de alta prioridad, auto-expirable:
 - Bloquea citas para el 26 de julio
 - Redirige al cliente al sábado 25 o lunes 27
 - A partir del 27 de julio, el agente ignora esta instrucción automáticamente
+
+---
+
+---
+
+# 🔧 Fixes — Sesión 29 de Julio, 2026
+
+Fecha: 29 de julio de 2026
+Problemas resueltos: **2 bugs críticos de precios + 1 corrección de arquitectura**
+
+---
+
+## ✅ FIX #7: Samsung S25 Ultra — precio genérica $26,000 MXN (más que el equipo nuevo)
+
+### Problema
+El agente cotizó "Calidad Genérica: $26,000 MXN" para Samsung S25 Ultra. El equipo nuevo
+cuesta $23,000 MXN. El operador emitió STOP manualmente para detener la conversación.
+
+### Causa raíz (3 bugs encadenados)
+
+**Bug A — imobile × 4 incorrecto:**
+El Sheet de imobile (proveedor premium) tiene S25 Ultra "Original con Glass Copia Marco" a
+$6,500 MXN (costo al negocio). El código aplicaba `MULTIPLICADOR_POR_CATEGORIA['ORIGINAL'] = 4`
+(o 3) sobre ese costo: $6,500 × 4 = **$26,000 MXN** — más que el teléfono nuevo.
+
+**Bug B — "Copia" clasificaba como GENÉRICO:**
+`clasificar_calidad_titulo()` tenía 'COPIA' en keywords de GENÉRICO. El nombre del producto
+en imobile es "Original con Glass **Copia** Marco" (panel original, marco aftermarket).
+El código lo clasificaba como GENÉRICO → el precio absurdo aparecía como "Calidad Genérica".
+
+**Bug C — Hugo ORIGINAL × 3 (deprimido):**
+Con ORIGINAL × 3, el Hugo S25 Ultra ($1,692 × 3 = $5,076) quedaba MÁS BARATO que el
+"Genérica" de imobile ($26,000). Inversión catastrófica.
+
+**Nota arquitectural:** Todos los precios (Hugo Shop CSV + imobile Sheet) son en MXN.
+Los multiplicadores son márgenes de ganancia sobre el costo MXN del proveedor.
+
+### Solución
+
+**1. `agent/pricing.py` — ORIGINAL vuelve a × 4:**
+```python
+MULTIPLICADOR_POR_CATEGORIA = {
+    'GENERICO': 4,
+    'ORIGINAL': 4,  # ← revertido de 3 a 4
+    'AMOLED': 3,
+}
+```
+Hugo S25 Ultra ORIGINAL: $1,692 × 4 = **$6,768 MXN** ✓
+
+**2. `agent/pricing.py` — Fix clasificación COPIA + ORIGINAL:**
+```python
+# ANTES: COPIA siempre → GENÉRICO (sin importar si también dice ORIGINAL)
+if tiene_generico:
+    return 'GENERICO'
+
+# DESPUÉS: ORIGINAL + COPIA coexistiendo → ORIGINAL (panel original, marco aftermarket)
+if tiene_generico and tiene_original:
+    return 'ORIGINAL'
+if tiene_generico:
+    return 'GENERICO'
+```
+
+**3. `agent/pricing_sheets.py` — MULTIPLICADOR_IMOBILE = 1.5:**
+```python
+MULTIPLICADOR_IMOBILE = float(os.getenv("MULTIPLICADOR_IMOBILE", "1.5"))
+# Imobile S25 Ultra: $6,500 × 1.5 = $9,750 MXN ✓ (vs $26,000 con × 4)
+```
+
+**4. `agent/pricing_fallback.py` — Hugo exclusivo, imobile solo como fallback:**
+Si Hugo tiene el modelo → usar SOLO Hugo (no mezclar con imobile).
+Si Hugo NO tiene el modelo → usar SOLO imobile.
+Nunca combinar precios de ambas fuentes (son proveedores distintos con rangos de precio
+completamente diferentes; promediarlos daría precios sin sentido comercial).
+
+### Resultado
+
+| Escenario | Antes (bug) | Después (fix) |
+|-----------|-------------|---------------|
+| S25 Ultra — Hugo | $5,076 ORIGINAL (×3) | $6,768 ORIGINAL (×4) ✓ |
+| S25 Ultra — imobile | $26,000 GENÉRICA (×4) | $9,750 ORIGINAL (×1.5) ✓ |
+| S25 Ultra — agente muestra | Hugo + imobile mezclados → inversión | Solo Hugo si Hugo tiene; solo imobile si no |
+
+### Impacto
+- Elimina el mayor riesgo de reputación del sistema: cotizar más caro que el equipo nuevo
+- Hugo y imobile son fuentes exclusivas (no se mezclan)
+- imobile queda como fuente premium legítima para modelos no disponibles en Hugo
 
 ---
 

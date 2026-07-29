@@ -36,6 +36,11 @@ logger = logging.getLogger("agentkit")
 
 # ── Configuración ─────────────────────────────────────────────────────────────
 SHEET_ID = os.getenv("GOOGLE_SHEETS_ID", "1sMVr7rUp2dz_4h4NUEwFjH-iVqOjUWjJNYx5ptfgT2U")
+# Multiplicador exclusivo para imobile (proveedor premium de partes escasas/originales).
+# Los precios en el Sheet son COSTO en MXN (lo que paga el negocio a imobile).
+# 1.5 = 50% de margen → ej. S25 Ultra $6,500 costo → $9,750 precio al cliente.
+# Se configura por variable de entorno para ajuste sin redeploy.
+MULTIPLICADOR_IMOBILE = float(os.getenv("MULTIPLICADOR_IMOBILE", "1.5"))
 # TTL del catálogo: 24 horas (Google Sheets solo se consulta una vez al día)
 CACHE_TTL = int(os.getenv("PRICING_SHEETS_CACHE_TTL", str(24 * 3600)))
 HTTP_TIMEOUT = 15
@@ -612,20 +617,23 @@ async def formatear_cotizacion_sheets(producto: Dict, marca: str = "", modelo: s
 # ── API pública ────────────────────────────────────────────────────────────────
 
 def _categorias_desde_productos_sheet(productos: List[Dict]) -> Dict[str, List[float]]:
-    """De productos de la hoja DISPLAYS arma {CATEGORIA: [precios_finales_mxn]}.
+    """De productos de la hoja DISPLAYS de imobile arma {CATEGORIA: [precios_finales_mxn]}.
 
-    La calidad se deduce del NOMBRE del producto (Incell/Copia = GENERICO,
-    Oled/Original = ORIGINAL, Amoled = AMOLED). El precio base es el 'Precio
-    Unitario' (precio_1, el de 1 pieza) y se aplica el multiplicador de la
-    categoria (GENERICO/ORIGINAL x4, AMOLED x3) — mismo criterio que Hugo Shop.
+    Los precios en el Sheet son COSTO en MXN (lo que paga el negocio a imobile).
+    Se aplica MULTIPLICADOR_IMOBILE (1.5 por defecto) en lugar del multiplicador
+    de Hugo Shop — imobile vende partes premium/escasas a precios altos de costo;
+    un margen del 50% es razonable vs el ×4 que aplica Hugo Shop a partes baratas.
+
+    La calidad se deduce del NOMBRE del producto. 'clasificar_calidad_titulo'
+    ya maneja el caso "Original con Glass Copia Marco" → ORIGINAL.
     """
     categorias: Dict[str, List[float]] = defaultdict(list)
     for p in productos:
         cat = clasificar_calidad_titulo(p.get("nombre", ""), es_display=True)
-        base = p.get("precio_1")  # Precio Unitario (columna D)
+        base = p.get("precio_1")  # Precio Unitario (columna D) — costo en MXN
         if cat and base:
-            mult = MULTIPLICADOR_POR_CATEGORIA.get(cat, MULTIPLICADOR_USD_A_MXN)
-            categorias[cat].append(base * mult)
+            # Imobile: margen fijo sobre costo MXN (no ×4 como Hugo Shop)
+            categorias[cat].append(base * MULTIPLICADOR_IMOBILE)
     return categorias
 
 

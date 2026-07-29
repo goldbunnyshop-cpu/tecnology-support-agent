@@ -486,11 +486,15 @@ def _fusionar_categorias(
 
 
 async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
-    """Cotización de DISPLAY fusionando Hugo Shop + Google Sheets.
+    """Cotización de DISPLAY con prioridad exclusiva Hugo Shop → imobile (Sheets).
 
-    Objetivo: SIEMPRE ofrecer las calidades disponibles (idealmente la barata
-    'Calidad Generica' y la cara 'Calidad Original', y 'AMOLED' si existe). Si una
-    fuente solo trae una calidad, se complementa con la otra.
+    Regla de negocio (jul-2026):
+      1. Hugo Shop: fuente principal. Si tiene el modelo → se usa SOLO Hugo, sin mezclar.
+         Los precios de imobile son de un proveedor diferente (más caro, partes premium)
+         y combinarlos con Hugo distorsiona el promedio.
+      2. imobile (Google Sheets): solo si Hugo NO tiene el modelo. Usa MULTIPLICADOR_IMOBILE
+         (1.5) en lugar del ×4 de Hugo — sus precios de costo son mucho más altos.
+      3. fixoem/Sheet genérico: último recurso si ninguna lista interna lo tiene.
     """
     from agent.pricing import (
         recolectar_categorias_hugo,
@@ -498,21 +502,22 @@ async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
     )
     from agent.pricing_sheets import recolectar_categorias_display_sheets
 
-    # 1. Hugo Shop (primario para displays)
+    # 1. Hugo Shop (fuente primaria y exclusiva cuando tiene el modelo)
     hugo = await recolectar_categorias_hugo(marca, modelo)
 
-    # Si Hugo necesita confirmar la variante (ej "edge 50": fusion/neo/ultra), se
-    # pregunta ANTES de cotizar — no mezclamos precios de variantes distintas.
+    # Si Hugo pide confirmar variante → preguntar antes de cotizar
     if hugo["tipo"] == "variante":
         logger.info(f"[PRICING] Hugo pide variante para {marca} {modelo}")
         return hugo["respuesta"]
 
-    # FIX Bug 1 (S24 Ultra): Si Hugo falló Y no había marca explícita, buscar el modelo
-    # en todo Hugo antes de ir a Sheets. Sheets aplica ×4 sobre precios ya en MXN → precio
-    # inflado. Hugo tiene el precio correcto si se busca por modelo sin restringir marca.
-    # Ej: cliente dice "s24 ultra" sin decir "samsung" → Hugo("", "s24 ultra") falla,
-    #     pero buscar_modelo_sin_marca("s24 ultra") encuentra SAMSUNG → $1875×4 = $7500 MXN.
-    if hugo["tipo"] not in ("ok", "variante") and not (marca or "").strip():
+    # Hugo tiene el modelo → usar SOLO Hugo, nunca mezclar con imobile
+    if hugo["tipo"] == "ok":
+        modelo_fmt = hugo["modelo"]
+        logger.info(f"[PRICING] Hugo encontró {marca} {modelo_fmt} → usando solo Hugo (sin imobile)")
+        return formatear_cotizacion_tiers(marca, modelo_fmt, hugo["categorias"])
+
+    # Hugo no tiene el modelo (ni variante). Intentar buscar sin marca si no se especificó.
+    if not (marca or "").strip():
         from agent.pricing import buscar_modelo_sin_marca
         logger.info(f"[PRICING] Hugo sin marca para '{modelo}' → buscando sin marca en Hugo")
         resp_sm = await buscar_modelo_sin_marca(modelo)
@@ -520,26 +525,15 @@ async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
             logger.info(f"[PRICING] buscar_modelo_sin_marca resolvió '{modelo}' ✓")
             return resp_sm
 
-    # 2. Google Sheets (para complementar calidades faltantes o como primario)
+    # 2. Hugo no tiene el modelo → imobile (Google Sheets) como secundario exclusivo
+    logger.info(f"[PRICING] Hugo sin '{marca} {modelo}' → consultando imobile (Sheets)")
     sheets = await recolectar_categorias_display_sheets(marca, modelo)
 
-    if hugo["tipo"] == "ok":
-        categorias = dict(hugo["categorias"])
-        modelo_fmt = hugo["modelo"]
-        if sheets.get("tipo") == "ok":
-            faltantes = [c for c in sheets["categorias"] if c not in categorias]
-            categorias = _fusionar_categorias(categorias, sheets["categorias"])
-            if faltantes:
-                logger.info(f"[PRICING] Sheets complementó calidades {faltantes} en {marca} {modelo_fmt}")
-        logger.info(f"[PRICING] Display {marca} {modelo_fmt}: calidades {list(categorias.keys())}")
-        return formatear_cotizacion_tiers(marca, modelo_fmt, categorias)
-
-    # 3. Hugo no tiene el display → usar Google Sheets como primario
     if sheets.get("tipo") == "variante":
-        logger.info(f"[PRICING] Sheets pide variante para {marca} {modelo}")
+        logger.info(f"[PRICING] imobile pide variante para {marca} {modelo}")
         return sheets["respuesta"]
     if sheets.get("tipo") == "ok":
-        logger.info(f"[PRICING] Sheets cotizó display {marca} {modelo} (Hugo no tenía)")
+        logger.info(f"[PRICING] imobile cotizó display {marca} {modelo} (Hugo no tenía) → ×1.5")
         return formatear_cotizacion_tiers(
             sheets.get("marca") or marca, sheets["modelo"], sheets["categorias"]
         )

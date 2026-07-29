@@ -28,13 +28,22 @@ logger = logging.getLogger("agentkit")
 MULTIPLICADOR_USD_A_MXN = 4
 # Regla comercial (actualizada jul-2026):
 # - GENERICO (INCELL, COG, TLED, CARTAN INCELL): x4
-# - ORIGINAL (OLED, ORIG, COF, FHD, DD SOFT, HG ORIG):  x3
+# - ORIGINAL (OLED, ORIG, COF, FHD, DD SOFT, HG ORIG):  x4
 # - AMOLED:  x3
+# Nota: todos los precios en Hugo Shop son en MXN (costo al negocio).
+# El multiplicador convierte costo MXN → precio de venta MXN.
+# IMOBILE (proveedor premium) usa su propio multiplicador en pricing_sheets.py.
 MULTIPLICADOR_POR_CATEGORIA = {
     'GENERICO': 4,
-    'ORIGINAL': 3,
+    'ORIGINAL': 4,
     'AMOLED': 3,
 }
+# Piso mínimo de precio al cliente (jul-2026).
+# Si el display más barato (GENÉRICO u ORIGINAL, sin contar C/M) resulta < PISO_GENERICO
+# → se activa el piso y se muestran precios fijos en lugar de los calculados.
+PISO_GENERICO = 600   # MXN — precio mínimo para calidad genérica
+PISO_ORIGINAL = 900   # MXN — precio mínimo para calidad original
+
 RUTA_CSV_HUGO = "knowledge/hugo_shop.csv"
 
 # Marcas que aparecen como filas-header en el CSV (separadoras de seccion)
@@ -195,6 +204,12 @@ def _extraer_precio_usd(precio_str: str) -> float | None:
         return valor if valor > 0 else None
     except (ValueError, TypeError):
         return None
+
+
+def _es_con_marco(calidad_str: str) -> bool:
+    """Detecta si el producto es variante 'Con Marco' (C/M) en la columna CALIDAD."""
+    c = str(calidad_str or '').upper()
+    return ' C/M' in c or 'CON MARCO' in c
 
 
 # ============================================================
@@ -478,7 +493,11 @@ def clasificar_calidad_titulo(titulo: str, es_display: bool) -> str | None:
     tiene_original = any(p in c for p in (
         'OLED', 'ORIGINAL', 'ORIG', ' COF', 'DD SOFT', 'HG ORIG',
     ))
-    # INCELL/COPIA mandan: si aparecen, es generico aunque tambien diga FHD/ORIG.
+    # Caso especial imobile: "Original con Glass Copia Marco" → el panel ES original,
+    # solo el marco/vidrio es aftermarket. Si ORIGINAL y COPIA coexisten → ORIGINAL.
+    if tiene_generico and tiene_original:
+        return 'ORIGINAL'
+    # INCELL/COPIA solos (sin ORIGINAL) mandan → genérico.
     if tiene_generico:
         return 'GENERICO'
     if tiene_original:
@@ -491,36 +510,76 @@ def clasificar_calidad_titulo(titulo: str, es_display: bool) -> str | None:
 def _categorias_finales(productos: list[dict]) -> dict[str, list[float]]:
     """De productos de Hugo Shop arma {CATEGORIA: [precios_finales_mxn]}.
 
-    Cada precio se convierte ya a MXN aplicando el multiplicador de su categoria
-    (GENERICO/ORIGINAL x4, AMOLED x3). Asi el resultado es comparable y se puede
-    FUSIONAR con el de otras fuentes (Google Sheets) sin importar la moneda base.
+    Los productos Con Marco (C/M en columna CALIDAD) van al bucket 'CON_MARCO'
+    para mantenerlos separados del tier ORIGINAL sin marco.
+    El resto: GENERICO/ORIGINAL x4, AMOLED x3.
     """
     categorias: dict[str, list[float]] = defaultdict(list)
     for p in productos:
-        cat = obtener_categoria(p.get('CALIDAD', ''))
+        calidad_raw = p.get('CALIDAD', '')
+        cat = obtener_categoria(calidad_raw)  # strips C/M internamente antes de clasificar
         precio = p.get('PRECIO_USD')
         if cat and precio:
             mult = MULTIPLICADOR_POR_CATEGORIA.get(cat, MULTIPLICADOR_USD_A_MXN)
-            categorias[cat].append(precio * mult)
+            precio_final = precio * mult
+            if _es_con_marco(calidad_raw):
+                categorias['CON_MARCO'].append(precio_final)
+            else:
+                categorias[cat].append(precio_final)
     return categorias
 
 
 def formatear_cotizacion_tiers(marca: str, modelo: str, categorias: dict[str, list[float]]) -> str:
-    """Formatea la cotizacion mostrando UNA linea por calidad disponible.
+    """Formatea la cotizacion mostrando una linea por calidad disponible.
 
-    `categorias` es {CATEGORIA: [precios_finales_mxn]}. Se promedia cada categoria
-    y se muestra en el orden Generica -> Original -> AMOLED. La idea es SIEMPRE
-    ofrecer las calidades que existan (idealmente la barata y la cara).
+    Logica de precios (jul-2026):
+    - Piso minimo: si el display mas barato (GENERICO u ORIGINAL, sin C/M) < $600
+      → mostrar Generica $600 / Original $900 en lugar de precios calculados.
+    - AMOLED: siempre a precio real (no entra en el piso).
+    - Con Marco (CON_MARCO): solo aparece si existe en CSV y precio × mult > Original mostrado.
     """
+    precios_gen = categorias.get('GENERICO', [])
+    precios_orig = categorias.get('ORIGINAL', [])
+    precios_amoled = categorias.get('AMOLED', [])
+    precios_cm = categorias.get('CON_MARCO', [])
+
+    # Piso: aplica solo sobre GENÉRICO y ORIGINAL sin C/M
+    precios_base = precios_gen + precios_orig
+    usar_piso = bool(precios_base) and min(precios_base) < PISO_GENERICO
+
     lineas = [f"Para {marca} {modelo.upper()} tenemos estas opciones:\n"]
     hay_precios = False
-    for categoria in ('GENERICO', 'ORIGINAL', 'AMOLED'):
-        precios = categorias.get(categoria)
-        if not precios:
-            continue
-        precio_mxn = int(sum(precios) / len(precios))
-        lineas.append(f"* {ETIQUETAS_CATEGORIA[categoria]}: ${precio_mxn:,} MXN")
+    original_mostrado = None  # precio de ORIGINAL que ve el cliente (real o piso)
+
+    if usar_piso:
+        lineas.append(f"* {ETIQUETAS_CATEGORIA['GENERICO']}: ${PISO_GENERICO:,} MXN")
+        lineas.append(f"* {ETIQUETAS_CATEGORIA['ORIGINAL']}: ${PISO_ORIGINAL:,} MXN")
         hay_precios = True
+        original_mostrado = PISO_ORIGINAL
+    else:
+        for categoria in ('GENERICO', 'ORIGINAL'):
+            precios = categorias.get(categoria, [])
+            if not precios:
+                continue
+            precio_mxn = int(sum(precios) / len(precios))
+            lineas.append(f"* {ETIQUETAS_CATEGORIA[categoria]}: ${precio_mxn:,} MXN")
+            hay_precios = True
+            if categoria == 'ORIGINAL':
+                original_mostrado = precio_mxn
+
+    # AMOLED: precio real siempre (no entra en piso)
+    if precios_amoled:
+        precio_amoled = int(sum(precios_amoled) / len(precios_amoled))
+        lineas.append(f"* {ETIQUETAS_CATEGORIA['AMOLED']}: ${precio_amoled:,} MXN")
+        hay_precios = True
+
+    # Con Marco: solo si su precio es mayor al Original mostrado al cliente
+    if precios_cm:
+        precio_cm = int(sum(precios_cm) / len(precios_cm))
+        umbral = original_mostrado if original_mostrado is not None else PISO_ORIGINAL
+        if precio_cm > umbral:
+            lineas.append(f"* Con Marco: ${precio_cm:,} MXN")
+            hay_precios = True
 
     if not hay_precios:
         return _mensaje_no_disponible(marca, modelo)
@@ -532,7 +591,7 @@ def formatear_cotizacion_tiers(marca: str, modelo: str, categorias: dict[str, li
     cuerpo = "\n".join(lineas)
     return (
         "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
-        "'Calidad Generica', 'Calidad Original', 'AMOLED' - sin tecnicismos en parentesis):\n\n"
+        "'Calidad Generica', 'Calidad Original', 'AMOLED', 'Con Marco' - sin tecnicismos en parentesis):\n\n"
         f"{cuerpo}"
     )
 
