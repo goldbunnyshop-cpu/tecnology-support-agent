@@ -462,9 +462,9 @@ def _marca_canonica(marca_query: str) -> str | None:
 
 # Etiquetas que ve el cliente. SOLO estas tres - sin tecnicismos en parentesis.
 ETIQUETAS_CATEGORIA = {
-    'GENERICO': 'Calidad Generica',
+    'GENERICO': 'Calidad Genérica',
     'ORIGINAL': 'Calidad Original',
-    'AMOLED': 'AMOLED',
+    'AMOLED': 'Calidad AMOLED Premium',
 }
 
 
@@ -567,11 +567,15 @@ def formatear_cotizacion_tiers(marca: str, modelo: str, categorias: dict[str, li
             if categoria == 'ORIGINAL':
                 original_mostrado = precio_mxn
 
-    # AMOLED: precio real siempre (no entra en piso)
+    # AMOLED Premium: tier superior — solo si precio > Original mostrado.
+    # Si no hay Original en este modelo, se muestra siempre.
+    # Regla: proveedor puede ofrecer paneles AMOLED recortados (marco menor al de fábrica)
+    # → si su precio no supera al Original, no tiene sentido mostrarlo como premium.
     if precios_amoled:
         precio_amoled = int(sum(precios_amoled) / len(precios_amoled))
-        lineas.append(f"* {ETIQUETAS_CATEGORIA['AMOLED']}: ${precio_amoled:,} MXN")
-        hay_precios = True
+        if original_mostrado is None or precio_amoled > original_mostrado:
+            lineas.append(f"* {ETIQUETAS_CATEGORIA['AMOLED']}: ${precio_amoled:,} MXN")
+            hay_precios = True
 
     # Con Marco: solo si su precio es mayor al Original mostrado al cliente
     if precios_cm:
@@ -591,7 +595,8 @@ def formatear_cotizacion_tiers(marca: str, modelo: str, categorias: dict[str, li
     cuerpo = "\n".join(lineas)
     return (
         "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
-        "'Calidad Generica', 'Calidad Original', 'AMOLED', 'Con Marco' - sin tecnicismos en parentesis):\n\n"
+        "'Calidad Genérica', 'Calidad Original', 'Calidad AMOLED Premium', 'Con Marco' - "
+        "sin tecnicismos en parentesis; NUNCA mencionar INCELL, OLED, ORIG, COG ni marcas de proveedor):\n\n"
         f"{cuerpo}"
     )
 
