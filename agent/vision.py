@@ -14,27 +14,29 @@ logger = logging.getLogger("agentkit")
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-PROMPT_VISION = """Eres el técnico experto de Tecnology Support, un taller de reparación de dispositivos electrónicos.
-Analiza la imagen y responde SOLO con un objeto JSON sin texto adicional.
+PROMPT_VISION = """Eres el técnico experto de Tecnology Support, taller de reparación en La Comer Tlalpan, CDMX.
+Analiza la imagen y responde SOLO con un objeto JSON sin texto adicional ni markdown.
 
-IMPORTANTE: No uses precios de catálogo ni listas de servicios fijos. Solo describe lo que ves en la imagen.
-
+CAMPOS REQUERIDOS:
 {
-  "dispositivo": "nombre del dispositivo (ej: iPhone 12, PS4, Samsung Galaxy S21, laptop HP, etc.) o 'No identificado' si no puedes determinarlo",
-  "dano_visible": "descripción concisa del daño o problema visual detectado, o 'No se aprecia daño visible' si todo parece bien",
+  "puede_diagnosticar": true,
+  "tipo_dispositivo": "celular | consola | laptop | tablet | otro",
+  "marca": "Apple | Samsung | Motorola | Xiaomi | Huawei | Sony PlayStation | Microsoft Xbox | Nintendo | HP | Dell | Lenovo | otra | No identificada",
+  "modelo_probable": "mejor estimación del modelo según diseño de cámara, forma, logo visible, color (ej: 'Moto G serie media', 'PS4 Slim', 'iPhone 12-14') o 'No determinado'",
+  "dano_visible": "descripción concisa del daño: pantalla rota | pantalla sin imagen | puerto dañado | no enciende | daño físico externo | sin daño visible | otro",
+  "puerto_afectado": "USB-C | Lightning | micro-USB | HDMI | USB-A | lector SD | ninguno | No aplica",
   "severidad": "leve | moderada | grave | no_determinable",
-  "reparacion_necesaria": "descripción técnica de lo que hay que hacer físicamente (ej: sustituir el panel LCD, reemplazar la batería, limpiar los pines del puerto USB-C). Usa lenguaje técnico neutro, sin nombres de paquetes de servicio. 'Diagnóstico físico requerido' si no puedes determinarlo",
-  "nota_tecnica": "observación técnica breve para el equipo interno, máximo 1 oración",
-  "puede_diagnosticar": true
+  "nota_tecnica": "observación técnica de 1 línea para el técnico (ej: 'display roto con digitalizador separado', 'puerto USB-C con pines doblados')",
+  "pregunta_cliente": "pregunta específica y corta para el cliente que ayude a confirmar el modelo (ej: '¿Puedes ver el modelo en Ajustes → Acerca del teléfono?', '¿Es PS4 normal, Slim o Pro?')"
 }
 
-Si la imagen no muestra ningún dispositivo electrónico o es completamente ilegible, responde:
+Si la imagen es ilegible, borrosa o no muestra un dispositivo electrónico:
 {
   "puede_diagnosticar": false,
-  "motivo": "breve explicación"
+  "motivo": "breve explicación de por qué no se puede analizar"
 }
 
-Responde SOLO el JSON, sin markdown, sin explicaciones adicionales."""
+Responde SOLO el JSON, sin markdown, sin texto adicional."""
 
 
 async def descargar_media(url: str, token: str) -> tuple[bytes, str] | None:
@@ -166,6 +168,37 @@ async def _llamar_vision(imagen_b64: str, media_type: str) -> dict:
         return {"puede_diagnosticar": False, "motivo": "Error interno de análisis"}
 
 
+def construir_contexto_historial(analisis: dict, tipo_media: str = "image") -> str:
+    """Genera el texto que se guarda en el historial en lugar de '[imagen recibida]'.
+
+    Ejemplo: '[imagen: celular Motorola Moto G serie media - pantalla rota]'
+    Esto permite que brain.py tenga contexto en el siguiente mensaje del cliente.
+    """
+    if not analisis.get("puede_diagnosticar", True):
+        return f"[{tipo_media} recibida: no se pudo identificar el equipo]"
+
+    tipo  = analisis.get("tipo_dispositivo", "") or ""
+    marca = analisis.get("marca", "") or ""
+    modelo = analisis.get("modelo_probable", "") or ""
+    dano  = analisis.get("dano_visible", "") or ""
+    puerto = analisis.get("puerto_afectado", "") or ""
+
+    if marca in ("No identificada", "otra", ""):
+        marca = ""
+    if modelo == "No determinado":
+        modelo = ""
+    if dano in ("sin daño visible", "No aplica", ""):
+        dano = ""
+    if puerto in ("ninguno", "No aplica", ""):
+        puerto = ""
+
+    partes_equipo = " ".join(filter(None, [tipo, marca, modelo])) or "equipo no identificado"
+    partes_dano   = " - ".join(filter(None, [dano, f"puerto {puerto}" if puerto else ""]))
+    resumen = partes_equipo + (f" - {partes_dano}" if partes_dano else "")
+
+    return f"[{tipo_media}: {resumen}]"
+
+
 async def analizar_imagen_bytes(imagen_bytes: bytes, mime_type: str) -> dict:
     """Analiza bytes de imagen con Claude Vision. El precio se confirma en el módulo."""
     imagen_b64 = base64.standard_b64encode(imagen_bytes).decode("utf-8")
@@ -187,12 +220,13 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
     Genera el mensaje al cliente basado en el análisis de visión.
 
     Casos:
-    A — Daño visible → diagnóstico + invitación al módulo
-    B/C — Equipo identificado sin daño → confirmar dispositivo, preguntar qué falla tiene
-    D — Imagen borrosa o dispositivo no identificado → pedir descripción del problema
+    A — Daño visible → descripción + invitación al módulo
+    B — Equipo identificado sin daño visible → confirmar y preguntar qué falla
+    C — No identificado → preguntar específicamente según lo que sí se vio
     """
-    # ── Caso D: imagen borrosa / no se pudo analizar ──────────────────────────
+    # ── Caso C: imagen ilegible / no se pudo analizar ─────────────────────────
     if not analisis.get("puede_diagnosticar", True):
+        motivo = analisis.get("motivo", "")
         if tipo_media == "video":
             return (
                 "Recibí tu video \U0001f3a5 pero no pude ver el problema con claridad. "
@@ -200,45 +234,52 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
                 "Por ejemplo: no enciende, se congela, hace ruido extraño, etc."
             )
         return (
-            "La foto quedó un poco borrosa. "
-            "Cuéntame, ¿qué problema tiene tu equipo?"
+            "La foto quedó un poco oscura o borrosa \U0001f4f8 "
+            "¿Puedes contarme qué equipo es y qué le está pasando?"
         )
 
-    dispositivo = analisis.get("dispositivo", "")
-    dano        = analisis.get("dano_visible", "")
-    hay_dano    = bool(dano and dano != "No se aprecia daño visible")
+    marca          = analisis.get("marca", "") or ""
+    modelo_prob    = analisis.get("modelo_probable", "") or ""
+    tipo_disp      = analisis.get("tipo_dispositivo", "") or ""
+    dano           = analisis.get("dano_visible", "") or ""
+    puerto         = analisis.get("puerto_afectado", "") or ""
+    pregunta_suger = analisis.get("pregunta_cliente", "") or ""
 
-    # ── Casos B/C: equipo identificado pero sin daño visible ─────────────────
-    if not hay_dano:
-        if dispositivo and dispositivo != "No identificado":
-            return (
-                f"✅ Por la foto veo que tienes un *{dispositivo}*. "
-                f"¡Perfecto, así puedo asesorarte mejor! 😊 "
-                f"Cuéntame, ¿qué problema tiene o qué servicio necesitas?"
-            )
-        # No se identificó el dispositivo y sin daño
+    marca_mostrar  = marca if marca not in ("No identificada", "otra", "") else ""
+    modelo_mostrar = modelo_prob if modelo_prob != "No determinado" else ""
+    equipo_txt     = " ".join(filter(None, [marca_mostrar, modelo_mostrar])) or tipo_disp or "tu equipo"
+
+    hay_dano = bool(dano and dano not in ("sin daño visible", "No aplica", ""))
+    hay_puerto = bool(puerto and puerto not in ("ninguno", "No aplica", ""))
+
+    # ── Caso A: daño visible ──────────────────────────────────────────────────
+    if hay_dano:
+        intro = "Vi la foto 📸" if tipo_media == "image" else "Revisé tu video 🎥"
+
+        # Puerto dañado en consola / celular
+        if hay_puerto and "puerto" in dano.lower():
+            desc = f"Veo daño en el puerto *{puerto}* de tu {equipo_txt}."
+        else:
+            desc = f"Veo que tu *{equipo_txt}* tiene {dano}."
+
+        pregunta_final = pregunta_suger or "¿Te gustaría traerlo para revisarlo sin costo?"
         return (
-            "Recibí tu foto \U0001f4f8 No pude identificar bien el equipo. "
-            "¿Puedes contarme qué dispositivo es y cuál es el problema?"
+            f"{intro} {desc} "
+            f"El diagnóstico es sin costo y lo hacemos en el momento. "
+            f"{pregunta_final}"
         )
 
-    # ── Caso A: hay daño visible → flujo de diagnóstico ──────────────────────
-    reparacion = analisis.get("reparacion_necesaria", "Diagnóstico físico requerido")
-    precio     = analisis.get("precio_estimado", "Por cotizar")
-    intro      = "Vi la foto de tu equipo \U0001f4f8" if tipo_media == "image" else "Revisé tu video \U0001f3a5"
-    equipo_txt = dispositivo or "tu equipo"
-    desc_dano  = f"Parece que tienes {dano} en tu {equipo_txt}."
-
-    if reparacion == "Diagnóstico físico requerido" or precio == "Por cotizar":
+    # ── Caso B: equipo identificado, sin daño visible ─────────────────────────
+    if equipo_txt and equipo_txt != "tu equipo":
+        pregunta_final = pregunta_suger or "¿Qué problema o servicio necesitas?"
         return (
-            f"{intro} {desc_dano} "
-            f"Para un diagnóstico preciso necesitamos revisarlo en nuestro módulo. "
-            f"El diagnóstico es sin costo y lo hacemos en el momento. ¿Te gustaría traerlo?"
+            f"Recibí tu foto \U0001f4f8 Por el diseño parece un *{equipo_txt}*. "
+            f"{pregunta_final}"
         )
 
+    # ── Caso C: no se identificó nada claro ───────────────────────────────────
+    pregunta_final = pregunta_suger or "¿Qué equipo es y qué le está pasando?"
     return (
-        f"{intro} {desc_dano} "
-        f"Con base en lo que vemos, el costo aproximado es de *{precio} MXN*. "
-        f"Este es un diagnóstico preliminar — el precio exacto se confirma cuando lo revisamos físicamente. "
-        f"¿Te gustaría traerlo a nuestro módulo?"
+        f"Recibí tu foto \U0001f4f8 "
+        f"{pregunta_final}"
     )

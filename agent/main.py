@@ -79,6 +79,7 @@ from agent.vision import (
     analizar_imagen_bytes,
     analizar_thumbnail_b64,
     construir_respuesta_cliente,
+    construir_contexto_historial,
 )
 
 load_dotenv()
@@ -272,9 +273,18 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
     if not analisis:
         return RESPUESTA_IMAGEN_FALLBACK
 
+    # (C) Guardar contexto útil en historial para que el siguiente mensaje tenga info
+    contexto_hist = construir_contexto_historial(analisis, "imagen")
+    await guardar_mensaje(msg.telefono, "user", contexto_hist)
+
     respuesta = construir_respuesta_cliente(analisis, "image", asesor)
+
+    # (A) Reenviar imagen original + análisis a Christian
     asyncio.create_task(
-        notificar_christian_vision(proveedor, msg.telefono, historial, analisis, "image")
+        notificar_christian_vision(
+            proveedor, msg.telefono, historial, analisis, "image",
+            imagen_bytes=imagen_bytes, imagen_mime=mime_type,
+        )
     )
     return respuesta
 
@@ -831,7 +841,8 @@ async def _procesar_lote_mensajes(mensajes):
 
                 # ── Imagen ──
                 if msg.tipo == "image":
-                    await guardar_mensaje(msg.telefono, "user", "[imagen recibida]")
+                    # NO guardar "[imagen recibida]" aquí — _analizar_y_responder_imagen
+                    # guarda el contexto real tras el análisis (ej: "[imagen: celular Motorola - pantalla rota]")
                     await proveedor.enviar_typing(msg.telefono)
                     historial_vision = await obtener_historial(msg.telefono)
                     respuesta_img = await _analizar_y_responder_imagen(

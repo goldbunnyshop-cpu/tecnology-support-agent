@@ -176,31 +176,55 @@ async def notificar_christian_vision(
     historial: list[dict],
     analisis: dict,
     tipo_media: str,
+    imagen_bytes: bytes | None = None,
+    imagen_mime: str = "image/jpeg",
 ) -> None:
-    """Notifica a Christian después de un análisis visual automático."""
+    """Notifica a Christian después de un análisis visual.
+
+    Si se pasan imagen_bytes, reenvía la imagen original con el análisis como caption.
+    Si no, envía solo el texto (fallback para videos u otros casos).
+    """
     nombre = extraer_nombre_cliente(historial) or telefono
-    dispositivo = analisis.get("dispositivo", "No identificado")
-    dano = analisis.get("dano_visible", "No determinado")
-    precio = analisis.get("rango_precio", "Por cotizar")
-    puede = analisis.get("puede_diagnosticar", False)
+    puede  = analisis.get("puede_diagnosticar", True)
 
     if not puede:
-        resumen = f"No se pudo analizar el {tipo_media} (motivo: {analisis.get('motivo', 'desconocido')})"
+        resumen = f"⚠️ No se pudo analizar ({analisis.get('motivo', 'desconocido')})"
     else:
-        resumen = (
-            f"Dispositivo: {dispositivo}\n"
-            f"Daño detectado: {dano}\n"
-            f"Precio estimado dado: {precio}"
-        )
+        marca   = analisis.get("marca", "No identificada")
+        modelo  = analisis.get("modelo_probable", "No determinado")
+        dano    = analisis.get("dano_visible", "No determinado")
+        puerto  = analisis.get("puerto_afectado", "")
+        nota    = analisis.get("nota_tecnica", "")
 
-    icono = "\U0001f4f8" if tipo_media == "image" else "\U0001f3a5"
-    mensaje = (
-        f"{icono} ANÁLISIS VISUAL AUTOMÁTICO\n"
-        f"Cliente: {nombre}\n"
+        lineas = [
+            f"📱 {marca} — {modelo}",
+            f"🔧 Daño: {dano}",
+        ]
+        if puerto and puerto not in ("ninguno", "No aplica", ""):
+            lineas.append(f"🔌 Puerto: {puerto}")
+        if nota:
+            lineas.append(f"📋 Nota técnica: {nota}")
+
+        resumen = "\n".join(lineas)
+
+    icono  = "📸" if tipo_media == "image" else "🎥"
+    caption = (
+        f"{icono} VISIÓN — Cliente: {nombre} ({telefono})\n"
         f"{resumen}"
     )
+
     try:
-        await proveedor.enviar_mensaje(CHRISTIAN_NUMERO, mensaje)
-        logger.info(f"Alerta visión enviada a Christian — {telefono}")
+        # Intento 1: reenviar imagen con caption (A)
+        if imagen_bytes and hasattr(proveedor, "enviar_imagen_bytes"):
+            ok = await proveedor.enviar_imagen_bytes(
+                CHRISTIAN_NUMERO, imagen_bytes, imagen_mime, caption
+            )
+            if ok:
+                logger.info(f"Alerta visión (imagen) enviada a Christian — {telefono}")
+                return
+
+        # Fallback: solo texto si no hay imagen o falló el envío
+        await proveedor.enviar_mensaje(CHRISTIAN_NUMERO, caption)
+        logger.info(f"Alerta visión (texto) enviada a Christian — {telefono}")
     except Exception as e:
         logger.error(f"Error enviando alerta visión a Christian: {e}")

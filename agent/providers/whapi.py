@@ -208,3 +208,40 @@ class ProveedorWhapi(ProveedorWhatsApp):
             else:
                 logger.info(f"[WHAPI] ✅ Mensaje enviado a {destino}")
             return r.status_code == 200
+
+    async def enviar_imagen_bytes(
+        self,
+        destino: str,
+        imagen_bytes: bytes,
+        mime_type: str = "image/jpeg",
+        caption: str = "",
+    ) -> bool:
+        """Envía una imagen (bytes) con caption opcional vía Whapi /messages/image."""
+        if not self.token:
+            logger.warning("[WHAPI] Token no configurado — imagen no enviada")
+            return False
+        import base64
+        b64 = base64.standard_b64encode(imagen_bytes).decode("ascii")
+        payload = {
+            "to": destino,
+            "image": {
+                "mimetype": mime_type,
+                "data": b64,
+                "caption": caption,
+            },
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.post(
+                    "https://gate.whapi.cloud/messages/image",
+                    json=payload,
+                    headers=self._headers(),
+                )
+                if r.status_code not in (200, 201):
+                    logger.error(f"[WHAPI] Error enviando imagen: {r.status_code} — {r.text[:120]}")
+                    return False
+                logger.info(f"[WHAPI] ✅ Imagen enviada a {destino}")
+                return True
+        except Exception as e:
+            logger.error(f"[WHAPI] Excepción enviando imagen: {e}")
+            return False
