@@ -213,6 +213,16 @@ async def ejecutar_seguimientos():
                 logger.info(f"[SEGUIMIENTO] Omitido — {lead.telefono} está STOPPED")
                 continue
 
+            # No interrumpir al cliente si tiene una cita futura confirmada
+            from agent.leads import tiene_cita_pendiente
+            cita_futura = await tiene_cita_pendiente(lead.telefono)
+            if cita_futura:
+                logger.info(
+                    f"[SEGUIMIENTO] Omitido — {lead.telefono} tiene cita el "
+                    f"{cita_futura.strftime('%d/%m %H:%M')} (aún no ha pasado)"
+                )
+                continue
+
             historial = await obtener_historial(lead.telefono, limite=30)
             asesor = lead.asesor_asignado or "Valeria"
             mensaje, prioridad = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados, asesor)

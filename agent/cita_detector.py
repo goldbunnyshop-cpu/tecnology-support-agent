@@ -193,12 +193,33 @@ async def guardar_cita_automatica(
         logger.info("[CITA_DETECTOR] Abriendo sesión SQLAlchemy…")
         async with async_session() as session:
             from sqlalchemy import text
+            # PostgreSQL usa TIMESTAMP WITHOUT TIME ZONE — quitar tzinfo antes de insertar
+            fecha_hora_naive = fecha_hora.replace(tzinfo=None) if fecha_hora else None
+
+            # ── Dedup: evitar INSERT duplicado para misma cita ──────────────────
+            # Si ya existe una cita para este teléfono en ventana ±2 horas,
+            # no insertar de nuevo (ocurre cuando el cliente confirma su cita ya registrada).
+            if fecha_hora_naive and telefono:
+                ventana_inicio = fecha_hora_naive - timedelta(hours=2)
+                ventana_fin    = fecha_hora_naive + timedelta(hours=2)
+                existing = await session.execute(text("""
+                    SELECT id FROM citas
+                    WHERE telefono = :tel
+                    AND fecha_hora >= :inicio
+                    AND fecha_hora <= :fin
+                    LIMIT 1
+                """), {"tel": telefono, "inicio": ventana_inicio, "fin": ventana_fin})
+                if existing.scalar():
+                    logger.info(
+                        f"[CITA_DETECTOR] Cita ya existe para {telefono} cerca de "
+                        f"{fecha_hora.strftime('%d/%m %H:%M')} — INSERT omitido (dedup)"
+                    )
+                    return True
+
             query = text("""
                 INSERT INTO citas (nombre, telefono, dispositivo, problema, fecha_hora, asesor, fuente)
                 VALUES (:nombre, :telefono, :dispositivo, :problema, :fecha_hora, :asesor, :fuente)
             """)
-            # PostgreSQL usa TIMESTAMP WITHOUT TIME ZONE — quitar tzinfo antes de insertar
-            fecha_hora_naive = fecha_hora.replace(tzinfo=None) if fecha_hora else None
             params = {
                 "nombre": nombre,
                 "telefono": telefono,

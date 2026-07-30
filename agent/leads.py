@@ -224,6 +224,32 @@ async def obtener_leads_para_seguimiento() -> list[Lead]:
     return candidatos
 
 
+async def tiene_cita_pendiente(telefono: str) -> datetime | None:
+    """
+    Retorna la fecha_hora de la próxima cita FUTURA del cliente, o None si no hay.
+
+    Se usa en ejecutar_seguimientos() para evitar enviar mensajes de seguimiento
+    mientras el cliente tiene una cita confirmada que aún no ha pasado.
+    """
+    # Margen: ignorar citas de las últimas 4 horas (tiempo razonable post-visita)
+    desde = datetime.utcnow() - timedelta(hours=4)
+    try:
+        async with async_session() as session:
+            result = await session.execute(text("""
+                SELECT fecha_hora FROM citas
+                WHERE telefono = :tel
+                AND fecha_hora > :desde
+                ORDER BY fecha_hora ASC
+                LIMIT 1
+            """), {"tel": telefono, "desde": desde})
+            row = result.first()
+            if row and row[0]:
+                return row[0]
+    except Exception as e:
+        logger.warning(f"[LEADS] Error consultando cita pendiente para {telefono}: {e}")
+    return None
+
+
 async def obtener_leads_por_fuente(fuente: str) -> list[Lead]:
     """Devuelve todos los leads de una fuente específica."""
     async with async_session() as session:
