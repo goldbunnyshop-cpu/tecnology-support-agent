@@ -96,24 +96,59 @@ async def obtener_o_asignar_asesor(telefono: str) -> str:
         return nuevo
 
 
+# ─── Palabras clave que indican NUEVA intención de servicio ──────────────────
+# Cuando el cliente INICIA una nueva consulta, resetear la secuencia de seguimiento.
+# Si solo responde con cortesía ("gracias", "ok", "enterado"), NO resetear
+# → evita el loop infinito donde cada respuesta reinicia los 4 seguimientos.
+_KEYWORDS_INTENCION_SERVICIO = [
+    "quiero", "necesito", "precio", "cuánto", "cuanto", "cuesta", "sale",
+    "reparar", "arreglar", "componer", "revisar", "falla", "daño", "dañado",
+    "pantalla", "carga", "batería", "bateria", "puerto", "bocina",
+    "no enciende", "no prende", "no carga", "no funciona", "no sirve",
+    "agendar", "cita", "cuando", "cuándo", "horario",
+    "consola", "ps4", "ps5", "xbox", "switch", "nintendo",
+    "celular", "iphone", "samsung", "motorola", "xiaomi",
+    "laptop", "computadora",
+]
+
+def _tiene_intencion_servicio(texto: str) -> bool:
+    """True si el mensaje del cliente contiene palabras de consulta de servicio."""
+    if not texto:
+        return False
+    t = texto.lower()
+    return any(kw in t for kw in _KEYWORDS_INTENCION_SERVICIO)
+
+
 async def crear_o_actualizar_lead(
     telefono: str,
     fuente: str = "desconocido",
     fuente_detalle: str = "",
     asesor_asignado: str = "",
+    mensaje_texto: str = "",
 ):
-    """Crea el lead si es nuevo, o actualiza su timestamp si ya existe."""
+    """Crea el lead si es nuevo, o actualiza su timestamp si ya existe.
+
+    mensaje_texto se usa para decidir si resetear la secuencia de seguimiento:
+    - Si contiene intención de servicio → resetear (nueva consulta genuina)
+    - Si es respuesta de cortesía ("gracias", "ok") → NO resetear (evita loop infinito)
+    """
     async with async_session() as session:
         result = await session.execute(select(Lead).where(Lead.telefono == telefono))
         lead = result.scalar_one_or_none()
         if lead:
             lead.ultimo_mensaje = datetime.utcnow()
             if lead.estado in ("en_seguimiento", "perdido", "noshow"):
-                # Cliente volvió a escribir → reactivar secuencia de seguimiento
                 lead.estado = "activo"
-                lead.seguimientos_enviados = 0
-                lead.seguimiento_enviado_en = None
-                lead.seguimiento_realizado = False  # el cliente respondió, puede recibir seguimiento nuevo
+                # CRÍTICO: solo reiniciar secuencia si hay nueva intención de servicio.
+                # Si el cliente solo dice "gracias" o "ok" en respuesta a un seguimiento,
+                # NO resetear → evita el loop infinito que bombardeó a Gustavo (4-ago-2026).
+                if _tiene_intencion_servicio(mensaje_texto):
+                    lead.seguimientos_enviados = 0
+                    lead.seguimiento_enviado_en = None
+                    lead.seguimiento_realizado = False
+                    logger.info(f"[LEAD] {telefono} — secuencia reiniciada (nueva intención de servicio)")
+                else:
+                    logger.info(f"[LEAD] {telefono} — secuencia PRESERVADA (respuesta de cortesía, no se reinicia)")
             if fuente != "desconocido" and lead.fuente == "desconocido":
                 lead.fuente = fuente
                 lead.fuente_detalle = fuente_detalle

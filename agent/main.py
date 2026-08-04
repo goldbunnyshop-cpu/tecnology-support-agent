@@ -53,6 +53,8 @@ from agent.commands import procesar_comando_grupo
 from agent.commands_control import (
     procesar_comando_control,
     validar_numero_activo,
+    detener_numero,
+    numero_esta_stopped,
 )
 from agent.notifications import (
     detectar_y_notificar_christian,
@@ -824,7 +826,44 @@ async def _procesar_lote_mensajes(mensajes):
                     fuente=fuente,
                     fuente_detalle=fuente_detalle,
                     asesor_asignado=asesor,
+                    mensaje_texto=msg.texto or "",   # ← para detectar intención real vs. cortesía
                 )
+
+                # ── Detección de opt-out del cliente ───────────────────────────────
+                # Si el cliente pide explícitamente NO recibir más mensajes,
+                # registrar STOP automático y notificar a Christian.
+                # El agente aún responde UNA vez (disculpa), pero no habrá seguimientos futuros.
+                _OPT_OUT_KEYWORDS = [
+                    "ya no me manden", "ya no me escriban", "ya no me mandes",
+                    "no me manden", "no me escriban", "no me mandes",
+                    "no me molesten", "no me contacten", "no me contactes",
+                    "quiero que me dejen de contactar", "dejen de escribirme",
+                    "paren de mandarme", "dejen de mandarme",
+                    "bloqueen mi número", "me voy a bloquear",
+                    "basta de mensajes", "basta ya",
+                    "ya no quiero mensajes", "ya no quiero que me",
+                    "stop", "no más mensajes", "no mas mensajes",
+                ]
+                _texto_lower = (msg.texto or "").lower()
+                if any(kw in _texto_lower for kw in _OPT_OUT_KEYWORDS):
+                    if not await numero_esta_stopped(msg.telefono):
+                        await detener_numero(msg.telefono, razon="opt_out_cliente")
+                        logger.warning(
+                            f"[OPT_OUT] {msg.telefono} solicitó no recibir más mensajes — "
+                            f"STOP automático aplicado. Texto: {msg.texto[:80]!r}"
+                        )
+                        # Notificar a Christian de forma asíncrona (no bloquea la respuesta)
+                        asyncio.create_task(
+                            proveedor.enviar_mensaje(
+                                GRUPO_INTERNO,
+                                f"⛔ *OPT-OUT AUTOMÁTICO*\n"
+                                f"📱 {msg.telefono}\n"
+                                f"💬 «{msg.texto[:120]}»\n"
+                                f"✅ Número detenido. Ya no recibirá seguimientos."
+                            )
+                        )
+                        # El agente aún responde (una disculpa), pero sin follow-ups futuros.
+                        # No hacemos `continue` aquí — dejamos que el flujo normal genere la respuesta.
 
                 # ── Sincronizar perfil (SÍNCRONO) — crea clientes_perfil si no existe ──
                 # Esto garantiza que obtener_perfil() más abajo siempre encuentre el registro.

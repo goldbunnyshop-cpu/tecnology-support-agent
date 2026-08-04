@@ -512,3 +512,343 @@ No se detectaron conflictos con fixes anteriores:
 - El guard de laptop/PC en brain.py es aditivo — no modifica el comportamiento existente de cotización de celulares.
 - La eliminación de "teléfono" en profile.py no afecta la detección de otros dispositivos.
 - La sección "DIAGNÓSTICO SUPUESTO" en prompts.yaml complementa las reglas existentes de cotización — no las reemplaza.
+
+---
+
+---
+
+# 🔧 Fixes — Sesión 1 de Agosto, 2026
+
+Fecha: 1–3 de agosto de 2026
+Problemas resueltos: **3 bugs + 3 mejoras de Vision**
+
+---
+
+## ✅ FIX #9: Vision B+C+A — Análisis de imágenes con modelo identificador (1 ago 2026)
+
+### Problema
+El agente daba respuestas genéricas al recibir fotos/videos de equipos dañados.
+Un cliente envió la parte trasera de un Moto Edge 20 Lite → el agente respondió con texto
+genérico sin intentar identificar el modelo. Christian tuvo que hacer la búsqueda manual
+en Google para identificar el equipo y cotizar.
+
+**Log del problema:**
+```
+[VISION] analizar_imagen_bytes invocado — media_url vacío, probando media_id
+[VISION] Respuesta al cliente: "Recibí tu foto. ¿Puedes decirme qué modelo es y qué falla?"
+# Demasiado genérico — no aprovechó la imagen en absoluto
+```
+
+### Causa raíz
+- Prompt de visión era básico (solo detectaba daño, no intentaba identificar marca/modelo)
+- El historial guardaba `"[imagen recibida]"` sin contexto — el siguiente mensaje de Claude no sabía qué imagen había llegado
+- Christian no recibía la imagen reenviada, solo texto con el análisis
+
+### Solución (3 componentes independientes)
+
+**A — Reenvío de imagen a Christian (`agent/notifications.py` + `agent/providers/whapi.py`):**
+```python
+# notificar_christian_vision() ahora acepta imagen_bytes y mime_type
+# Intento 1: reenvía imagen original con caption de análisis
+ok = await proveedor.enviar_imagen_bytes(CHRISTIAN_NUMERO, imagen_bytes, imagen_mime, caption)
+# Fallback: solo texto si falla el reenvío
+await proveedor.enviar_mensaje(CHRISTIAN_NUMERO, caption)
+```
+`enviar_imagen_bytes()` añadido a `ProveedorWhapi` (POST /messages/image con base64).
+
+**B — Prompt estructurado (`agent/vision.py` — `PROMPT_VISION`):**
+Nuevo prompt extrae JSON estructurado con campos: `tipo_dispositivo`, `marca`, `modelo_probable`,
+`dano_visible`, `puerto_afectado`, `severidad`, `nota_tecnica`, `pregunta_cliente`.
+La `pregunta_cliente` es específica para confirmar el modelo (ej: "¿Puedes ver el modelo en Ajustes → Acerca del teléfono?").
+
+**C — Contexto en historial (`agent/vision.py` — `construir_contexto_historial()`):**
+```python
+# ANTES: guardaba "[imagen recibida]" — cero contexto para Claude
+# DESPUÉS: guarda "[imagen: celular Motorola Moto G serie media - pantalla rota]"
+```
+Claude Sonnet (el cerebro) ya sabe en el siguiente mensaje qué dispositivo se recibió.
+
+**Caption enviado a Christian:**
+```
+📸 VISIÓN — Cliente: Roberto (5216121557941)
+📱 Motorola — Moto Edge 20 Lite
+🔧 Daño: pantalla rota
+📋 Nota técnica: display roto con digitalizador separado
+```
+
+### Costo tokens
+- Haiku Vision (4× más barato que Sonnet) + solo en mensajes de imagen
+- El reenvío de imagen a Christian no genera llamada adicional a Claude
+- Ahorro neto vs intervención manual de Christian: ~15 min/imagen × $0 adicional
+
+---
+
+## ✅ FIX #10: Seguimiento disparado antes de que pase la cita (3 ago 2026)
+
+### Problema
+Un cliente agendaba cita para el sábado → el siguiente día (miércoles) el scheduler
+enviaba "Hola Roberto, ¿pudiste venir a dejarnos el iPhone el sábado?" cuando el sábado
+aún no había llegado.
+
+**Log del error (caso real Roberto Álvarez):**
+```
+# Cita creada: miércoles 30-jul-2026 01:22 → para sábado 1-ago-2026 11:30
+Seg 1/4 [Valentina] [urgente] → 5216121557941: Hola Roberto, ¿pudiste venir a dejarnos el iPhone el sábado?
+# → Enviado 30-jul a las 16:20 (sábado no había pasado todavía)
+```
+
+El cliente respondió: "No esa cita está bien, aun no pasa."
+El agente pidió disculpas pero repitió el mismo error al día siguiente.
+
+### Causa raíz
+`ejecutar_seguimientos()` en `followup.py` selecciona cualquier lead donde el intervalo
+post-último-mensaje ya se cumplió (primer seguimiento: 2h). No consultaba si el lead
+tenía una cita futura pendiente. Claude Haiku generaba "Escenario B — ¿pudiste venir?"
+leyendo "sábado" en el historial sin saber si esa fecha ya había pasado.
+
+### Solución
+
+**`agent/leads.py` — nueva función `tiene_cita_pendiente()`:**
+```python
+async def tiene_cita_pendiente(telefono: str) -> datetime | None:
+    """Retorna la fecha_hora de la próxima cita FUTURA del cliente (con margen -4h), o None."""
+    desde = datetime.utcnow() - timedelta(hours=4)  # ±4h post-visita antes de reanudar seguimientos
+    async with async_session() as session:
+        result = await session.execute(text("""
+            SELECT fecha_hora FROM citas
+            WHERE telefono = :tel AND fecha_hora > :desde
+            ORDER BY fecha_hora ASC LIMIT 1
+        """), {"tel": telefono, "desde": desde})
+        row = result.first()
+        return row[0] if row and row[0] else None
+```
+
+**`agent/followup.py` — guard en `ejecutar_seguimientos()`:**
+```python
+# No interrumpir al cliente si tiene una cita futura confirmada
+cita_futura = await tiene_cita_pendiente(lead.telefono)
+if cita_futura:
+    logger.info(
+        f"[SEGUIMIENTO] Omitido — {lead.telefono} tiene cita el "
+        f"{cita_futura.strftime('%d/%m %H:%M')} (aún no ha pasado)"
+    )
+    continue
+```
+
+### Comportamiento después del fix
+
+| Momento | Antes (bug) | Después (fix) |
+|---------|-------------|---------------|
+| Miércoles 30-jul, 16:20 | ❌ "¿pudiste venir el sábado?" | ✅ Omitido — cita pendiente 01/08 11:30 |
+| Sábado 1-ago, después 15:30 (+4h) | — | ✅ Seguimiento normal reanudado |
+| Cliente sin cita registrada | ✅ Seguimiento normal | ✅ Seguimiento normal (sin cambio) |
+
+---
+
+## ✅ FIX #11: INSERT duplicado cuando cliente confirma cita existente (3 ago 2026)
+
+### Problema
+Cuando el agente enviaba el seguimiento prematuro ("¿pudiste venir?") y el cliente
+respondía "No esa cita está bien, aun no pasa", el agente generaba un tag `[[AGENDAR:...]]`
+para "re-confirmar" la cita existente → `guardar_cita_automatica()` hacía un segundo
+INSERT en PostgreSQL.
+
+**Log del error:**
+```
+# Primer INSERT (cita original, correcto)
+[CITA_DETECTOR] ✅ Cita guardada en PostgreSQL: Roberto — 01/08 11:30
+
+# ...15 horas después, Roberto responde al seguimiento incorrecto...
+[CITA_DETECTOR] ✅ Cita guardada en PostgreSQL: Roberto — 01/08 11:30  # ← DUPLICADO
+```
+
+### Causa raíz
+`guardar_cita_automatica()` en `cita_detector.py` hacía INSERT directo sin verificar
+si ya existía una cita para ese teléfono en la misma ventana de tiempo.
+
+### Solución
+
+**`agent/cita_detector.py` — dedup check ±2h antes del INSERT:**
+```python
+# Dedup: evitar INSERT duplicado para misma cita
+if fecha_hora_naive and telefono:
+    ventana_inicio = fecha_hora_naive - timedelta(hours=2)
+    ventana_fin    = fecha_hora_naive + timedelta(hours=2)
+    existing = await session.execute(text("""
+        SELECT id FROM citas
+        WHERE telefono = :tel
+        AND fecha_hora >= :inicio
+        AND fecha_hora <= :fin
+        LIMIT 1
+    """), {"tel": telefono, "inicio": ventana_inicio, "fin": ventana_fin})
+    if existing.scalar():
+        logger.info(
+            f"[CITA_DETECTOR] Cita ya existe para {telefono} cerca de "
+            f"{fecha_hora.strftime('%d/%m %H:%M')} — INSERT omitido (dedup)"
+        )
+        return True  # éxito sin duplicar
+```
+
+### Resultado
+- Ventana ±2h: amplia para absorber ajustes de horario (ej: "a las 11" vs "a las 11:30")
+- Compatible con SQLite (local) y PostgreSQL (Railway) — SQL estándar
+- No requiere constraint UNIQUE en la tabla (no rompe datos existentes)
+- El fix de FIX #10 previene la causa raíz; este fix es la red de seguridad
+
+---
+
+## 📦 Archivos modificados en esta sesión
+
+| Archivo | Tipo | Fix |
+|---------|------|-----|
+| `agent/vision.py` | Mejora | `PROMPT_VISION` estructurado + `construir_contexto_historial()` + `construir_respuesta_cliente()` mejorada |
+| `agent/notifications.py` | Mejora | `notificar_christian_vision()` acepta `imagen_bytes` y reenvía imagen |
+| `agent/providers/whapi.py` | Mejora | `enviar_imagen_bytes()` — POST /messages/image con base64 |
+| `agent/main.py` | Mejora | `_analizar_y_responder_imagen()` guarda contexto historial + pasa bytes a notificación |
+| `agent/leads.py` | Bug fix | `tiene_cita_pendiente()` — consulta PostgreSQL por citas futuras |
+| `agent/followup.py` | Bug fix | Guard en `ejecutar_seguimientos()` — omite leads con cita futura |
+| `agent/cita_detector.py` | Bug fix | Dedup ±2h en `guardar_cita_automatica()` antes del INSERT |
+
+## 🔗 Nota de interacción entre fixes
+
+FIX #10 y FIX #11 son complementarios:
+- **FIX #10** (seguimiento prematuro) elimina la **causa raíz** del duplicate INSERT — si no se manda el seguimiento incorrecto, el cliente no responde y el agente no re-genera el tag `[[AGENDAR:...]]`.
+- **FIX #11** (dedup INSERT) es la **red de seguridad** — incluso si por otro motivo el agente re-detecta la cita, el INSERT duplicado no llega a la BD.
+
+---
+
+---
+
+# 🔧 Fixes — Sesión 3 de Agosto, 2026 (parte 2)
+
+Fecha: 3–4 de agosto de 2026  
+Problema resuelto: **Loop infinito de seguimientos (caso Gustavo)**
+
+---
+
+## ✅ FIX #12: Loop infinito de seguimientos — counter reset + auto-STOP opt-out (3–4 ago 2026)
+
+### Problema
+
+Gustavo (5215511441317) recibió 8+ mensajes de seguimiento en 4 días, incluyendo después
+de haber pedido explícitamente que dejaran de escribirle:
+
+```
+1-ago 07:29 — Hola Gustavo, ¿cómo resultó tu S24 Ultra?    (Seg 1/4)
+1-ago 11:09 — ¿Llegaste a traer tu S24 Ultra?              (Seg 2/4)
+1-ago 17:59 — "Enterado gracias"                            ← cliente responde
+2-ago 07:07 — ¿Pudiste traer tu Samsung Galaxy?             (Seg 1/4) ← reiniciado!
+2-ago 11:18 — Hola Gustavo, ¿llegaste a venir?             (Seg 2/4)
+2-ago 12:00 — "YA NO ME ESTEN MSNDANFO MENSAGES OK"        ← cliente molesto
+3-ago 07:36 — ¿Pudiste traer tu S24?                        (Seg 1/4) ← sigue!
+3-ago 11:04 — Hola Gustavo, ¿llegaste a venir?             (Seg 2/4)
+```
+
+### Causa raíz (2 problemas independientes)
+
+**Causa A — Reset incondicional del contador:**
+
+`crear_o_actualizar_lead()` en `agent/leads.py` línea 114:
+```python
+# ANTES (bug):
+if lead.estado in ("en_seguimiento", "perdido", "noshow"):
+    lead.estado = "activo"
+    lead.seguimientos_enviados = 0  # ← reset en CUALQUIER respuesta, incluso "gracias"
+    lead.seguimiento_enviado_en = None
+    lead.seguimiento_realizado = False
+```
+
+Cuando Gustavo respondió "Enterado gracias", el contador se reinició a 0 → la secuencia
+de 4 seguimientos se reinició desde el principio → loop infinito.
+
+**Causa B — Sin auto-STOP por opt-out:**
+
+Cuando Gustavo escribió "YA NO ME ESTEN MSNDANFO MENSAGES OK", el agente respondió
+con texto diciendo "no le mando más mensajes", pero NUNCA llamó `detener_numero()`.
+El seguimiento del día siguiente continuó igual.
+
+### Solución
+
+**`agent/leads.py` — reset inteligente del contador:**
+
+```python
+# Keywords que indican NUEVA intención de servicio (reset válido)
+_KEYWORDS_INTENCION_SERVICIO = [
+    "quiero", "necesito", "precio", "cuánto", "cuanto", "cuesta", "sale",
+    "reparar", "arreglar", "componer", "revisar", "falla", "daño", "dañado",
+    "pantalla", "carga", "batería", "bateria", "puerto", "bocina",
+    "no enciende", "no prende", "no carga", "no funciona", "no sirve",
+    "agendar", "cita", "cuando", "cuándo", "horario",
+    # ... marcas y dispositivos ...
+]
+
+def _tiene_intencion_servicio(texto: str) -> bool:
+    """True si el mensaje contiene palabras de consulta de servicio."""
+    return any(kw in texto.lower() for kw in _KEYWORDS_INTENCION_SERVICIO)
+```
+
+En `crear_o_actualizar_lead()`:
+```python
+async def crear_o_actualizar_lead(..., mensaje_texto: str = ""):
+    ...
+    if lead.estado in ("en_seguimiento", "perdido", "noshow"):
+        lead.estado = "activo"
+        # Solo resetear si hay nueva intención real — NO en respuestas de cortesía
+        if _tiene_intencion_servicio(mensaje_texto):
+            lead.seguimientos_enviados = 0
+            lead.seguimiento_enviado_en = None
+            lead.seguimiento_realizado = False
+            logger.info(f"[LEAD] {telefono} — secuencia reiniciada (nueva intención)")
+        else:
+            logger.info(f"[LEAD] {telefono} — secuencia PRESERVADA (respuesta de cortesía)")
+```
+
+**`agent/main.py` — detección automática de opt-out:**
+
+```python
+_OPT_OUT_KEYWORDS = [
+    "ya no me manden", "ya no me escriban", "ya no me mandes",
+    "no me manden", "no me escriban", "no me molesten", "no me contacten",
+    "dejen de escribirme", "paren de mandarme", "dejen de mandarme",
+    "basta de mensajes", "basta ya",
+    "ya no quiero mensajes", "stop", "no más mensajes",
+]
+
+_texto_lower = (msg.texto or "").lower()
+if any(kw in _texto_lower for kw in _OPT_OUT_KEYWORDS):
+    if not await numero_esta_stopped(msg.telefono):
+        await detener_numero(msg.telefono, razon="opt_out_cliente")
+        asyncio.create_task(
+            proveedor.enviar_mensaje(
+                GRUPO_INTERNO,
+                f"⛔ *OPT-OUT AUTOMÁTICO*\n📱 {msg.telefono}\n"
+                f"💬 «{msg.texto[:120]}»\n✅ Número detenido."
+            )
+        )
+        # El agente aún responde (disculpa), pero sin seguimientos futuros
+```
+
+### Comportamiento después del fix
+
+| Situación | Antes (bug) | Después (fix) |
+|-----------|-------------|---------------|
+| Cliente responde "gracias" | ❌ Reset counter → reinicia 4 mensajes | ✅ Counter preservado, secuencia continúa |
+| Cliente responde "quiero reparar mi iPhone" | ✅ Reset counter (correcto) | ✅ Reset counter (correcto) |
+| Cliente escribe "ya no me manden mensajes" | ❌ Agente dice que no mandará más, pero sí manda | ✅ `detener_numero()` automático + notificación a Christian |
+| Cliente bloqueado manualmente desde grupo | ✅ Funciona igual que antes | ✅ Sin cambio |
+
+### Archivos modificados
+
+| Archivo | Cambio |
+|---------|--------|
+| `agent/leads.py` | `_KEYWORDS_INTENCION_SERVICIO` + `_tiene_intencion_servicio()` + parámetro `mensaje_texto` en `crear_o_actualizar_lead()` |
+| `agent/main.py` | Import `detener_numero`, `numero_esta_stopped` + bloque opt-out detection + `mensaje_texto=msg.texto` en llamada a `crear_o_actualizar_lead()` |
+
+### Decisión de diseño
+
+El opt-out automático deja que el agente responda UNA VEZ más (mensaje de disculpa que
+Claude generará dado el contexto del historial), luego aplica el STOP. Esto es mejor que
+silenciar el número antes de responder porque:
+1. El cliente recibe confirmación de que su solicitud fue atendida.
+2. No parece que el agente simplemente ignoró su mensaje.
+3. Christian recibe la notificación en paralelo vía `asyncio.create_task` (no bloquea).
