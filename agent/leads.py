@@ -265,9 +265,19 @@ async def tiene_cita_pendiente(telefono: str) -> datetime | None:
 
     Se usa en ejecutar_seguimientos() para evitar enviar mensajes de seguimiento
     mientras el cliente tiene una cita confirmada que aún no ha pasado.
+
+    IMPORTANTE — timezone: La BD guarda fechas naive en hora CDMX (America/Mexico_City)
+    porque guardar_cita_automatica() hace .replace(tzinfo=None) antes del INSERT.
+    Comparar con datetime.utcnow() causaría que una cita a las 11:30 CDMX se viera
+    como "pasada" a las 10:00 UTC (son 6 horas de diferencia).
+    Solución: comparar siempre con hora CDMX naive.
     """
+    from zoneinfo import ZoneInfo
+    _ZONA_MX = ZoneInfo("America/Mexico_City")
+    # Hora CDMX naive — compatible con lo que guarda la BD
+    ahora_cdmx = datetime.now(_ZONA_MX).replace(tzinfo=None)
     # Margen: ignorar citas de las últimas 4 horas (tiempo razonable post-visita)
-    desde = datetime.utcnow() - timedelta(hours=4)
+    desde = ahora_cdmx - timedelta(hours=4)
     try:
         async with async_session() as session:
             result = await session.execute(text("""

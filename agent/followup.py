@@ -389,13 +389,69 @@ async def ejecutar_recordatorios_cita():
             f"¿Confirmas tu asistencia? ✅"
         )
 
+        # Registrar ANTES de enviar → evita race condition cuando dos
+        # instancias del scheduler corren simultáneamente y ambas pasan
+        # el check `recordatorio_ya_enviado` antes de que alguna marque el dedup.
+        await registrar_recordatorio(evento_id, phone_fmt)
         enviado = await proveedor.enviar_mensaje(phone_fmt, mensaje)
         if enviado:
             await guardar_mensaje(phone_fmt, "assistant", mensaje)
-            await registrar_recordatorio(evento_id, phone_fmt)
             logger.info(f"[RECORDATORIO] ✅ Enviado a {phone_fmt} ({nombre}) — cita a las {hora_txt}")
         else:
             logger.warning(f"[RECORDATORIO] ❌ No se pudo enviar a {phone_fmt}")
+
+
+async def ejecutar_recordatorios_24h_cliente():
+    """
+    Consulta Google Calendar para citas que empiezan en ~24 horas.
+    Envía recordatorio "mañana a las X" al cliente si aún no se envió uno.
+    Corre cada 10 minutos — el dedup con sufijo "_24h" garantiza envío único.
+    """
+    from agent.google_calendar import obtener_eventos_proximos
+    from agent.memory import recordatorio_ya_enviado, registrar_recordatorio, guardar_mensaje
+    from agent.providers import obtener_proveedor
+    from agent.commands import _formatear_numero_destino
+
+    proveedor = obtener_proveedor()
+    # Ventana: eventos que empiezan entre 22.5h y 25.5h desde ahora
+    # Amplia (3h) para no perder la ventana si el scheduler tuvo retraso,
+    # angosta para no confundirse con citas de 2 días después.
+    eventos = await obtener_eventos_proximos(minutos_desde=22*60+30, minutos_hasta=25*60+30)
+
+    for ev in eventos:
+        # Key distinto al de 1h para no mezclar dedup
+        evento_id_24h = ev["id"] + "_24h"
+        if await recordatorio_ya_enviado(evento_id_24h):
+            continue
+
+        nombre     = ev["nombre"]
+        telefono   = ev["telefono"]
+        hora_txt   = ev["hora"]
+        dispositivo = ev.get("dispositivo", "")
+
+        phone_fmt, advertencia = _formatear_numero_destino(telefono)
+        if advertencia or not phone_fmt:
+            logger.warning(f"[RECORDATORIO-24H] Teléfono inválido '{telefono}' — omitido")
+            continue
+
+        equipo_txt = f" para tu {dispositivo}" if dispositivo else ""
+        mensaje = (
+            f"¡Hola {nombre}! 😊 Te recordamos que *mañana* tienes tu cita{equipo_txt} "
+            f"en nuestro módulo a las *{hora_txt}*. "
+            f"Te esperamos en Plazuela de la Fama 1, Col. La Fama, Tlalpan, CDMX. "
+            f"¿Confirmas tu asistencia? ✅"
+        )
+
+        # Registrar ANTES de enviar → evita duplicados por paralelismo
+        await registrar_recordatorio(evento_id_24h, phone_fmt)
+        enviado = await proveedor.enviar_mensaje(phone_fmt, mensaje)
+        if enviado:
+            await guardar_mensaje(phone_fmt, "assistant", mensaje)
+            logger.info(
+                f"[RECORDATORIO-24H] ✅ Enviado a {phone_fmt} ({nombre}) — cita mañana a las {hora_txt}"
+            )
+        else:
+            logger.warning(f"[RECORDATORIO-24H] ❌ No se pudo enviar a {phone_fmt}")
 
 
 async def ejecutar_alerta_factura():
@@ -605,7 +661,8 @@ async def _loop_recordatorios():
     while True:
         await asyncio.sleep(INTERVALO_RECORDATORIO)
         try:
-            await ejecutar_recordatorios_cita()
+            await ejecutar_recordatorios_cita()          # recordatorio 1h antes al cliente
+            await ejecutar_recordatorios_24h_cliente()   # recordatorio 24h antes al cliente
         except Exception as e:
             logger.error(f"Error en scheduler de recordatorios: {e}")
 
