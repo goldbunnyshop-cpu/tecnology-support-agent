@@ -46,7 +46,10 @@ MULT_TAPA_OTRAS = int(os.getenv("PRICING_MULT_TAPA_OTRAS", "5"))
 # lugar se invita a consultar el precio directamente con el técnico.
 # CRÍTICO: Sin límite de precio. El cliente debe ver TODOS los precios calculados.
 # Si necesita restricción especial, usar variable de entorno PRICING_UMBRAL_CONSULTAR
-UMBRAL_CONSULTAR = int(os.getenv("PRICING_UMBRAL_CONSULTAR", "999999999"))
+# Si un precio calculado supera este umbral, se muestra "consulta con el técnico"
+# en lugar del número. Protege contra precios absurdos de fuentes externas.
+# Configurable via variable de entorno PRICING_UMBRAL_CONSULTAR.
+UMBRAL_CONSULTAR = int(os.getenv("PRICING_UMBRAL_CONSULTAR", "12000"))
 
 CACHE_TTL = int(os.getenv("PRICING_FALLBACK_CACHE_TTL", str(6 * 3600)))  # 6 horas
 HTTP_TIMEOUT = 15
@@ -230,13 +233,15 @@ async def _buscar_fixoem(query: str, _marca_q: str = "", _modelo_q: str = "") ->
                 precio_fixoem_mxn = _limpiar_precio(p.get("price"))
                 if not precio_fixoem_mxn:
                     continue
-                # Precios de fixoem en MXN se multiplican por 3 para margen comercial
-                precio_final = precio_fixoem_mxn * 3
+                # fixoem lista precios en MXN al costo/mayoreo.
+                # _formatear_cotizacion_fallback aplica el multiplicador de margen (×4/×3)
+                # según categoría. NO multiplicar aquí — antes se multiplicaba ×3 aquí
+                # Y ×4 en el formateador, resultando en ×12 total (precios 3× inflados).
                 categoria = _clasificar_calidad(titulo, es_display)
                 productos.append(
-                    {"titulo": titulo, "precio": precio_final, "categoria": categoria, "fuente": "fixoem"}
+                    {"titulo": titulo, "precio": precio_fixoem_mxn, "categoria": categoria, "fuente": "fixoem"}
                 )
-                logger.info(f"[FALLBACK] fixoem: {titulo} → MXN${precio_fixoem_mxn:.0f} × 3 = MXN${precio_final:.0f}")
+                logger.info(f"[FALLBACK] fixoem: {titulo} → MXN${precio_fixoem_mxn:.0f} (costo, margen se aplica en formateador)")
     except Exception as e:
         logger.warning(f"[FALLBACK] Error en fixoem '{query}': {e}")
 
