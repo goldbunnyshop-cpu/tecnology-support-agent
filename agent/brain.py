@@ -23,25 +23,70 @@ _PATRONES_PRECIO = [
     r"\bpresupuesto\b",
     r"\bdisplay\b",
     r"\bpantalla\b",
+    r"\btouch\b",
+    r"\bcristal\b",
+    r"\bmica\b",
 ]
 
 # Términos inequívocos de pantalla/display. NO se incluyen "touch"/"táctil" porque
 # aparecen en quejas conversacionales de reparación ("el touch muerto") sin intención
 # de cotizar — esas las atiende Claude, no el motor de cotización.
-# NUEVA: También detecta "cambio pantalla" (aun entre paréntesis)
+# NUEVA: También detecta "cambio pantalla" (aun entre paréntesis), touch y cristal.
 _PATRON_DISPLAY = re.compile(
-    r"(?:\b(displays?|pantallas?|mica|cristal|gorilla)\b|cambio\s+(?:de\s+)?(pantalla|display))", re.I
+    r"(?:\b(displays?|pantallas?|mica|gorilla|touch|cristal)\b"
+    r"|cambio\s+(?:de\s+)?(pantalla|display|touch|cristal))",
+    re.I,
 )
 
-# Señales de que la consulta NO es de display. El motor de cotización ahora cotiza
-# PANTALLAS + BATERÍAS DE CELULAR (via Google Sheets).
-# Si el cliente pregunta por: mantenimiento de consola, diagnóstico, centro de carga,
-# software, o reparación de control → Claude atiende (precio fijo, invitar módulo, etc.)
+# Display inequívoco: display/pantalla/mica/gorilla (no necesitan confirmación).
+_PATRON_DISPLAY_DIRECTO = re.compile(
+    r"(?:\b(displays?|pantallas?|mica|gorilla)\b"
+    r"|cambio\s+(?:de\s+)?(pantalla|display))",
+    re.I,
+)
+
+# Términos de pantalla que pueden ser ambiguos y requieren confirmación verbal:
+# - "cristal" puede ser cristal de cámara o vidrio de pantalla
+# - "touch" puede ser queja de falla o cotización de pantalla
+_PATRON_DISPLAY_CONFIRMAR = re.compile(
+    r"\b(touch|cristal)\b",
+    re.I,
+)
+
+# Cristal/vidrio de CÁMARA: no es display → siempre técnico
+_PATRON_CRISTAL_CAMARA = re.compile(
+    r"\b(cristal|vidrio)\s+(?:de\s+)?(?:la\s+)?c[aá]mara\b",
+    re.I,
+)
+
+# ── Refacciones que SIEMPRE van al técnico (nunca se cotizan por el motor) ──────
+# Todo lo que no sea display/pantalla/touch/cristal de celular.
+_PATRON_REFACCION_TECNICO = re.compile(
+    r"\b("
+    r"bater[ií]a|bateria|"
+    r"tapa|carcasa|back\s*cover|cubierta|contorno|marco(?!\s+gorilla)|"  # "marco" de display OK si va con gorilla
+    r"puerto|conector|centro\s+de\s+carga|cargador|"
+    r"bocina|altavoz|aud[ií]fono|auricular|speaker|"
+    r"micr[oó]fono|"
+    r"c[aá]mara|lente(?!\s+gorilla)|vidrio\s+c[aá]mara|"
+    r"bot[oó]n|boton|vibrador|antena|flex|"
+    r"SIM|ranura|charger"
+    r")\b",
+    re.I,
+)
+
+# Mensaje estándar cuando la pieza requiere cotización directa del técnico
+_MENSAJE_TECNICO_30MIN = (
+    "En un lapso no mayor a 30 minutos un técnico especialista te atenderá personalmente 😊\n"
+    "¿Prefieres que te contactemos por llamada o seguimos por WhatsApp?"
+)
+
+# Señales de que la consulta NO es de display ni refacción cotizable.
+# El motor la ignora y Claude atiende (precio fijo de servicio, consola, software, etc.)
 _PATRON_NO_DISPLAY = re.compile(
     r"\b("
     r"mantenimiento|limpieza|diagn[oó]stic\w*|"
-    r"pila|centro\s+de\s+carga|puerto\s+de\s+carga|no\s+carga|"
-    r"bocina|altavoz|micr[oó]fono|c[aá]mara|bot[oó]n|botones|"
+    r"pila|no\s+carga|"
     r"software|desbloque\w*|liberaci[oó]n|liberar|"
     r"control|mando|joystick|palanca|drift|gatillo|"
     r"consola|playstation|ps[345]|xbox|nintendo|switch"
@@ -297,28 +342,54 @@ def _generar_pregunta_clarificadora(mensaje: str, marca_prev: str | None, modelo
     if marca_prev and modelo_prev:
         dispositivo = f"{marca_prev} {modelo_prev}".strip().title()
         # Detectar si pregunta por refacción específica
-        refaccion = "display"
-        if re.search(r"\b(bater[ií]a|bateria|pila)\b", m):
-            refaccion = "batería"
-        elif re.search(r"\b(tapa)\b", m):
-            refaccion = "tapa"
-
-        if refaccion == "display":
-            return f"¿Del display del {dispositivo}?"
+        refaccion = _detectar_refaccion(m)
+        if refaccion in ("display", "display_confirmar"):
+            pieza_txt = "display" if refaccion == "display" else "pantalla (touch/cristal)"
+            return f"¿Del {pieza_txt} del {dispositivo}?"
         else:
-            return f"¿De la {refaccion} del {dispositivo}?"
+            return None  # Para otras piezas no generar pregunta de precio — el técnico atiende
 
     return None
 
 
 def _detectar_refaccion(mensaje: str) -> str:
-    """Tipo de pieza solicitada: bateria > tapa > display (default)."""
+    """
+    Tipo de pieza solicitada.
+    Retorna:
+      "display"          — pantalla/display/mica/gorilla: se cotiza directamente.
+      "display_confirmar" — touch/cristal sin contexto de cámara: cotizar pero
+                            el prompts.yaml indica al agente que confirme antes.
+      "otro"             — cualquier otra pieza (batería, tapa, puerto, bocina…):
+                            siempre se transfiere al técnico, no se cotiza.
+    """
     m = (mensaje or "").lower()
-    if re.search(r"\b(bater[ií]a|bateria|pila)\b", m):
-        return "bateria"
-    if "tapa" in m:
-        return "tapa"
-    return "display"
+    # Cristal de cámara → pieza diferente, no es display
+    if _PATRON_CRISTAL_CAMARA.search(m):
+        return "otro"
+    # Display directo (inequívoco)
+    if _PATRON_DISPLAY_DIRECTO.search(m):
+        return "display"
+    # Touch o cristal a secas → probablemente pantalla, confirmar
+    if _PATRON_DISPLAY_CONFIRMAR.search(m):
+        return "display_confirmar"
+    # Otras refacciones conocidas
+    if _PATRON_REFACCION_TECNICO.search(m):
+        return "otro"
+    return "display"  # default: la mayoría de consultas son de display
+
+
+def _nombre_pieza_tecnico(mensaje: str) -> str:
+    """Extrae el nombre legible de la pieza no-display para el mensaje al cliente."""
+    m = (mensaje or "").lower()
+    if re.search(r"\b(bater[ií]a|bateria)\b", m): return "batería"
+    if re.search(r"\bpila\b", m): return "batería"
+    if re.search(r"\b(tapa|carcasa|back\s*cover|cubierta)\b", m): return "tapa trasera"
+    if re.search(r"\b(puerto|conector|centro\s+de\s+carga|cargador|charger)\b", m): return "puerto de carga"
+    if re.search(r"\b(bocina|altavoz|speaker|aud[ií]fono|auricular)\b", m): return "bocina"
+    if re.search(r"\b(micr[oó]fono)\b", m): return "micrófono"
+    if re.search(r"\b(c[aá]mara|lente|cristal\s+c[aá]mara|vidrio\s+c[aá]mara)\b", m): return "cámara"
+    if re.search(r"\b(bot[oó]n|boton)\b", m): return "botón"
+    return "refacción"
 
 
 async def _resolver_pricing_desde_texto(mensaje: str, marca_ctx: str | None = None) -> str | None:
@@ -328,23 +399,63 @@ async def _resolver_pricing_desde_texto(mensaje: str, marca_ctx: str | None = No
         marca = marca_ctx
     refaccion = _detectar_refaccion(mensaje)
     m = (mensaje or "").lower()
+
+    # ── Pieza no-display: siempre al técnico, sin consultar precios ──────────────
+    # Si pide SOLO refacción no-display (batería, tapa, puerto, bocina, etc.),
+    # transferir directamente al técnico. No usar Sheets ni fixoem.
+    if refaccion == "otro":
+        pieza = _nombre_pieza_tecnico(mensaje)
+        logger.info(f"[PRICING] Pieza no-display '{pieza}' → transfiriendo al técnico")
+        return (
+            f"Para la cotización de *{pieza}* necesito confirmarte el precio exacto con el técnico. "
+            f"{_MENSAJE_TECNICO_30MIN}"
+        )
+
+    # ── Solicitud COMBINADA: display + otra pieza ─────────────────────────────────
+    # Ej: "cuánto la pantalla y la batería del S22?"
+    # → cotizar el display y avisar que la otra pieza la cotiza el técnico.
+    hay_otra_pieza = bool(_PATRON_REFACCION_TECNICO.search(m)) or bool(_PATRON_CRISTAL_CAMARA.search(m))
+    if hay_otra_pieza and refaccion in ("display", "display_confirmar"):
+        pieza_extra = _nombre_pieza_tecnico(mensaje)
+        logger.info(f"[PRICING] Solicitud combinada: display + '{pieza_extra}' → cotizar display, técnico para el resto")
+        # Continúa el flujo normal de display, y al final agrega nota del técnico.
+        # Se señala con un flag en el resultado para que _limpiar_respuesta_pricing lo maneje.
+        # Aquí usamos un prefijo especial que se procesa abajo.
+        pass  # el flujo de display sigue; la nota se agrega al retornar.
+
+    # refaccion "display_confirmar" → tratar igual que "display" en la consulta de precio
+    # (la confirmación de voz la maneja el system prompt de Claude)
+    refaccion_api = "display"
+
     try:
-        logger.info(f"[PRICING] RESOLVER_PRICING: marca='{marca}', modelo='{modelo}', refaccion='{refaccion}'")
+        logger.info(f"[PRICING] RESOLVER_PRICING: marca='{marca}', modelo='{modelo}', refaccion='{refaccion_api}'")
         if marca and modelo:
-            # SIEMPRE usar cotizar_con_fallback para acceder a Google Sheets
-            logger.info(f"[PRICING] Llamando cotizar_con_fallback(marca='{marca}', modelo='{modelo}', refaccion='{refaccion}')")
-            r = await cotizar_con_fallback(marca, modelo, refaccion)
+            logger.info(f"[PRICING] Llamando cotizar_con_fallback(marca='{marca}', modelo='{modelo}', refaccion='{refaccion_api}')")
+            r = await cotizar_con_fallback(marca, modelo, refaccion_api)
             logger.info(f"[PRICING] Respuesta fallback: {r[:100] if r else 'None'}")
-            return _limpiar_respuesta_pricing(r)
+            resultado = _limpiar_respuesta_pricing(r)
+            if resultado and hay_otra_pieza:
+                pieza_extra = _nombre_pieza_tecnico(mensaje)
+                resultado += (
+                    f"\n\n🔧 Para la *{pieza_extra}*, un técnico especialista te dará "
+                    f"el precio exacto en menos de 30 minutos. "
+                    f"¿Prefieres llamada o seguimos por WhatsApp? 😊"
+                )
+            return resultado
         if modelo:
-            # FIX: Usar cotizar_con_fallback incluso sin marca (Hugo Shop → Google Sheets)
-            logger.info(f"[PRICING] Llamando cotizar_con_fallback(marca='', modelo='{modelo}', refaccion='{refaccion}')")
-            r = await cotizar_con_fallback("", modelo, refaccion)
+            logger.info(f"[PRICING] Llamando cotizar_con_fallback(marca='', modelo='{modelo}', refaccion='{refaccion_api}')")
+            r = await cotizar_con_fallback("", modelo, refaccion_api)
             logger.info(f"[PRICING] Respuesta fallback: {r[:100] if r else 'None'}")
-            return _limpiar_respuesta_pricing(r)
-        # Sin modelo: no hay dispositivo que cotizar → delegar a Claude
-        # (pasar el mensaje completo como modelo genera "¡Con mucho gusto te cotizo!"
-        # para mensajes conversacionales como "no pude avanzar con el presupuesto")
+            resultado = _limpiar_respuesta_pricing(r)
+            if resultado and hay_otra_pieza:
+                pieza_extra = _nombre_pieza_tecnico(mensaje)
+                resultado += (
+                    f"\n\n🔧 Para la *{pieza_extra}*, un técnico especialista te dará "
+                    f"el precio exacto en menos de 30 minutos. "
+                    f"¿Prefieres llamada o seguimos por WhatsApp? 😊"
+                )
+            return resultado
+        # Sin modelo: delegar a Claude
         logger.info(f"[PRICING] Sin modelo en el mensaje → delegando a Claude")
         return None
     except Exception as e:

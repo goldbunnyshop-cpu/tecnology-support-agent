@@ -539,6 +539,16 @@ async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
         )
 
     # 4. Ninguna lista interna tiene el display → fixoem + Sheet genérico
+    # EXCEPCIÓN: iPhone/Apple — fixoem tiene precios de catálogo no confiables para Apple
+    # (muy por debajo del precio real de mercado). Si Hugo e imobile no lo tienen,
+    # es un modelo que aún no manejamos → devolver "no disponible" sin inventar precio.
+    if (marca or "").lower() in _MARCAS_IPHONE:
+        logger.info(
+            f"[PRICING] iPhone '{modelo}' no en Hugo/imobile → "
+            f"saltando fixoem (precios Apple no confiables en fixoem)"
+        )
+        return _mensaje_no_disponible(marca, modelo)
+
     logger.info(f"[PRICING] Hugo/Sheets sin display '{marca} {modelo}' → fixoem/Sheet genérico")
     externa = await cotizar_fuentes_externas(marca, modelo, "display")
     if externa:

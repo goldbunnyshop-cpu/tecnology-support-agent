@@ -663,14 +663,12 @@ def _mensaje_no_disponible(marca: str, modelo: str) -> str:
         )
 
     # Si tenemos marca y modelo pero no existe en catálogo
-    # → No rechazar: invitar al cliente a dejar contacto para que el técnico lo busque
+    # → El técnico busca disponibilidad y da precio exacto en max 30 min
     return (
-        f"❌ Aún no tenemos display para *{marca_limpia.upper()} {modelo_limpio}* en inventario.\n\n"
-        f"Pero nuestro técnico puede conseguirlo especialmente para ti. 🔍\n\n"
-        f"Solo déjame:\n"
-        f"📛 *Tu nombre*\n"
-        f"📞 *¿Prefieres WhatsApp o llamada?*\n\n"
-        f"Te confirmamos precio y disponibilidad en menos de 24 horas. ¿Te parece?"
+        f"Para el display del *{marca_limpia.upper()} {modelo_limpio}* necesito confirmarte "
+        f"el precio exacto con el técnico.\n\n"
+        f"En un lapso no mayor a 30 minutos un técnico especialista te atenderá personalmente 😊\n"
+        f"¿Prefieres que te contactemos por llamada o seguimos por WhatsApp?"
     )
 
 
