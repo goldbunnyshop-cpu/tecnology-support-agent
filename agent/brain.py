@@ -282,15 +282,57 @@ def _historial_en_contexto_precio(historial: list[dict]) -> bool:
     return False
 
 
+# Patrón para extraer modelo del tag de visión almacenado en historial de asistente.
+# Ej: "[imagen: celular Xiaomi Redmi 13 - pantalla rota]" → grupo 1 = "Redmi 13"
+_PATRON_VISION_HISTORIAL = re.compile(
+    r"\[imagen:\s*\w+\s+\S+\s+([^\-\]]+?)\s*(?:-|\])",
+    re.I,
+)
+
+
+def _extraer_modelo_de_tag_vision(contenido: str) -> str | None:
+    """Extrae el modelo del texto '[imagen: celular MARCA MODELO - daño]' en mensajes de asistente."""
+    m = _PATRON_VISION_HISTORIAL.search(contenido or "")
+    if not m:
+        return None
+    candidato = m.group(1).strip()
+    # Filtrar palabras genéricas que no son modelos
+    _EXCLUIR = {"serie", "gama", "media", "alta", "baja", "otro", "otra", "no", "determinado"}
+    if candidato.lower() in _EXCLUIR:
+        return None
+    # Validar: debe contener al menos un dígito para ser un modelo específico
+    if re.search(r"\d", candidato):
+        return candidato
+    return None
+
+
 def _buscar_ultimo_modelo_historial(historial: list[dict]) -> str | None:
-    """Busca el ÚLTIMO modelo mencionado en el historial (últimos 20 mensajes = contexto de sesión)."""
+    """Busca el ÚLTIMO modelo mencionado en el historial (últimos 20 mensajes).
+
+    Busca en:
+    1. Mensajes del USER (el cliente dice su modelo)
+    2. Mensajes del ASSISTANT que contienen tags [imagen: ...] con el modelo detectado por visión
+    """
     if not historial:
         return None
-    # Buscar en los últimos 20 mensajes para abarcar toda una sesión conversacional
     for msg in reversed(historial[-20:]):
-        if msg.get("role") != "user":
+        contenido = msg.get("content") or ""
+        rol = msg.get("role", "")
+
+        # En mensajes de asistente: buscar tag de visión
+        if rol == "assistant":
+            modelo_vision = _extraer_modelo_de_tag_vision(contenido)
+            if modelo_vision:
+                # Extraer solo la parte numérica+variante del modelo (ej "Redmi 13" → "13")
+                m = _PATRON_MODELO_EN_TEXTO.search(modelo_vision)
+                if m:
+                    return m.group(1).strip()
             continue
-        c = _normalizar_consulta_pricing(msg.get("content") or "")
+
+        # En mensajes de usuario: patrón normal
+        if rol != "user":
+            continue
+        c = _normalizar_consulta_pricing(contenido)
         m = _PATRON_MODELO_EN_TEXTO.search(c)
         if m:
             return m.group(1).strip()
@@ -306,20 +348,37 @@ def _es_respuesta_marca(mensaje: str) -> str | None:
 
 
 def _buscar_ultima_marca_historial(historial: list[dict]) -> str | None:
-    """Busca la ÚLTIMA marca mencionada en el historial (últimos 20 mensajes = contexto de sesión).
+    """Busca la ÚLTIMA marca mencionada en el historial (últimos 20 mensajes).
 
-    Detecta la marca aunque venga dentro de una frase ("pantalla de un iphone 14"),
-    no solo cuando el cliente respondió únicamente la marca. Así el contexto de marca
-    persiste durante toda la conversación.
+    Busca en:
+    1. Mensajes del ASSISTANT con tag [imagen: celular MARCA ...] (visión detectó la marca)
+    2. Mensajes del USER (cliente escribe la marca)
     """
     if not historial:
         return None
-    # Buscar en los últimos 20 mensajes
     for msg in reversed(historial[-20:]):
-        if msg.get("role") != "user":
-            continue
         contenido = msg.get("content") or ""
-        # Primero marca-sola; si no, extraer marca de la frase completa.
+        rol = msg.get("role", "")
+
+        # En mensajes de asistente: buscar tag de visión — la marca está después de "celular/consola/etc"
+        if rol == "assistant" and "[imagen:" in contenido:
+            # Ej: "[imagen: celular Xiaomi Redmi 13 - pantalla rota]"
+            # Extraer la palabra inmediatamente tras el tipo de dispositivo
+            m = re.search(
+                r"\[imagen:\s*(?:celular|consola|laptop|tablet|otro)\s+(\S+)",
+                contenido, re.I,
+            )
+            if m:
+                candidato = m.group(1).strip().lower()
+                # Verificar si es una marca conocida
+                marca_norm = ALIAS_MARCAS.get(candidato)
+                if marca_norm:
+                    return marca_norm
+            continue
+
+        # En mensajes de usuario
+        if rol != "user":
+            continue
         marca = _es_respuesta_marca(contenido) or _extraer_marca_modelo(contenido)[0]
         if marca:
             return marca
@@ -503,6 +562,51 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     if _es_contexto_laptop_pc(historial) and not marca_actual:
         logger.info("[PRICING-DEBUG] Contexto laptop/PC sin marca de celular → delegando a Claude")
         return None
+
+    # ── ANTI-LOOP DE VARIANTE ──────────────────────────────────────────────────────
+    # Problema: el agente preguntó "¿cuál variante tienes? (13C / 13 Pro...)" y el
+    # cliente respondió "es el Redmi 13". El motor vuelve a llamar cotizar_con_fallback
+    # con modelo="13", Hugo devuelve "variante" y el agente pregunta de nuevo.
+    #
+    # Solución: si el último mensaje del asistente fue una pregunta de variante para
+    # la misma marca, y el cliente acaba de responder con un modelo concreto →
+    # usar ese modelo tal cual (aunque Hugo no lo tenga exacto) y si no hay precio
+    # transferir al técnico sin preguntar de nuevo.
+    _ult_asistente_contenido = next(
+        (h["content"] for h in reversed(historial) if h["role"] == "assistant"), ""
+    ).lower()
+    _INDICADORES_PREGUNTA_VARIANTE = (
+        "manejamos varias versiones",
+        "necesito confirmar cuál tienes",
+        "cuál es tu modelo exacto",
+        "¿cuál es tu modelo",
+        "confirmar cuál versión",
+        "confirmar la versión",
+        "tienes el",
+        "¿es el",
+    )
+    _fue_pregunta_variante = any(t in _ult_asistente_contenido for t in _INDICADORES_PREGUNTA_VARIANTE)
+    if _fue_pregunta_variante and (marca_actual or modelo_actual):
+        _marca_resp = marca_actual or _buscar_ultima_marca_historial(historial)
+        _modelo_resp = modelo_actual
+        if _marca_resp and _modelo_resp:
+            logger.info(
+                f"[PRICING-DEBUG] Anti-loop variante: cliente confirmó '{_marca_resp} {_modelo_resp}' "
+                f"tras pregunta de variante → cotizando con modelo exacto declarado"
+            )
+            r = await cotizar_con_fallback(_marca_resp, _modelo_resp)
+            resultado = _limpiar_respuesta_pricing(r)
+            # Si la respuesta es OTRA vez una pregunta de variante, ya no insistir → técnico
+            if resultado and any(t in resultado.lower() for t in _INDICADORES_PREGUNTA_VARIANTE):
+                logger.info(
+                    f"[PRICING-DEBUG] Anti-loop variante: aún no hay precio exacto → técnico"
+                )
+                return (
+                    f"Para el *{_marca_resp.upper()} {_modelo_resp}* necesito "
+                    f"confirmarte el precio exacto con el técnico.\n\n"
+                    f"{_MENSAJE_TECNICO_30MIN}"
+                )
+            return resultado
 
     # CRÍTICO: Si menciona display/pantalla/cambio pantalla EXPLÍCITAMENTE,
     # eso tiene prioridad sobre mencionar casualmente "PS5" o "consola".
