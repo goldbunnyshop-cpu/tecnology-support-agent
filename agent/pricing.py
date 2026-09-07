@@ -14,6 +14,7 @@ import os
 import re
 import csv
 import logging
+import unicodedata
 from io import StringIO
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -193,6 +194,14 @@ def cargar_csv_hugo() -> list[dict]:
     except Exception as e:
         logger.error(f"[PRICING] Error cargando CSV: {e}", exc_info=True)
         return datos
+
+
+def _quitar_acentos(texto: str) -> str:
+    """Elimina acentos para comparación: fusión→fusion, á→a, etc."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
 
 
 def _extraer_precio_usd(precio_str: str) -> float | None:
@@ -553,9 +562,14 @@ def formatear_cotizacion_tiers(marca: str, modelo: str, categorias: dict[str, li
 
     if usar_piso:
         lineas.append(f"* {ETIQUETAS_CATEGORIA['GENERICO']}: ${PISO_GENERICO:,} MXN")
-        lineas.append(f"* {ETIQUETAS_CATEGORIA['ORIGINAL']}: ${PISO_ORIGINAL:,} MXN")
         hay_precios = True
-        original_mostrado = PISO_ORIGINAL
+        # Solo mostrar "Original" al precio piso si Hugo REALMENTE tiene productos ORIGINAL
+        # para este modelo. Si solo hay INCELL/genérico en el catálogo, no fabricar un
+        # precio "original" inexistente — eso causa que el cliente llegue al módulo
+        # con una expectativa de precio que no existe.
+        if precios_orig:
+            lineas.append(f"* {ETIQUETAS_CATEGORIA['ORIGINAL']}: ${PISO_ORIGINAL:,} MXN")
+            original_mostrado = PISO_ORIGINAL
     else:
         for categoria in ('GENERICO', 'ORIGINAL'):
             precios = categorias.get(categoria, [])
@@ -722,8 +736,17 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
     if var_q:
         # Cliente especifico una variante: buscar productos que la cubran exactamente
         # Normalizar typos antes de buscar (ej: "funcion" → "fusion")
-        var_q_lower = ALIAS_VARIANTES.get(var_q.lower(), var_q.lower())
-        exactos = [p for p, vs in matches if any((v or '').lower() == var_q_lower for v in vs)]
+        # También aplicar alias por palabra (ej: "60 fusión" → "60 fusion" reemplazando
+        # palabra a palabra, no solo el string completo que está en el dict de alias).
+        var_q_raw = var_q.lower()
+        # Primero alias exacto de todo el string
+        var_q_lower = ALIAS_VARIANTES.get(var_q_raw, var_q_raw)
+        # Luego quitar acentos (fusión→fusion, é→e, etc.)
+        var_q_norm = _quitar_acentos(var_q_lower)
+        exactos = [
+            p for p, vs in matches
+            if any(_quitar_acentos((v or '').lower()) == var_q_norm for v in vs)
+        ]
         if exactos:
             modelo_completo = _formatear_modelo(base_q, var_q)
             logger.info(f"[PRICING] Hugo match exacto: {marca} {modelo_completo} ({len(exactos)} productos)")
@@ -732,7 +755,7 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
         # (ej "50" prefija "50 fusion", "50 neo", "50 ultra") filtramos a esas.
         variantes_filtradas = sorted({
             v.lower() for _, vs in matches for v in vs
-            if v and v.lower().startswith(var_q_lower)
+            if v and _quitar_acentos(v.lower()).startswith(var_q_norm)
         })
         if variantes_filtradas:
             logger.info(f"[PRICING] Variante '{var_q}' parcial para {marca} {base_q}. Filtradas: {variantes_filtradas}")

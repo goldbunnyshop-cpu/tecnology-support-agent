@@ -123,6 +123,19 @@ _PATRON_MODELO_EN_TEXTO = re.compile(
     re.I,
 )
 
+# Captura modelos con prefijo de palabra específicos de celulares Motorola/Samsung/etc.
+# que NO son capturados por _PATRON_MODELO_EN_TEXTO (porque "edge" no tiene dígito pegado).
+# Ej: "edge 50 fusion", "note 20 ultra", "nova 12", "fold 5", "reno 12"
+# Deliberadamente limitado para evitar falsos positivos conversacionales.
+_PATRON_MODELO_PREFIJO_PALABRA = re.compile(
+    r"\b("
+    r"(?:edge|nova|mate|note|fold|flip|find|reno|nord|ace|book|tab|play|ultra|neo)"
+    r"\s+\d{1,4}"
+    r"(?:\s+(?:fusi[oó]n|neo|ultra|pro|max|fe|lite|mini|se|plus|5g)){0,3}"
+    r")\b",
+    re.I,
+)
+
 
 def _limpiar_respuesta_pricing(texto: str) -> str:
     """Quita encabezados internos y retorna texto listo para cliente."""
@@ -184,7 +197,11 @@ def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
                 # Solo aceptar el modelo si parece un modelo real (tiene dígito);
                 # de lo contrario marca conocida pero sin modelo → se pedirá el modelo.
                 return marca, _modelo_plausible(modelo)
-    # Sin marca explícita, intentar extraer modelo de la frase limpia
+    # Sin marca explícita: intentar modelo con prefijo de palabra primero
+    # (ej: "edge 50 fusión", "note 20 ultra") antes del patrón numérico básico.
+    mp = _PATRON_MODELO_PREFIJO_PALABRA.search(txt_limpio)
+    if mp:
+        return None, mp.group(1).strip()
     m = _PATRON_MODELO_EN_TEXTO.search(txt_limpio)
     if m:
         return None, m.group(1).strip()
@@ -332,7 +349,22 @@ def _buscar_ultimo_modelo_historial(historial: list[dict]) -> str | None:
         # En mensajes de usuario: patrón normal
         if rol != "user":
             continue
+
+        # Prioridad 1: extracción con marca (captura "edge 50 fusión" cuando mensaje
+        # incluye "Motorola edge 50 fusión") — devuelve modelo completo con prefijo.
+        _, modelo_full = _extraer_marca_modelo(contenido)
+        if modelo_full and _modelo_plausible(modelo_full) and re.search(r'[a-zA-Z]', modelo_full):
+            # Modelo tiene letras además de dígitos → es un modelo con prefijo completo
+            return modelo_full
+
+        # Prioridad 2: patrón de modelos con prefijo de palabra sin marca explícita
+        # (ej: "Edge 50 fusión", "note 20 ultra", "fold 5")
         c = _normalizar_consulta_pricing(contenido)
+        m2 = _PATRON_MODELO_PREFIJO_PALABRA.search(c)
+        if m2:
+            return m2.group(1).strip()
+
+        # Prioridad 3: modelo numérico clásico (A54, 14, S21)
         m = _PATRON_MODELO_EN_TEXTO.search(c)
         if m:
             return m.group(1).strip()
