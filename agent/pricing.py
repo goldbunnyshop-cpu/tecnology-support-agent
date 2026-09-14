@@ -394,6 +394,11 @@ def normalizar_modelo_query(modelo_str: str, marca: str) -> tuple[str | None, st
     if not m:
         return None, None
 
+    # Colapsar "10 +" → "10+" antes de tokenizar (cliente escribe espacio antes de +)
+    m = re.sub(r'(\d)\s+\+', r'\1+', m)
+    # Colapsar "10 plus" → "10plus" también para variante
+    m = re.sub(r'(\d)\s+plus\b', r'\1plus', m)
+
     tokens = m.split()
     if not tokens:
         return None, None

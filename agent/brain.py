@@ -574,6 +574,32 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
             r = await cotizar_con_fallback(_marca_hist or "", _modelo_hist)
             return _limpiar_respuesta_pricing(r)
 
+    # ── GUARD PRECIO-COMO-MODELO ─────────────────────────────────────────────────
+    # Problema: agente mostró cotización con precios ($900, $1800, etc.) y el
+    # cliente respondió solo con un número (ej: "900"). Sin esta guarda, el motor
+    # interpreta "900" como modelo → cotiza "SAMSUNG 900" (fallo real de producción).
+    #
+    # Solución: si el mensaje del cliente es SOLO dígitos (o dígitos + pesos) Y el
+    # último mensaje del asistente contiene un precio igual → no es modelo, es
+    # reacción al precio. Dejar que Claude maneje la confirmación.
+    _m_limpio_num = re.sub(r'[$,\s]', '', m.strip())
+    if re.fullmatch(r'\d{3,6}', _m_limpio_num):
+        _ult_asistente = next(
+            (h["content"] for h in reversed(historial) if h["role"] == "assistant"), ""
+        )
+        # Si el número aparece en la última respuesta del asistente → es un precio.
+        # Comparar también contra versión con coma de miles (900 → 900, 1800 → 1,800)
+        _precio_con_coma = re.sub(r'(\d)(\d{3})$', r'\1,\2', _m_limpio_num)
+        _ult_sin_formato = re.sub(r'[$,]', '', _ult_asistente)
+        if (re.search(rf'\b{_m_limpio_num}\b', _ult_asistente)
+                or re.search(rf'\b{re.escape(_precio_con_coma)}\b', _ult_asistente)
+                or re.search(rf'\b{_m_limpio_num}\b', _ult_sin_formato)):
+            logger.info(
+                f"[PRICING-DEBUG] Mensaje '{mensaje}' parece precio ya cotizado "
+                f"(aparece en última respuesta) → delegando a Claude para confirmar"
+            )
+            return None
+
     es_consulta_precio = any(re.search(p, m) for p in _PATRONES_PRECIO)
     es_display = bool(_PATRON_DISPLAY.search(m))
     es_no_display = bool(_PATRON_NO_DISPLAY.search(m))
