@@ -945,17 +945,30 @@ async def _procesar_lote_mensajes(mensajes):
                 log_estado_memoria(msg.telefono, perfil)
                 contexto_cliente = construir_contexto_cliente(perfil)
 
-                # ── Menú inicial de categoría (solo clientes sin historial) ──────────────
+                # ── Menú inicial de categoría (solo clientes genuinamente nuevos) ──────
                 # Flujo:
-                #   A) Sin historial → enviar menú y esperar selección (no pasar a Claude)
-                #   B) Historial = solo el menú enviado (el msg actual es la selección) →
-                #      guardar categoría, responder confirmación, no pasar a Claude
-                #   C) Historial tiene más mensajes → flujo normal (categoría ya establecida)
+                #   A) Sin historial → enviar menú y esperar selección
+                #   B) Último mensaje del asistente FUE el menú → procesar selección
+                #   C) Cualquier otra situación → flujo normal (no interrumpir conversación)
+                #
+                # IMPORTANTE: NO usar len(historial) <= 2 — eso captura clientes existentes
+                # con pocas interacciones y los mete en el flujo del menú incorrectamente.
+                # La señal correcta es el CONTENIDO del último mensaje del asistente.
                 _historial_previo = await obtener_historial(msg.telefono, limite=3)
                 _categoria_ya_guardada = bool(perfil and getattr(perfil, "categoria_dispositivo", None))
 
+                # ¿El último mensaje del asistente fue nuestro menú?
+                _ult_asist_menu = next(
+                    (h["content"] for h in reversed(_historial_previo) if h["role"] == "assistant"), ""
+                )
+                _menu_fue_enviado = (
+                    "1️⃣  Celular" in _ult_asist_menu
+                    or "Bienvenido/a a *Tecnology Support*" in _ult_asist_menu
+                    or "No reconocí tu selección" in _ult_asist_menu
+                )
+
                 if not _historial_previo and not _categoria_ya_guardada:
-                    # Primera vez que escribe — enviar menú
+                    # Caso A: cero mensajes previos → primer contacto real → menú
                     logger.info(f"[MENU] Cliente nuevo {msg.telefono} → enviando menú inicial")
                     await guardar_mensaje(msg.telefono, "user", msg.texto)
                     await proveedor.enviar_typing(msg.telefono)
@@ -963,8 +976,8 @@ async def _procesar_lote_mensajes(mensajes):
                     await guardar_mensaje(msg.telefono, "assistant", _MENU_INICIAL)
                     continue
 
-                elif not _categoria_ya_guardada and len(_historial_previo) <= 2:
-                    # El único mensaje previo es el menú que enviamos → este msg es la selección
+                elif not _categoria_ya_guardada and _menu_fue_enviado:
+                    # Caso B: el último mensaje del bot fue el menú → procesar selección
                     _sel = msg.texto.strip().lower().rstrip(".,:!? ")
                     _categoria = _MENU_OPCIONES.get(_sel)
                     if _categoria:
@@ -990,6 +1003,7 @@ async def _procesar_lote_mensajes(mensajes):
                         await proveedor.enviar_mensaje(msg.telefono, _re_menu)
                         await guardar_mensaje(msg.telefono, "assistant", _re_menu)
                         continue
+                # Caso C: cliente con historial existente → flujo normal, sin menú
 
                 # ── Detectar nombre si aún no está guardado ──
                 if not (perfil and perfil.nombre):
@@ -1038,6 +1052,7 @@ async def _procesar_lote_mensajes(mensajes):
                 # Solución: si no se inyectó disponibilidad, y el cliente está afirmando/dando
                 # hora simple, y el último mensaje del asistente habló de disponibilidad/horario
                 # → buscar la fecha en el historial del usuario y reinyectar.
+                # NOTA: usamos _historial_previo (ya cargado) en lugar de historial (aún no definido)
                 if not _disponibilidad_inyectada:
                     _msg_corto = msg.texto.strip().lower()
                     _ES_AFIRMACION = {
@@ -1048,8 +1063,9 @@ async def _procesar_lote_mensajes(mensajes):
                         r'^(?:a\s+las?\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?$',
                         _msg_corto
                     ))
+                    # CORRECCIÓN: usar _historial_previo (disponible aquí), no historial (definido después)
                     _ult_asist_texto = next(
-                        (h["content"] for h in reversed(historial) if h["role"] == "assistant"), ""
+                        (h["content"] for h in reversed(_historial_previo) if h["role"] == "assistant"), ""
                     ).lower()
                     _ult_habla_horario = any(w in _ult_asist_texto for w in (
                         "disponibilidad", "horario", "revisar", "qué horario", "que horario",
@@ -1057,7 +1073,7 @@ async def _procesar_lote_mensajes(mensajes):
                     ))
                     if (_msg_corto in _ES_AFIRMACION or _tiene_solo_hora) and _ult_habla_horario:
                         # Buscar la fecha en mensajes previos del usuario
-                        _hist_usuario = [h["content"] for h in historial if h["role"] == "user"]
+                        _hist_usuario = [h["content"] for h in _historial_previo if h["role"] == "user"]
                         for _hm in reversed(_hist_usuario):
                             _fechas_fb = parsear_fechas_en_texto(_hm)
                             if _fechas_fb:
