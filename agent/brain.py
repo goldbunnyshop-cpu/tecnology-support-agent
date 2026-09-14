@@ -557,6 +557,15 @@ async def _resolver_pricing_desde_texto(mensaje: str, marca_ctx: str | None = No
 async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[dict]) -> str | None:
     m = (mensaje or "").lower()
 
+    # ── Guardia: intervención manual del dueño → no contradecir con pricing ─────
+    # Si el último mensaje del asistente (dentro de los últimos 5) fue una
+    # intervención manual del dueño (marcado con [DUEÑO]), delegamos a Claude
+    # para que respete lo que el dueño le informó al cliente.
+    _ultimos = [h for h in historial[-5:] if h["role"] == "assistant"]
+    if _ultimos and _ultimos[-1]["content"].startswith("[DUEÑO]"):
+        logger.info("[PRICING-DEBUG] Intervención manual del dueño detectada → delegando a Claude")
+        return None
+
     # ── Selector de calidad: cliente elige entre opciones ya mostradas ──────────
     # Caso: agente mostró "Genérica $X / Original $Y" y cliente responde solo "Original"
     # Sin esta detección: _extraer_marca_modelo("Original") → (None,None) → Claude responde
@@ -894,7 +903,14 @@ async def generar_respuesta(
     if contexto_cliente:
         system_blocks.append({"type": "text", "text": contexto_cliente})
 
-    mensajes = [{"role": m["role"], "content": m["content"]} for m in historial]
+    # Construir mensajes para Claude; los mensajes manuales del dueño (marcados con
+    # [DUEÑO]) se limpian antes de enviarse para que Claude los lea naturalmente.
+    mensajes = []
+    for m_hist in historial:
+        contenido = m_hist["content"]
+        if m_hist["role"] == "assistant" and contenido.startswith("[DUEÑO] "):
+            contenido = contenido[len("[DUEÑO] "):]
+        mensajes.append({"role": m_hist["role"], "content": contenido})
     mensajes.append({"role": "user", "content": mensaje})
 
     # Retry logic: reintentar si error 529 (Overloaded) o timeout

@@ -772,6 +772,16 @@ async def _procesar_lote_mensajes(mensajes):
 
             # ── Mensaje propio: el número de negocio envió a un cliente → pausar ──
             if msg.es_propio and not msg.es_grupo:
+                # Guardar el mensaje manual del dueño como "assistant" en el historial
+                # para que Claude no contradiga lo que el dueño prometió/informó al cliente.
+                # El prefijo [DUEÑO] permite que el motor de pricing lo detecte y lo respete.
+                if msg.texto and msg.texto.strip() and not _es_numero_interno(msg.telefono):
+                    _texto_manual = f"[DUEÑO] {msg.texto.strip()}"
+                    await guardar_mensaje(msg.telefono, "assistant", _texto_manual)
+                    logger.info(
+                        f"[MANUAL] Intervención del dueño guardada en historial "
+                        f"({msg.telefono}): {msg.texto[:80]}"
+                    )
                 if PAUSA_ACTIVA and not _es_numero_interno(msg.telefono):
                     await pausar_conversacion(msg.telefono, horas=2)
                 continue
@@ -1020,6 +1030,24 @@ async def _procesar_lote_mensajes(mensajes):
                 if contexto_cliente:
                     partes_ctx.append(contexto_cliente)
                 partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
+
+                # ── Detectar intervención manual reciente del dueño ────────────────────
+                # Si el dueño envió un mensaje manual (guardado con prefijo [DUEÑO]),
+                # inyectar advertencia para que Claude no contradiga lo informado.
+                _msg_dueno = next(
+                    (h["content"] for h in reversed(_historial_previo)
+                     if h["role"] == "assistant" and h["content"].startswith("[DUEÑO]")),
+                    None
+                )
+                if _msg_dueno:
+                    _texto_dueno = _msg_dueno[len("[DUEÑO] "):].strip()
+                    partes_ctx.append(
+                        f"⚠️ INTERVENCIÓN MANUAL: El dueño del negocio intervino directamente "
+                        f"y le dijo al cliente: \"{_texto_dueno}\". "
+                        f"Respeta y confirma esta información — NO la contradigas ni "
+                        f"la reemplaces con datos del sistema de precios."
+                    )
+                    logger.info(f"[MANUAL] Advertencia de intervención inyectada en contexto")
 
                 # ── Inyectar categoría en contexto si ya está guardada ──────────────────
                 if _categoria_ya_guardada:
