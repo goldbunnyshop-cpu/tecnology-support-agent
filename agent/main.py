@@ -930,6 +930,7 @@ async def _procesar_lote_mensajes(mensajes):
                 partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
 
                 # ── Disponibilidad real si menciona fecha con intención de visita ──
+                _disponibilidad_inyectada = False
                 if detectar_intencion_agendar(msg.texto):
                     fechas_cita = parsear_fechas_en_texto(msg.texto)
                     if fechas_cita:
@@ -939,6 +940,45 @@ async def _procesar_lote_mensajes(mensajes):
                             dias_slots.append((fc, slots))
                         partes_ctx.append(formatear_slots_multiples_para_claude(dias_slots))
                         logger.info(f"[CALENDAR] Disponibilidad inyectada para {[str(f) for f in fechas_cita]}")
+                        _disponibilidad_inyectada = True
+
+                # ── Fallback de disponibilidad: afirmación corta tras pregunta de horario ──
+                # Problema: cliente dice "Si" / "Ok" / "Hoy" tras "Déjame revisar disponibilidad…"
+                # detectar_intencion_agendar("Si") → False → no se inyectan slots
+                # → Claude escribe "══ DISPONIBILIDAD REAL ══ no ha sido inyectada" al cliente.
+                # Solución: si no se inyectó disponibilidad, y el cliente está afirmando/dando
+                # hora simple, y el último mensaje del asistente habló de disponibilidad/horario
+                # → buscar la fecha en el historial del usuario y reinyectar.
+                if not _disponibilidad_inyectada:
+                    _msg_corto = msg.texto.strip().lower()
+                    _ES_AFIRMACION = {
+                        "si", "sí", "ok", "dale", "claro", "perfecto", "andale", "ándale",
+                        "va", "de acuerdo", "bueno", "listo", "ahí voy", "ahí voy!",
+                    }
+                    _tiene_solo_hora = bool(re.match(
+                        r'^(?:a\s+las?\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?$',
+                        _msg_corto
+                    ))
+                    _ult_asist_texto = next(
+                        (h["content"] for h in reversed(historial) if h["role"] == "assistant"), ""
+                    ).lower()
+                    _ult_habla_horario = any(w in _ult_asist_texto for w in (
+                        "disponibilidad", "horario", "revisar", "qué horario", "que horario",
+                        "a qué hora", "a que hora", "qué día", "que dia",
+                    ))
+                    if (_msg_corto in _ES_AFIRMACION or _tiene_solo_hora) and _ult_habla_horario:
+                        # Buscar la fecha en mensajes previos del usuario
+                        _hist_usuario = [h["content"] for h in historial if h["role"] == "user"]
+                        for _hm in reversed(_hist_usuario):
+                            _fechas_fb = parsear_fechas_en_texto(_hm)
+                            if _fechas_fb:
+                                _dias_fb = []
+                                for _fc in _fechas_fb:
+                                    _slots_fb = await obtener_slots_disponibles(_fc)
+                                    _dias_fb.append((_fc, _slots_fb))
+                                partes_ctx.append(formatear_slots_multiples_para_claude(_dias_fb))
+                                logger.info(f"[CALENDAR] Disponibilidad fallback inyectada (afirmación tras pregunta de horario) para {[str(f) for f in _fechas_fb]}")
+                                break
 
                 contexto_cliente = "\n\n".join(partes_ctx)
 
@@ -958,6 +998,22 @@ async def _procesar_lote_mensajes(mensajes):
                 respuesta = await generar_respuesta(
                     msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
                 )
+
+                # ── Filtro anti-leak: eliminar marcadores internos del sistema ──
+                # Si Claude reproduce "══ DISPONIBILIDAD REAL ══ ..." en la respuesta
+                # (ocurre cuando los slots no se inyectaron pero el prompt menciona el tag),
+                # los eliminamos antes de enviar al cliente.
+                _RE_LEAK_INTERNO = re.compile(
+                    r'══\s*DISPONIBILIDAD REAL.*?(?=\n\n|\Z)',
+                    re.DOTALL | re.IGNORECASE,
+                )
+                if _RE_LEAK_INTERNO.search(respuesta):
+                    logger.warning(
+                        f"[LEAK] Marcador interno detectado en respuesta → eliminado antes de enviar a {msg.telefono}"
+                    )
+                    respuesta = _RE_LEAK_INTERNO.sub('', respuesta).strip()
+                    if not respuesta:
+                        respuesta = "Dame un momento, estoy verificando la disponibilidad para ese día 😊"
 
                 # ── Ejecutar cita si Claude incluyó el tag [[AGENDAR:...]] ──
                 tag = parsear_tag_agendar(respuesta)
