@@ -26,6 +26,7 @@ from agent.memory import (
     pausar_conversacion, esta_pausada,
     mensaje_ya_procesado, marcar_mensaje_procesado,
     confirmacion_cita_ya_enviada, marcar_confirmacion_cita_enviada,
+    guardar_categoria_dispositivo,
     Mensaje, async_session,
 )
 from agent.profile import (
@@ -103,6 +104,37 @@ logging.getLogger("googleapiclient.discovery_cache").setLevel(logging.ERROR)
 ZONA_CDMX = ZoneInfo("America/Mexico_City")
 proveedor = obtener_proveedor()
 PORT = int(os.getenv("PORT", 8000))
+
+# ── Menú inicial de categoría de dispositivo ────────────────────────────────────
+# Se envía solo a clientes SIN historial (primera interacción).
+# El cliente responde 1-4 y el agente guarda la categoría en su perfil.
+_MENU_INICIAL = (
+    "👋 Bienvenido/a a *Tecnology Support*\n"
+    "Soy tu asistente virtual. Estoy aquí para ayudarte con cotizaciones, citas y dudas 😊\n\n"
+    "¿Con qué tipo de dispositivo necesitas ayuda?\n\n"
+    "1️⃣  Celular / Smartphone\n"
+    "2️⃣  Consola de videojuegos\n"
+    "3️⃣  Laptop / PC\n"
+    "4️⃣  Tableta\n\n"
+    "Responde con el número de tu opción 👆"
+)
+
+# Mapeo de selección → categoría interna
+_MENU_OPCIONES: dict[str, str] = {
+    "1": "celular", "celular": "celular", "celulares": "celular", "smartphone": "celular",
+    "2": "consola", "consola": "consola", "consolas": "consola", "videojuegos": "consola",
+    "ps4": "consola", "ps5": "consola", "xbox": "consola", "nintendo": "consola", "switch": "consola",
+    "3": "laptop", "laptop": "laptop", "laptops": "laptop", "pc": "laptop", "computadora": "laptop",
+    "4": "tableta", "tableta": "tableta", "tablet": "tableta", "tabletas": "tableta", "ipad": "tableta",
+}
+
+# Confirmación al seleccionar categoría
+_MENU_CONFIRMACION: dict[str, str] = {
+    "celular":  "¡Perfecto! Cuéntame, ¿qué modelo de celular tienes y qué le está pasando? 📱",
+    "consola":  "¡Perfecto! ¿Qué consola es y cuál es el problema o servicio que necesitas? 🎮",
+    "laptop":   "¡Perfecto! ¿Cuál es la marca/modelo de tu laptop y qué le está pasando? 💻",
+    "tableta":  "¡Perfecto! ¿Cuál es el modelo de tu tableta y qué servicio necesitas? 📲",
+}
 
 # Números internos — la pausa NO debe activarse si el destinatario es uno de estos
 _NUMERO_NEGOCIO   = os.getenv("NUMERO_NEGOCIO",   "5659866275")
@@ -913,6 +945,52 @@ async def _procesar_lote_mensajes(mensajes):
                 log_estado_memoria(msg.telefono, perfil)
                 contexto_cliente = construir_contexto_cliente(perfil)
 
+                # ── Menú inicial de categoría (solo clientes sin historial) ──────────────
+                # Flujo:
+                #   A) Sin historial → enviar menú y esperar selección (no pasar a Claude)
+                #   B) Historial = solo el menú enviado (el msg actual es la selección) →
+                #      guardar categoría, responder confirmación, no pasar a Claude
+                #   C) Historial tiene más mensajes → flujo normal (categoría ya establecida)
+                _historial_previo = await obtener_historial(msg.telefono, limite=3)
+                _categoria_ya_guardada = bool(perfil and getattr(perfil, "categoria_dispositivo", None))
+
+                if not _historial_previo and not _categoria_ya_guardada:
+                    # Primera vez que escribe — enviar menú
+                    logger.info(f"[MENU] Cliente nuevo {msg.telefono} → enviando menú inicial")
+                    await guardar_mensaje(msg.telefono, "user", msg.texto)
+                    await proveedor.enviar_typing(msg.telefono)
+                    await proveedor.enviar_mensaje(msg.telefono, _MENU_INICIAL)
+                    await guardar_mensaje(msg.telefono, "assistant", _MENU_INICIAL)
+                    continue
+
+                elif not _categoria_ya_guardada and len(_historial_previo) <= 2:
+                    # El único mensaje previo es el menú que enviamos → este msg es la selección
+                    _sel = msg.texto.strip().lower().rstrip(".,:!? ")
+                    _categoria = _MENU_OPCIONES.get(_sel)
+                    if _categoria:
+                        await guardar_categoria_dispositivo(msg.telefono, _categoria)
+                        await guardar_mensaje(msg.telefono, "user", msg.texto)
+                        _confirmacion = _MENU_CONFIRMACION[_categoria]
+                        await proveedor.enviar_typing(msg.telefono)
+                        await proveedor.enviar_mensaje(msg.telefono, _confirmacion)
+                        await guardar_mensaje(msg.telefono, "assistant", _confirmacion)
+                        logger.info(f"[MENU] {msg.telefono} seleccionó: {_categoria}")
+                        continue
+                    else:
+                        # No reconoció la opción → reenviar menú
+                        logger.info(f"[MENU] Selección no reconocida '{msg.texto}' — reenviando menú")
+                        await guardar_mensaje(msg.telefono, "user", msg.texto)
+                        _re_menu = (
+                            "No reconocí tu selección 😅 Por favor elige una opción:\n\n"
+                            "1️⃣  Celular / Smartphone\n"
+                            "2️⃣  Consola de videojuegos\n"
+                            "3️⃣  Laptop / PC\n"
+                            "4️⃣  Tableta"
+                        )
+                        await proveedor.enviar_mensaje(msg.telefono, _re_menu)
+                        await guardar_mensaje(msg.telefono, "assistant", _re_menu)
+                        continue
+
                 # ── Detectar nombre si aún no está guardado ──
                 if not (perfil and perfil.nombre):
                     nombre_detectado = extraer_nombre_de_mensaje(msg.texto)
@@ -928,6 +1006,17 @@ async def _procesar_lote_mensajes(mensajes):
                 if contexto_cliente:
                     partes_ctx.append(contexto_cliente)
                 partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
+
+                # ── Inyectar categoría en contexto si ya está guardada ──────────────────
+                if _categoria_ya_guardada:
+                    _cat = perfil.categoria_dispositivo
+                    _cat_labels = {
+                        "celular": "celular/smartphone",
+                        "consola": "consola de videojuegos",
+                        "laptop":  "laptop/PC",
+                        "tableta": "tableta",
+                    }
+                    partes_ctx.append(f"Categoría de dispositivo del cliente: {_cat_labels.get(_cat, _cat)}")
 
                 # ── Disponibilidad real si menciona fecha con intención de visita ──
                 _disponibilidad_inyectada = False

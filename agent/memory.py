@@ -140,6 +140,7 @@ class ClientePerfil(Base):
     notas: Mapped[str] = mapped_column(Text, default="")
     pausada_hasta: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    categoria_dispositivo: Mapped[str] = mapped_column(String(30), nullable=True)  # celular|consola|laptop|tableta
 
 
 class Pausa(Base):
@@ -249,6 +250,11 @@ async def actualizar_visita_cliente(telefono: str, asesor: str):
     await _upsert_perfil(telefono, ultima_visita=datetime.utcnow(), asesor_ultimo=asesor)
 
 
+async def guardar_categoria_dispositivo(telefono: str, categoria: str):
+    """Guarda la categoría de dispositivo elegida en el menú inicial."""
+    await _upsert_perfil(telefono, categoria_dispositivo=categoria)
+
+
 async def _agregar_a_lista(telefono: str, campo: str, valor: str, max_items: int = 10):
     """Agrega un valor a una lista JSON en el perfil (sin duplicados, máximo max_items)."""
     async with async_session() as session:
@@ -289,10 +295,11 @@ async def _migrar_clientes_perfil():
         ("dispositivos_json","TEXT DEFAULT '[]'"),
         ("servicios_json",   "TEXT DEFAULT '[]'"),
         ("ultima_visita",    tipo_fecha),
-        ("asesor_ultimo",    "VARCHAR(50) DEFAULT ''"),
-        ("notas",            "TEXT DEFAULT ''"),
-        ("pausada_hasta",    tipo_fecha),
-        ("created_at",       tipo_fecha),
+        ("asesor_ultimo",          "VARCHAR(50) DEFAULT ''"),
+        ("notas",                  "TEXT DEFAULT ''"),
+        ("pausada_hasta",          tipo_fecha),
+        ("created_at",             tipo_fecha),
+        ("categoria_dispositivo",  "VARCHAR(30)"),
     ]:
         # Una transacción POR columna: en Postgres un ALTER que falla (columna ya
         # existe) aborta toda la transacción; aislándolos, los demás siguen.
