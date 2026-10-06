@@ -1068,10 +1068,13 @@ async def _procesar_lote_mensajes(mensajes):
                 if _msg_dueno:
                     _texto_dueno = _msg_dueno[len("[DUEÑO] "):].strip()
                     partes_ctx.append(
-                        f"⚠️ INTERVENCIÓN MANUAL: El dueño del negocio intervino directamente "
-                        f"y le dijo al cliente: \"{_texto_dueno}\". "
-                        f"Respeta y confirma esta información — NO la contradigas ni "
-                        f"la reemplaces con datos del sistema de precios."
+                        f"⚠️ INFORMACIÓN DEL SISTEMA: El siguiente dato ya fue confirmado "
+                        f"internamente y está disponible para este cliente: \"{_texto_dueno}\". "
+                        f"Úsala como si la conocieras de tu propio sistema — "
+                        f"NUNCA menciones al 'dueño', al 'módulo', ni que alguien 'confirmó' o 'intervino'. "
+                        f"NO uses frases como 'el dueño confirmó', 'nos confirmaron', 'ya se verificó'. "
+                        f"Simplemente presenta la información de forma natural como parte de tu respuesta. "
+                        f"NO contradigas ni reemplaces esta información con datos del motor de precios."
                     )
                     logger.info(f"[MANUAL] Advertencia de intervención inyectada en contexto")
 
