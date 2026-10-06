@@ -61,10 +61,13 @@ elif DATABASE_URL.startswith("postgresql://"):
 
 _USANDO_SQLITE = DATABASE_URL.startswith("sqlite")
 
-# Pool de conexiones: más amplio en PostgreSQL, mínimo en SQLite
+# Pool de conexiones: ampliado en PostgreSQL para soportar carga concurrente.
+# Railway Hobby PostgreSQL permite ~25 conexiones simultáneas.
+# Con ~8 queries por mensaje y picos de 3-4 clientes paralelos necesitamos margen.
+# pool_size=10: conexiones persistentes | max_overflow=20: ráfagas cortas | pool_pre_ping: detecta conexiones muertas
 _engine_kwargs: dict = {}
 if not _USANDO_SQLITE:
-    _engine_kwargs = {"pool_size": 5, "max_overflow": 10, "pool_pre_ping": True}
+    _engine_kwargs = {"pool_size": 10, "max_overflow": 20, "pool_pre_ping": True, "pool_recycle": 1800}
 
 engine = create_async_engine(DATABASE_URL, echo=False, **_engine_kwargs)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
@@ -764,3 +767,107 @@ async def listar_numeros_stopped() -> list[dict]:
             }
             for s in stopped_list
         ]
+
+
+# ════════════════════════════════════════════════════════════════════
+# MANTENIMIENTO PREVENTIVO DE BASE DE DATOS
+# Se llama semanalmente desde followup.py/_loop_mantenimiento_db()
+# ════════════════════════════════════════════════════════════════════
+
+async def limpiar_pausas_expiradas(dias: int = 7) -> int:
+    """
+    Elimina registros de pausas INACTIVAS con más de `dias` días de antigüedad.
+    Las pausas activas nunca se tocan.
+    Retorna el número de filas eliminadas.
+    """
+    from sqlalchemy import delete as _delete
+    corte = datetime.utcnow() - timedelta(days=dias)
+    async with async_session() as session:
+        result = await session.execute(
+            _delete(Pausa).where(
+                Pausa.activa == False,
+                Pausa.fecha_pausa < corte,
+            )
+        )
+        await session.commit()
+        eliminadas = result.rowcount
+    logger.info(f"[MAINT] limpiar_pausas_expiradas: {eliminadas} filas eliminadas (>{dias}d inactivas)")
+    return eliminadas
+
+
+async def limpiar_mensajes_antiguos(dias: int = 90) -> int:
+    """
+    Elimina mensajes de conversaciones con más de `dias` días de antigüedad.
+    Conserva siempre los últimos 20 mensajes de cada número (seguridad).
+    Retorna el número de filas eliminadas.
+    """
+    from sqlalchemy import delete as _delete, func, text as _text
+    corte = datetime.utcnow() - timedelta(days=dias)
+
+    if _USANDO_SQLITE:
+        # SQLite: eliminar directamente por timestamp
+        async with async_session() as session:
+            result = await session.execute(
+                _delete(Mensaje).where(Mensaje.timestamp < corte)
+            )
+            await session.commit()
+            eliminadas = result.rowcount
+    else:
+        # PostgreSQL: subquery para conservar los últimos 20 por número
+        async with async_session() as session:
+            result = await session.execute(
+                _delete(Mensaje).where(
+                    Mensaje.timestamp < corte,
+                    Mensaje.id.not_in(
+                        select(Mensaje.id)
+                        .where(Mensaje.telefono == Mensaje.telefono)
+                        .order_by(Mensaje.timestamp.desc())
+                        .limit(20)
+                        .correlate()
+                    )
+                )
+            )
+            await session.commit()
+            eliminadas = result.rowcount
+
+    logger.info(f"[MAINT] limpiar_mensajes_antiguos: {eliminadas} filas eliminadas (>{dias}d)")
+    return eliminadas
+
+
+async def limpiar_stopped_inactivos(dias: int = 180) -> int:
+    """
+    Elimina registros de stopped_numbers marcados como activo=False
+    con más de `dias` días de antigüedad (números reactivados).
+    Retorna el número de filas eliminadas.
+    """
+    from sqlalchemy import delete as _delete
+    corte = datetime.utcnow() - timedelta(days=dias)
+    async with async_session() as session:
+        result = await session.execute(
+            _delete(StoppedNumber).where(
+                StoppedNumber.activo == False,
+                StoppedNumber.detenido_en < corte,
+            )
+        )
+        await session.commit()
+        eliminadas = result.rowcount
+    logger.info(f"[MAINT] limpiar_stopped_inactivos: {eliminadas} filas eliminadas (>{dias}d reactivados)")
+    return eliminadas
+
+
+async def ejecutar_mantenimiento_db() -> dict:
+    """
+    Punto de entrada único para el mantenimiento semanal de la BD.
+    Llama a las tres limpiezas y retorna un resumen.
+    """
+    logger.info("[MAINT] ════ Inicio mantenimiento semanal de BD ════")
+    pausas = await limpiar_pausas_expiradas(dias=7)
+    mensajes = await limpiar_mensajes_antiguos(dias=90)
+    stopped = await limpiar_stopped_inactivos(dias=180)
+    resumen = {
+        "pausas_eliminadas": pausas,
+        "mensajes_eliminados": mensajes,
+        "stopped_inactivos_eliminados": stopped,
+    }
+    logger.info(f"[MAINT] ════ Mantenimiento completado: {resumen} ════")
+    return resumen

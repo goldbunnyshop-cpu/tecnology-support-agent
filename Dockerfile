@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir "asyncpg>=0.29.0" && \
     pip install --no-cache-dir -r requirements.txt
+# Chromium para generar PDF de notas de servicio (agent/pdf_generator.py)
+RUN python -m playwright install --with-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
 COPY . .
 EXPOSE 8000
 # Bind al puerto que Railway inyecta en $PORT (cae a 8000 en local).

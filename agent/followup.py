@@ -615,6 +615,32 @@ async def _loop_resumen_diario_citas():
         await asyncio.sleep(24 * 3600)
 
 
+async def _loop_mantenimiento_db():
+    """
+    Mantenimiento preventivo semanal de la base de datos.
+    Limpia pausas expiradas, mensajes antiguos y stopped inactivos.
+    Corre los lunes a las 03:00 CDMX para evitar horas pico.
+    """
+    # Primera ejecución: esperar hasta el próximo lunes 03:00 CDMX
+    from datetime import timezone
+    _CDMX = timezone(timedelta(hours=-6))
+    ahora = datetime.now(_CDMX)
+    dias_hasta_lunes = (7 - ahora.weekday()) % 7 or 7  # 0=lunes → esperar 7 días
+    proximo_lunes = ahora.replace(hour=3, minute=0, second=0, microsecond=0) + timedelta(days=dias_hasta_lunes)
+    espera_inicial = (proximo_lunes - ahora).total_seconds()
+    logger.info(f"[MAINT] Próximo mantenimiento DB: {proximo_lunes.strftime('%Y-%m-%d %H:%M')} CDMX ({espera_inicial/3600:.1f}h)")
+    await asyncio.sleep(espera_inicial)
+
+    while True:
+        try:
+            from agent.memory import ejecutar_mantenimiento_db
+            resumen = await ejecutar_mantenimiento_db()
+            logger.info(f"[MAINT] Semana limpia ✅ pausas={resumen['pausas_eliminadas']} msgs={resumen['mensajes_eliminados']} stopped={resumen['stopped_inactivos_eliminados']}")
+        except Exception as e:
+            logger.error(f"[MAINT] Error en mantenimiento DB: {e}", exc_info=True)
+        await asyncio.sleep(7 * 24 * 3600)  # siguiente ejecución en 7 días
+
+
 async def iniciar_scheduler():
     """
     Scheduler principal que corre en segundo plano:
@@ -626,8 +652,9 @@ async def iniciar_scheduler():
     - Alertas presupuesto 24h: cada hora
     - Alerta factura fin de mes: diaria
     - Reporte Excel: cada domingo a las 13:00 CDMX
+    - Mantenimiento BD: cada lunes a las 03:00 CDMX
     """
-    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, recordatorios/10min, citas-ulises/10min, resumen-citas/9am, factura/diario, reporte/domingo 13h")
+    logger.info("Scheduler activo: seguimientos/hora, retomas/10min, recordatorios/10min, citas-ulises/10min, resumen-citas/9am, factura/diario, reporte/domingo 13h, maint-db/lunes 3am")
 
     asyncio.create_task(iniciar_scheduler_reporte_semanal())
     asyncio.create_task(_loop_retomas())
@@ -635,6 +662,7 @@ async def iniciar_scheduler():
     asyncio.create_task(_loop_notificaciones_citas_ulises())
     asyncio.create_task(_loop_resumen_diario_citas())
     asyncio.create_task(_loop_alerta_factura())
+    asyncio.create_task(_loop_mantenimiento_db())
 
     while True:
         await asyncio.sleep(INTERVALO_SEGUIMIENTO)

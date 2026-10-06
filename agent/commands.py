@@ -49,6 +49,9 @@ TEXTO_MENU = (
     "*── CRM / Órdenes ──*\n"
     "*nota:* [folio_físico] [número] [equipo] [modelo] [falla] [total] [pago] [refaccion:costo]\n"
     "   _Ej: nota: 13054 5541576333 iPhone 13 pantalla 1200 tarjeta refaccion:500_\n"
+    "*nota (PDF):* [número] folio: [folio] fecha: [DD/MM/AA] marca: [x] modelo: [x] diagnostico: [x] costo: [x]\n"
+    "   _Ej: nota: 5542576331 folio: 13054 fecha: 21/09/26 marca: Samsung modelo: s24 ultra diagnostico: falla display costo: 3500_\n"
+    "   _Genera PDF y lo envía al cliente + copia aquí. Opcionales: cliente: tipo: imei: falla: anticipo: pago: refaccion:_\n"
     "*orden:* [número] [equipo] [total] [pago] [refacción?] — folio auto-asignado\n"
     "   _Ej: orden: 5541576331 PS5 2500 tarjeta 350_\n"
     "*estatus:* [folio] [recibido|proceso|listo|entregado]\n"
@@ -322,6 +325,126 @@ def parsear_nota(payload: str) -> dict | None:
         "forma_pago":   forma_pago,
         "refaccion":    refaccion,
     }
+
+
+# ── nota: con etiquetas → PDF de nota de servicio ───────────────────────────
+# Ej: nota: 5542576331 folio: 13054 fecha: 21/09/26 marca: Samsung modelo: s24 ultra
+#            diagnostico: falla display costo: 3500 [anticipo: 500] [pago: efectivo]
+#            [cliente: Juan Pérez] [tipo: Celular] [imei: ...] [falla: ...] [refaccion: 1200]
+_ETIQUETAS_NOTA = (
+    "folio", "fecha", "cliente", "tipo", "equipo", "marca", "modelo", "imei",
+    "falla", "diagnostico", "diagnóstico", "costo", "total", "anticipo",
+    "pago", "refaccion", "refacción", "domicilio",
+)
+_RE_ETIQUETA_NOTA = re.compile(
+    r"(?<![\w])(" + "|".join(_ETIQUETAS_NOTA) + r")\s*:", re.IGNORECASE
+)
+# Etiquetas que SOLO existen en el formato nuevo (refaccion: también existe en el viejo)
+_RE_NOTA_ETIQUETADA = re.compile(
+    r"(?<![\w])(folio|fecha|costo|diagnostico|diagnóstico|marca|modelo)\s*:", re.IGNORECASE
+)
+
+
+def es_nota_etiquetada(payload: str) -> bool:
+    return bool(_RE_NOTA_ETIQUETADA.search(payload or ""))
+
+
+def _num_mx(txt: str) -> float | None:
+    limpio = re.sub(r"[\s$,]", "", txt or "")
+    if not re.fullmatch(r"\d+(\.\d+)?", limpio):
+        return None
+    return float(limpio)
+
+
+def parsear_nota_etiquetada(payload: str) -> tuple[dict | None, list[str]]:
+    """
+    Retorna (datos, errores). Si errores no está vacío, datos es None.
+    Obligatorios: teléfono (primer token), folio, costo/total.
+    """
+    errores: list[str] = []
+    matches = list(_RE_ETIQUETA_NOTA.finditer(payload or ""))
+    if not matches:
+        return None, ["No se detectaron etiquetas"]
+
+    valores: dict[str, str] = {}
+    for i, m in enumerate(matches):
+        fin = matches[i + 1].start() if i + 1 < len(matches) else len(payload)
+        clave = m.group(1).lower().replace("ó", "o")
+        valores[clave] = payload[m.end():fin].strip()
+
+    phone = re.sub(r"\D", "", payload[: matches[0].start()])
+    if len(phone) < 10:
+        errores.append("teléfono (primer dato, 10 dígitos)")
+
+    folio = re.sub(r"[^\w-]", "", valores.get("folio", ""))
+    if not folio:
+        errores.append("folio: (folio físico de la nota)")
+
+    total = _num_mx(valores.get("costo") or valores.get("total", ""))
+    if total is None:
+        errores.append("costo: (monto numérico)")
+
+    anticipo = 0.0
+    if valores.get("anticipo"):
+        anticipo = _num_mx(valores["anticipo"])
+        if anticipo is None:
+            errores.append("anticipo: (debe ser numérico)")
+            anticipo = 0.0
+
+    if total is not None and anticipo > total:
+        errores.append("anticipo mayor que el costo")
+
+    fecha_txt = valores.get("fecha", "").strip()
+    if fecha_txt:
+        fecha = None
+        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%d-%m-%y", "%d-%m-%Y"):
+            try:
+                fecha = datetime.strptime(fecha_txt, fmt)
+                break
+            except ValueError:
+                continue
+        if not fecha:
+            errores.append(f"fecha: '{fecha_txt}' inválida (usa DD/MM/AA)")
+            fecha_fmt = ""
+        else:
+            fecha_fmt = fecha.strftime("%d/%m/%Y")
+    else:
+        from zoneinfo import ZoneInfo
+        fecha_fmt = datetime.now(ZoneInfo("America/Mexico_City")).strftime("%d/%m/%Y")
+
+    if errores:
+        return None, errores
+
+    forma_pago = valores.get("pago", "").lower()
+    if forma_pago == "trans":
+        forma_pago = "transferencia"
+    ref = _num_mx(valores.get("refaccion", "")) or 0.0
+
+    return {
+        "phone":       phone,
+        "folio":       folio,
+        "fecha":       fecha_fmt,
+        "cliente":     valores.get("cliente", ""),
+        "domicilio":   valores.get("domicilio", ""),
+        "equipo_tipo": valores.get("tipo") or valores.get("equipo", ""),
+        "marca":       valores.get("marca", ""),
+        "modelo":      valores.get("modelo", ""),
+        "imei":        valores.get("imei", ""),
+        "falla":       valores.get("falla", ""),
+        "diagnostico": valores.get("diagnostico", ""),
+        "total":       total,
+        "anticipo":    anticipo,
+        "forma_pago":  forma_pago,
+        "refaccion":   ref,
+    }, []
+
+
+def _fmt_dinero(n: float) -> str:
+    return f"{n:,.0f}" if float(n).is_integer() else f"{n:,.2f}"
+
+
+# Anti-duplicados: el webhook de Whapi puede reentregar el mismo mensaje
+_NOTAS_RECIENTES: dict[tuple, datetime] = {}
 
 
 def parsear_orden_crm(payload: str) -> dict | None:
@@ -785,6 +908,109 @@ async def procesar_comando_grupo(
     # ════════════════════════════════════════════════════════════════════════════
     # COMANDOS CRM (nota, orden, estatus, consultar)
     # ════════════════════════════════════════════════════════════════════════════
+
+    if cmd == "nota" and es_nota_etiquetada(payload):
+        datos, errores = parsear_nota_etiquetada(payload)
+        if errores:
+            await _responder(
+                "⚠️ Nota NO generada. Falta/error: " + "; ".join(errores) + "\n"
+                "Formato: nota: 5542576331 folio: 13054 fecha: 21/09/26 marca: Samsung "
+                "modelo: s24 ultra diagnostico: falla display costo: 3500\n"
+                "Opcionales: cliente: tipo: imei: falla: anticipo: pago: refaccion:"
+            )
+            return True
+
+        phone_fmt, advertencia = _formatear_numero_destino(datos["phone"])
+        if advertencia:
+            await _responder(advertencia)
+            return True
+
+        # Anti-duplicado (10 min)
+        ahora = datetime.now()
+        for k in [k for k, t in _NOTAS_RECIENTES.items() if ahora - t > timedelta(minutes=10)]:
+            _NOTAS_RECIENTES.pop(k, None)
+        clave = (datos["folio"], phone_fmt, datos["total"], datos["anticipo"])
+        if clave in _NOTAS_RECIENTES:
+            await _responder(f"ℹ️ La nota #{datos['folio']} ya se generó hace menos de 10 min. No la reenvié.")
+            return True
+        _NOTAS_RECIENTES[clave] = ahora
+
+        try:
+            from agent.pdf_generator import generar_pdf_async
+            historial = await obtener_historial_fn(phone_fmt)
+            cliente = datos["cliente"] or extraer_nombre_cliente(historial)
+            saldo = datos["total"] - datos["anticipo"]
+            pdf_bytes = await generar_pdf_async({
+                "folio":       datos["folio"],
+                "fecha":       datos["fecha"],
+                "cliente":     cliente,
+                "telefono":    _normalizar_numero(phone_fmt),
+                "domicilio":   datos["domicilio"],
+                "equipo_tipo": datos["equipo_tipo"],
+                "marca":       datos["marca"],
+                "modelo":      datos["modelo"],
+                "imei":        datos["imei"],
+                "falla":       datos["falla"],
+                "diagnostico": datos["diagnostico"],
+                "total":       _fmt_dinero(datos["total"]),
+                "anticipo":    _fmt_dinero(datos["anticipo"]),
+                "saldo":       _fmt_dinero(saldo),
+                "forma_pago":  datos["forma_pago"].capitalize(),
+            })
+        except Exception as e:
+            _NOTAS_RECIENTES.pop(clave, None)
+            logger.error(f"[NOTA-PDF] Error generando PDF: {e}", exc_info=True)
+            await _responder(f"❌ No pude generar el PDF de la nota #{datos['folio']}: {e}")
+            return True
+
+        if not hasattr(proveedor, "enviar_documento_bytes"):
+            _NOTAS_RECIENTES.pop(clave, None)
+            await _responder("❌ Este proveedor no soporta envío de documentos.")
+            return True
+
+        filename = f"Nota_{datos['folio']}_TecnologySupport.pdf"
+        caption = (
+            f"🧾 Nota de servicio #{datos['folio']} — Tecnology Support\n"
+            f"{datos['marca']} {datos['modelo']}".strip()
+            + f"\nTotal: ${_fmt_dinero(datos['total'])}"
+            + (f" | Anticipo: ${_fmt_dinero(datos['anticipo'])} | Saldo: ${_fmt_dinero(saldo)}" if datos["anticipo"] else "")
+        )
+
+        from agent.memory import numero_esta_stopped
+        if await numero_esta_stopped(phone_fmt):
+            estado_cliente = f"⛔ NO enviada al cliente: {phone_fmt} está en stop (on: {phone_fmt} para reactivar)"
+        else:
+            enviado = await proveedor.enviar_documento_bytes(phone_fmt, pdf_bytes, filename, caption)
+            if enviado:
+                await guardar_mensaje_fn(
+                    phone_fmt, "assistant",
+                    f"[Se envió nota de servicio #{datos['folio']} en PDF — total ${_fmt_dinero(datos['total'])}]",
+                )
+                estado_cliente = f"✅ Enviada al cliente {phone_fmt}"
+            else:
+                _NOTAS_RECIENTES.pop(clave, None)
+                estado_cliente = f"❌ Falló el envío al cliente {phone_fmt} (reintenta el comando)"
+
+        # Copia al grupo interno
+        await proveedor.enviar_documento_bytes(
+            chat_id_raw, pdf_bytes, filename, f"📎 Copia interna — nota #{datos['folio']}\n{estado_cliente}"
+        )
+
+        # CRM: solo si vino pago: (registrar_orden lo exige); no bloquea el PDF
+        if datos["forma_pago"] in _FORMAS_PAGO:
+            try:
+                from agent.crm import registrar_orden
+                await registrar_orden(
+                    telefono=phone_fmt, cliente=cliente or phone_fmt, equipo=datos["equipo_tipo"] or datos["marca"],
+                    modelo=datos["modelo"], falla=datos["diagnostico"] or datos["falla"],
+                    total=datos["total"], forma_pago=datos["forma_pago"], refaccion=datos["refaccion"],
+                )
+                await _responder(f"📊 Nota #{datos['folio']} registrada en CRM")
+            except Exception as e:
+                await _responder(f"⚠️ PDF ok, pero falló el registro en CRM: {e}")
+        else:
+            await _responder(f"ℹ️ Nota #{datos['folio']}: PDF generado. No se registró en CRM (falta pago: efectivo|tarjeta|transferencia).")
+        return True
 
     if cmd == "nota":
         parsed = parsear_nota(payload)

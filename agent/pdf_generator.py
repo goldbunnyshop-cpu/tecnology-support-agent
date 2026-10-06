@@ -2,6 +2,8 @@
 # Generado por AgentKit
 
 import os
+import html as _html
+import asyncio
 import logging
 
 logger = logging.getLogger("agentkit")
@@ -43,6 +45,7 @@ def generar_pdf(data: dict) -> bytes:
 
     defaults = {
         "folio": "00000",
+        "fecha": "",
         "cliente": "",
         "telefono": "",
         "domicilio": "",
@@ -69,10 +72,16 @@ def generar_pdf(data: dict) -> bytes:
     for k, v in payload.items():
         if k.startswith("checked_"):
             v = _render_checkbox(v)
+        else:
+            # Escapar HTML: el texto viene de WhatsApp (nadie debe romper la plantilla con < > &)
+            v = _html.escape(str(v), quote=True)
         html = html.replace("{{" + k + "}}", str(v))
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+        browser = pw.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],  # necesario en Docker/Railway (root)
+        )
         page = browser.new_page()
         page.set_content(html, wait_until="networkidle")
         pdf_bytes = page.pdf(
@@ -85,3 +94,8 @@ def generar_pdf(data: dict) -> bytes:
 
     logger.info(f"PDF generado — folio {payload['folio']} ({len(pdf_bytes)} bytes)")
     return pdf_bytes
+
+
+async def generar_pdf_async(data: dict) -> bytes:
+    """Versión no bloqueante para usar dentro de handlers async (FastAPI)."""
+    return await asyncio.to_thread(generar_pdf, data)
