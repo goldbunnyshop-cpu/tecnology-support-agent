@@ -990,6 +990,32 @@ async def _procesar_lote_mensajes(mensajes):
                     # Caso B: el último mensaje del bot fue el menú → procesar selección
                     _sel = msg.texto.strip().lower().rstrip(".,:!? ")
                     _categoria = _MENU_OPCIONES.get(_sel)
+
+                    # Si no hay match exacto, intentar detección inteligente por palabras clave
+                    # (el cliente respondió con el modelo en lugar del número: "De un Samsung S21 ultra")
+                    if not _categoria:
+                        _txt_libre = _sel
+                        _MARCAS_CELULAR = {
+                            "samsung", "iphone", "apple", "xiaomi", "motorola", "moto",
+                            "huawei", "lg", "sony", "nokia", "honor", "oppo", "realme",
+                            "oneplus", "google", "pixel", "zte", "tcl", "infinix", "tecno",
+                            "vivo", "redmi", "poco", "alcatel", "wiko", "benq", "blackberry",
+                        }
+                        _MARCAS_CONSOLA = {"ps4", "ps5", "xbox", "nintendo", "switch", "playstation", "wii", "gameboy"}
+                        _MARCAS_LAPTOP  = {"laptop", "lapto", "notebook", "computadora", "macbook",
+                                           "lenovo", "dell", "asus", "acer", "msi", "hp", "toshiba"}
+                        _MARCAS_TABLET  = {"tablet", "tableta", "ipad", "kindle"}
+                        if any(m in _txt_libre for m in _MARCAS_CELULAR):
+                            _categoria = "celular"
+                        elif any(m in _txt_libre for m in _MARCAS_CONSOLA):
+                            _categoria = "consola"
+                        elif any(m in _txt_libre for m in _MARCAS_LAPTOP):
+                            _categoria = "laptop"
+                        elif any(m in _txt_libre for m in _MARCAS_TABLET):
+                            _categoria = "tableta"
+                        if _categoria:
+                            logger.info(f"[MENU] Categoría detectada por texto libre '{msg.texto[:50]}' → {_categoria}")
+
                     if _categoria:
                         await guardar_categoria_dispositivo(msg.telefono, _categoria)
                         await guardar_mensaje(msg.telefono, "user", msg.texto)
