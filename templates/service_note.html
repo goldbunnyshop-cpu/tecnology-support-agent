@@ -28,15 +28,18 @@ body {
 
 /* ── Filas ── */
 .t { border: 1px solid #333; border-top: none; }
-.r { display: flex; border-top: 1px solid #333; min-height: 22px; }
+.r { display: flex; border-top: 1px solid #333; min-height: 20px; }
 .c { flex: 1; padding: 4px 5px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; border-left: 1px solid #333; }
 .c:first-child { border-left: none; }
 .c.w2 { flex: 2; }
 .l { font-weight: bold; white-space: nowrap; }
 .v { color: #0b3d91; font-weight: 600; font-size: 10.8px; }
+.transf { background: #fff4e5; }
+.transf .c { gap: 2px 8px; padding: 6px 7px; }
+.clabe { font-size: 13px; font-weight: bold; letter-spacing: 1.2px; color: #111; }
 .strip { background: #eee; font-weight: bold; padding: 2px 5px; letter-spacing: .5px; min-height: 0; }
-.tall { min-height: 42px; }
-.tall2 { min-height: 32px; }
+.tall { min-height: 36px; }
+.tall2 { min-height: 28px; }
 
 .dateline { padding: 3px 6px; gap: 4px; align-items: baseline; }
 .dateline u { color: #0b3d91; font-weight: 600; font-size: 10px; text-decoration: underline; padding: 0 6px; }
@@ -57,16 +60,16 @@ body {
 
 /* ── Checklist + autorización ── */
 .grid { display: grid; grid-template-columns: 36% 64%; border-top: 1px solid #333; }
-.grid > div { padding: 4px 5px; min-height: 22px; border-top: 1px solid #333; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
+.grid > div { padding: 3px 5px; min-height: 20px; border-top: 1px solid #333; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
 .grid > div:nth-child(1), .grid > div:nth-child(2) { border-top: none; }
 .grid > .gr { border-left: 1px solid #333; }
 .grid .hint { font-size: 7.5px; color: #555; }
 
 /* ── Notas ── */
-.notes { border: 1px solid #333; border-top: none; padding: 7px 9px; font-size: 8.2px; line-height: 1.6; }
+.notes { border: 1px solid #333; border-top: none; padding: 5px 9px; font-size: 8.2px; line-height: 1.5; }
 .notes b { font-size: 8px; }
 .privacy { text-align: right; font-size: 8.2px; padding: 4px 9px; border: 1px solid #333; border-top: none; }
-.factura { margin-top: 8px; border: 1.5px solid #333; padding: 9px 12px; font-size: 8.8px; text-align: center; line-height: 1.5; }
+.factura { margin-top: 6px; border: 1.5px solid #333; padding: 7px 12px; font-size: 8.8px; text-align: center; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -176,6 +179,14 @@ body {
             Efectivo <i class="box {{checked_efectivo}}"></i>
             Tarjeta <i class="box {{checked_tarjeta}}"></i>
             Transferencia <i class="box {{checked_transferencia}}"></i></div>
+    </div>
+    <div class="r transf">
+        <div class="c">
+            <span class="l">PAGO POR TRANSFERENCIA</span>
+            <span>CLABE interbancaria</span>
+            <span class="clabe">{{clabe}}</span>
+            <span>{{banco}} &middot; {{titular}}</span>
+        </div>
     </div>
 </div>
 

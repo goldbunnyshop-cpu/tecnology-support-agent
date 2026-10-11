@@ -14,6 +14,12 @@ logger = logging.getLogger("agentkit")
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 PAGE_W, PAGE_H = "140mm", "216mm"
 
+# Datos para pagos por transferencia (salen en la nota). Dados por el dueño el 11/10/2026.
+# Si cambian, se cambian aquí y la nota queda actualizada.
+CLABE_TS = "167580000057534814"
+BANCO_TS = "Hey Banco"
+TITULAR_TS = "GOLDBUNNY TS SAS DE CV"
+
 
 def _render_checkbox(valor) -> str:
     """Devuelve la clase CSS 'checked' (casilla marcada) o ''."""
@@ -63,12 +69,22 @@ def _derivar(data: dict) -> dict:
     return d
 
 
-def _clabe_html(data: dict) -> str:
-    # Una sola fuente de verdad: la misma variable que usa el comando "clabe:"
-    clabe = re.sub(r"\D", "", str(data.get("clabe") or os.getenv("CLABE_CUENTA", "")))
-    if not clabe:
-        return ""
-    return f"CLABE interbancaria <b>{_html.escape(clabe)}</b> &middot; Hey Banco<br>"
+def _clabe_valida(c: str) -> bool:
+    """Dígito verificador de una CLABE (pesos 3-7-1). Evita imprimir una CLABE mal tecleada."""
+    if not re.fullmatch(r"\d{18}", c):
+        return False
+    w = [3, 7, 1] * 6
+    return (10 - sum((int(d) * w[i]) % 10 for i, d in enumerate(c[:17])) % 10) % 10 == int(c[17])
+
+
+def _clabe() -> str:
+    if not _clabe_valida(CLABE_TS):
+        raise ValueError("CLABE_TS inválida: no se genera una nota con una CLABE incorrecta")
+    return CLABE_TS
+
+
+def _clabe_html() -> str:
+    return f"CLABE interbancaria <b>{_html.escape(_clabe())}</b> &middot; {_html.escape(BANCO_TS)}<br>"
 
 
 def render_html(data: dict) -> str:
@@ -90,7 +106,10 @@ def render_html(data: dict) -> str:
 
     # Bloques HTML propios (no se escapan)
     doc = doc.replace("{{logo_src}}", _logo_data_uri())
-    doc = doc.replace("{{clabe_html}}", _clabe_html(data))
+    doc = doc.replace("{{clabe_html}}", _clabe_html())
+    doc = doc.replace("{{clabe}}", _html.escape(_clabe()))
+    doc = doc.replace("{{banco}}", _html.escape(BANCO_TS))
+    doc = doc.replace("{{titular}}", _html.escape(TITULAR_TS))
 
     # Cualquier campo que no vino queda en blanco (no se imprime "{{campo}}")
     return re.sub(r"\{\{[a-z0-9_]+\}\}", "", doc)
