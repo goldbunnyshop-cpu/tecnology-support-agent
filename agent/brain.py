@@ -10,6 +10,7 @@ from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
 from agent.pricing import obtener_cotizacion_display, buscar_modelo_sin_marca, ALIAS_MARCAS
 from agent.pricing_fallback import cotizar_con_fallback
+from agent.filtro_sensible import respuesta_sensible
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
@@ -873,6 +874,13 @@ async def generar_respuesta(
 ) -> str:
     if not mensaje or len(mensaje.strip()) < 2:
         return obtener_mensaje_fallback()
+
+    # Prioridad máxima (legal): modificaciones de software/sistema (FRP, cuentas, PIN, IMEI,
+    # liberación, jailbreak de consolas...). Texto fijo, sin IA, sin precio ni factibilidad.
+    _fija = respuesta_sensible(mensaje, historial)
+    if _fija:
+        logger.info(f"[{asesor}] Consulta sensible de software → respuesta fija (módulo)")
+        return _fija
 
     # Prioridad alta: consultas de precio/cotizacion se resuelven con motor de pricing.
     respuesta_pricing = await _intentar_respuesta_pricing_contextual(mensaje, historial)

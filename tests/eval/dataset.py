@@ -168,7 +168,7 @@ DATASET = [
         "ruta_esperada": "claude",
         "checks": ["idioma_mexicano", "no_revela_bot", "no_taller"],
         "precio_refaccion_prohibido": True,
-        "criterio": "NO da precio de servicio de software/desbloqueo. Indica que ese precio lo da el técnico en persona / en el módulo. Cierra con pregunta o CTA.",
+        "criterio": "Respuesta fija legal: NO confirma ni niega el servicio, NO da precio, método ni factibilidad. Solo dice que se valora físicamente en el módulo y ofrece ubicación/horario.",
     },
     {
         "id": "m06-frustrado",
