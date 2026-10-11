@@ -90,6 +90,20 @@
 
 ---
 
+## BUG #11 — Segunda foto resetea contexto + "sin costo" crea contradicción (Luz Vázquez, Realme 14T 5G)
+
+### BUG #11A — Segunda foto de cliente con historial re-pregunta modelo y problema
+**Síntoma**: Luz ya había dicho 3 veces que era un Realme 14T 5G con pantalla en negro y sin imagen. Envió una segunda foto (03:48:55) y el bot respondió: *"Recibí tu foto 📸 Por el diseño parece un Realme Realme 14T 5G. ¿Qué problema o servicio necesitas?"* — ignorando todo el contexto previo.
+**Causa**: `_analizar_y_responder_imagen` en `main.py` llamaba siempre a `construir_respuesta_cliente(analisis, "image", asesor)` sin importar si había historial. Para el Caso B (equipo identificado, sin daño visible en la segunda foto), la función genérica pregunta "¿Qué problema o servicio necesitas?" sin contexto de conversación.
+**Fix**: `agent/main.py` — Si `historial` tiene ≥ 2 mensajes, en lugar de usar la respuesta genérica de visión, se invoca `generar_respuesta()` con el análisis visual inyectado como contexto. Claude sabe qué ya se habló y responde coherentemente. `construir_respuesta_cliente` solo se usa para clientes nuevos sin historial.
+
+### BUG #11B — "El diagnóstico es sin costo" → contradicción cuando el cliente llega y paga la reparación
+**Síntoma**: La primera foto disparó el Caso A de visión. El bot dijo: *"El diagnóstico es sin costo y lo hacemos en el momento."* Al día siguiente el seguimiento mencionó el costo de la reparación. Luz reclamó: *"☝🏻 pues primero me dijeron esto!!! Y ahora que si tiene cos[to]"*.
+**Causa**: La frase "El diagnóstico es sin costo" en `vision.py` línea 299 es ambigua — el cliente la interpreta como "todo el servicio es gratis". La REPARACIÓN sí tiene costo; el DIAGNÓSTICO (revisión) no tiene cargo adicional.
+**Fix**: `agent/vision.py` — Caso A reescrito: *"Para darte el precio exacto de la reparación lo revisamos en el momento — sin cargo por el diagnóstico."* Deja claro que (a) la reparación tiene un precio a confirmar y (b) revisar el equipo no cuesta extra.
+
+---
+
 ## Bugs pendientes de resolución completa
 
 | Bug | Descripción | Pendiente |

@@ -311,7 +311,33 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
     contexto_hist = construir_contexto_historial(analisis, "imagen")
     await guardar_mensaje(msg.telefono, "user", contexto_hist)
 
-    respuesta = construir_respuesta_cliente(analisis, "image", asesor)
+    # ── Respuesta consciente del historial ───────────────────────────────────────
+    # Si el cliente ya tiene contexto previo (modelo y problema ya establecidos),
+    # usar generar_respuesta para que Claude responda de forma coherente y no
+    # re-pregunte lo que ya se sabe. construir_respuesta_cliente es solo para
+    # clientes nuevos sin ningún historial previo.
+    if historial and len(historial) >= 2:
+        _desc_analisis = (
+            f"[ANÁLISIS VISUAL DE IMAGEN RECIBIDA]\n"
+            f"Dispositivo: {analisis.get('tipo_dispositivo', '')} "
+            f"{analisis.get('marca', '')} {analisis.get('modelo_probable', '')}\n"
+            f"Daño visible: {analisis.get('dano_visible', 'no determinado')}\n"
+            f"Nota técnica: {analisis.get('nota_tecnica', '')}\n\n"
+            f"REGLA CRÍTICA: El modelo y el problema ya están establecidos en esta "
+            f"conversación — NO preguntes de nuevo por ellos. Usa este análisis visual "
+            f"como confirmación adicional. Si el daño en la foto confirma lo que dijo "
+            f"el cliente, exprésalo de forma natural y avanza en la atención."
+        )
+        _ctx_vision = f"{_ctx_fecha_cdmx()}\n\n{_desc_analisis}"
+        respuesta = await generar_respuesta(
+            "[El cliente envió una foto de su dispositivo]",
+            historial,
+            asesor=asesor,
+            contexto_cliente=_ctx_vision,
+        )
+    else:
+        # Cliente nuevo sin contexto previo → respuesta genérica de visión
+        respuesta = construir_respuesta_cliente(analisis, "image", asesor)
 
     # (A) Reenviar imagen original + análisis a Christian
     asyncio.create_task(
