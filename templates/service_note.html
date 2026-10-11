@@ -1,201 +1,198 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
+<title>Nota de servicio {{folio}}</title>
 <style>
-@page { size: 136mm 197mm; margin: 0; padding: 0; }
+@page { size: 140mm 216mm; margin: 0; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 140mm; height: 216mm; }
 body {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10px;
-    color: #222;
-    width: 136mm; height: 197mm;
-    padding: 0;
+    font-size: 9.2px;
+    color: #111;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
 }
-.header-bar {
-    background: #f78c02;
-    color: white;
-    padding: 6px 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.page { width: 140mm; height: 216mm; padding: 5mm 5.5mm 4mm; }
+
+/* ── Encabezado ── */
+.top { display: flex; border: 1px solid #333; border-bottom: none; }
+.addr { flex: 0 0 46%; padding: 6px 8px; line-height: 1.4; font-size: 8.5px; border-right: 1px solid #333; }
+.addr b { font-size: 10px; }
+.brandbox { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3px 4px; }
+.brandrow { display: flex; align-items: center; gap: 7px; }
+.logo { height: 44px; width: auto; }
+.brandname { font-weight: bold; font-size: 9px; letter-spacing: 1.4px; color: #666; line-height: 1.15; }
+.folio { color: #c4161c; font-size: 24px; font-weight: bold; letter-spacing: 1px; margin-top: 2px; }
+
+/* ── Filas ── */
+.t { border: 1px solid #333; border-top: none; }
+.r { display: flex; border-top: 1px solid #333; min-height: 22px; }
+.c { flex: 1; padding: 4px 5px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; border-left: 1px solid #333; }
+.c:first-child { border-left: none; }
+.c.w2 { flex: 2; }
+.l { font-weight: bold; white-space: nowrap; }
+.v { color: #0b3d91; font-weight: 600; font-size: 10.8px; }
+.strip { background: #eee; font-weight: bold; padding: 2px 5px; letter-spacing: .5px; min-height: 0; }
+.tall { min-height: 42px; }
+.tall2 { min-height: 32px; }
+
+.dateline { padding: 3px 6px; gap: 4px; align-items: baseline; }
+.dateline u { color: #0b3d91; font-weight: 600; font-size: 10px; text-decoration: underline; padding: 0 6px; }
+
+.info { display: flex; border-top: 1px solid #333; }
+.info .left { flex: 1; padding: 5px 7px; font-size: 8.6px; line-height: 1.5; }
+.info .right { flex: 0 0 44%; margin: 5px 7px 5px 0; border: 1px solid #333; text-align: center; padding: 5px 4px; }
+.info .right .big { font-weight: bold; font-size: 10px; }
+.info .right .tel { font-size: 11px; margin: 2px 0; }
+.info .right .sub { font-size: 7.5px; color: #444; }
+
+/* ── Casillas dibujadas con CSS (no dependen de fuentes) ── */
+.box { display: inline-block; width: 9px; height: 9px; border: 1px solid #222; vertical-align: -1px; margin: 0 2px; position: relative; }
+.box.checked::after {
+    content: ""; position: absolute; left: 2px; top: -3px; width: 4px; height: 8px;
+    border: solid #0b3d91; border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
-.header-bar img { height: 28px; }
-.header-bar h1 { font-size: 14px; font-weight: bold; letter-spacing: 1px; }
-.folio-badge {
-    margin-left: auto;
-    background: rgba(255,255,255,0.2);
-    padding: 2px 10px;
-    border-radius: 4px;
-    font-size: 16px;
-    font-weight: bold;
-}
-.content { padding: 8px 12px; }
-.section-title {
-    background: #eee;
-    padding: 3px 8px;
-    font-size: 9px;
-    font-weight: bold;
-    text-transform: uppercase;
-    color: #555;
-    margin: 6px 0 3px 0;
-}
-.field-row {
-    display: flex;
-    padding: 2px 0;
-    border-bottom: 1px dotted #ddd;
-}
-.field-label {
-    width: 50px;
-    font-weight: bold;
-    font-size: 8px;
-    color: #888;
-    flex-shrink: 0;
-}
-.field-value {
-    flex: 1;
-    font-size: 10px;
-}
-.row-2 { display: flex; gap: 8px; }
-.row-2 > div { flex: 1; }
-.checkboxes { margin: 6px 0; }
-.check-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 0;
-    font-size: 9px;
-}
-.check-row input { margin: 0; }
-.auth-box {
-    background: #3598db;
-    color: white;
-    padding: 8px;
-    margin: 8px 0;
-    border-radius: 4px;
-    font-size: 9px;
-    text-align: center;
-}
-.auth-box .sig-line {
-    border-bottom: 1px solid rgba(255,255,255,0.5);
-    height: 24px;
-    margin: 6px 40px;
-}
-.footer {
-    position: absolute;
-    bottom: 0;
-    width: 100%;
-    padding: 6px 12px;
-    font-size: 7px;
-    color: #999;
-    border-top: 1px solid #ddd;
-    display: flex;
-    justify-content: space-between;
-}
+
+/* ── Checklist + autorización ── */
+.grid { display: grid; grid-template-columns: 36% 64%; border-top: 1px solid #333; }
+.grid > div { padding: 4px 5px; min-height: 22px; border-top: 1px solid #333; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; }
+.grid > div:nth-child(1), .grid > div:nth-child(2) { border-top: none; }
+.grid > .gr { border-left: 1px solid #333; }
+.grid .hint { font-size: 7.5px; color: #555; }
+
+/* ── Notas ── */
+.notes { border: 1px solid #333; border-top: none; padding: 7px 9px; font-size: 8.2px; line-height: 1.6; }
+.notes b { font-size: 8px; }
+.privacy { text-align: right; font-size: 8.2px; padding: 4px 9px; border: 1px solid #333; border-top: none; }
+.factura { margin-top: 8px; border: 1.5px solid #333; padding: 9px 12px; font-size: 8.8px; text-align: center; line-height: 1.5; }
 </style>
 </head>
 <body>
+<div class="page">
 
-<div class="header-bar">
-    <h1>TECNOLOGY SUPPORT</h1>
-    <div style="margin-left:auto;font-size:10px;font-weight:bold;">{{fecha}}</div>
-    <div class="folio-badge" style="margin-left:10px;">#{{folio}}</div>
-</div>
-
-<div class="content">
-
-<div class="section-title">Datos del cliente</div>
-<div class="field-row">
-    <span class="field-label">Cliente:</span>
-    <span class="field-value">{{cliente}}</span>
-</div>
-<div class="row-2">
-    <div class="field-row">
-        <span class="field-label">Tel&eacute;fono:</span>
-        <span class="field-value">{{telefono}}</span>
+<div class="top">
+    <div class="addr">
+        <b>TS La Comer Tlalpan</b><br>
+        Tel&eacute;fono: 55 9730 7793<br>
+        Plazuela de la Fama 1, Loc 6 Col. La Fama, c.p. 14410, Tlalpan, CDMX.
     </div>
-    <div class="field-row">
-        <span class="field-label">Domicilio:</span>
-        <span class="field-value">{{domicilio}}</span>
+    <div class="brandbox">
+        <div class="brandrow">
+            <img class="logo" src="{{logo_src}}" alt="">
+            <div class="brandname">TECNOLOGY<br>SUPPORT</div>
+        </div>
+        <div class="folio">{{folio}}</div>
     </div>
 </div>
 
-<div class="section-title">Equipo</div>
-<div class="row-2">
-    <div class="field-row">
-        <span class="field-label">Tipo:</span>
-        <span class="field-value">{{equipo_tipo}}</span>
+<div class="t">
+    <div class="r dateline">
+        <span class="l">CDMX a:</span><u>{{fecha_dia}}</u><span>de</span><u>{{fecha_mes}}</u><span>del</span><u>{{fecha_anio}}</u>
     </div>
-    <div class="field-row">
-        <span class="field-label">Marca:</span>
-        <span class="field-value">{{marca}}</span>
+
+    <div class="info">
+        <div class="left">
+            WhatsApp atenci&oacute;n a clientes <b>5659866275</b><br>
+            {{clabe_html}}
+            GOLDBUNNY TS SAS DE CV<br>
+            R.F.C. GBT230804417
+        </div>
+        <div class="right">
+            <div class="big">TELEFONO SUCURSAL</div>
+            <div class="tel">55 9730 7793</div>
+            <div class="sub">Estatus de reparaci&oacute;n o cotizaci&oacute;n</div>
+        </div>
     </div>
-</div>
-<div class="row-2">
-    <div class="field-row">
-        <span class="field-label">Modelo:</span>
-        <span class="field-value">{{modelo}}</span>
+
+    <div class="r">
+        <div class="c w2"><span class="l">NOMBRE:</span><span class="v">{{cliente}}</span></div>
+        <div class="c"><span class="l">NUMERO TELEFONICO:</span><span class="v">{{telefono}}</span></div>
     </div>
-    <div class="field-row">
-        <span class="field-label">IMEI/Serie:</span>
-        <span class="field-value">{{imei}}</span>
+    <div class="r">
+        <div class="c"><span class="l">Domicilio:</span><span class="v">{{domicilio}}</span></div>
+    </div>
+
+    <div class="r strip">EQUIPO</div>
+    <div class="r">
+        <div class="c"><span class="l">Tipo:</span><span class="v">{{equipo_tipo}}</span></div>
+        <div class="c"><span class="l">Marca:</span><span class="v">{{marca}}</span></div>
+        <div class="c"><span class="l">Modelo:</span><span class="v">{{modelo}}</span></div>
+    </div>
+    <div class="r">
+        <div class="c"><span class="l">Imei o Serie:</span><span class="v">{{imei}}</span></div>
+        <div class="c"><span class="l">Hora entrada:</span><span class="v">{{hora_entrada}}</span></div>
+        <div class="c"><span class="l">Fecha y hora de entrega:</span><span class="v">{{fecha_entrega}}</span></div>
+    </div>
+    <div class="r">
+        <div class="c"><span class="l">Tiempo estimado de entrega:</span>
+            Mismo d&iacute;a <i class="box {{checked_mismo_dia}}"></i>
+            Sujeto a diagn&oacute;stico <i class="box {{checked_sujeto_diag}}"></i></div>
+    </div>
+    <div class="r tall2">
+        <div class="c"><span class="l">Tiempo para diagnosticar:</span><span class="v">{{tiempo_diagnostico}}</span></div>
+        <div class="c"><span><span class="l">Costo $200</span> (se bonifica si acepta la reparaci&oacute;n)<br>
+            <span class="l">Diagn&oacute;stico:</span> <span class="v">{{diagnostico}}</span></span></div>
+    </div>
+    <div class="r tall2">
+        <div class="c"><span class="l">Falla reportada:</span><span class="v">{{falla}}</span></div>
+    </div>
+    <div class="r tall">
+        <div class="c"><span><span class="l">Caracter&iacute;sticas generales del equipo:</span><br><span class="v">{{caracteristicas}}</span></span></div>
+        <div class="c"><span><span class="l">Riesgos que pueda presentar el equipo:</span><br><span class="v">{{riesgos}}</span></span></div>
+    </div>
+
+    <div class="grid">
+        <div class="gl"><span class="l">Roto:</span><span class="v">{{roto}}</span></div>
+        <div class="gr"><span class="l">AUTORIZACION DEL SERVICIO:</span> Firma <i class="box {{checked_aut_firma}}"></i> WhatsApp (autoriz&oacute;) <i class="box {{checked_aut_whatsapp}}"></i></div>
+
+        <div class="gl"><span class="l">Abollado:</span><span class="v">{{abollado}}</span></div>
+        <div class="gr"><span class="l">TIPO DE REFACCION</span> Premium ORIGINAL <i class="box {{checked_ref_premium}}"></i> <span class="hint">Mayor Calidad - Mayor Duraci&oacute;n</span></div>
+
+        <div class="gl"><span class="l">Carcaza doblada:</span><span class="v">{{carcaza}}</span></div>
+        <div class="gr">Calidad TIPO Original <i class="box {{checked_ref_original}}"></i> <span class="hint">Mejor Relaci&oacute;n Calidad - Precio</span></div>
+
+        <div class="gl"><span class="l">Estrellado:</span><span class="v">{{estrellado}}</span></div>
+        <div class="gr">Econ&oacute;mica GEN&Eacute;RICA <i class="box {{checked_ref_generica}}"></i> <span class="hint">Menor costo - Duraci&oacute;n variable</span></div>
+
+        <div class="gl"><span class="l">Chip, Sim, Micro SD, Porta Sim:</span><span class="v">{{chip}}</span></div>
+        <div class="gr"><span class="l">EL EQUIPO SE RECIBIO:</span> PRENDIDO <i class="box {{checked_prendido}}"></i> APAGADO <i class="box {{checked_apagado}}"></i></div>
+
+        <div class="gl"><span class="l">Funda:</span><span class="v">{{funda}}</span></div>
+        <div class="gr"><span class="l">COSTO PRESUPUESTO:</span> SI <i class="box {{checked_presup_si}}"></i> NO <i class="box {{checked_presup_no}}"></i></div>
+
+        <div class="gl"><span class="l">Otros accesorios:</span><span class="v">{{accesorios}}</span></div>
+        <div class="gr"></div>
+    </div>
+
+    <div class="r">
+        <div class="c"><span class="l">Anticipo:</span><span class="v">${{anticipo}}</span></div>
+        <div class="c"><span class="l">Saldo pendiente:</span><span class="v">${{saldo}}</span></div>
+        <div class="c"><span class="l">Total:</span><span class="v">${{total}}</span></div>
+    </div>
+    <div class="r">
+        <div class="c"><span class="l">Forma de pago:</span>
+            Efectivo <i class="box {{checked_efectivo}}"></i>
+            Tarjeta <i class="box {{checked_tarjeta}}"></i>
+            Transferencia <i class="box {{checked_transferencia}}"></i></div>
     </div>
 </div>
 
-<div class="section-title">Falla reportada</div>
-<div class="field-row" style="min-height: 24px;">
-    <span class="field-value">{{falla}}</span>
+<div class="notes">
+    <b>NOTAS IMPORTANTES</b><br>
+    - El cliente es responsable de respaldar su informaci&oacute;n.<br>
+    - No nos hacemos responsables por accesorios no declarados.<br>
+    - El equipo deber&aacute; recogerse en un plazo m&aacute;ximo de 30 d&iacute;as.<br>
+    - La garant&iacute;a es de 90 d&iacute;as sobre la reparaci&oacute;n realizada.
 </div>
+<div class="privacy">Consulta nuestro aviso de privacidad en https://Tecnology.support</div>
 
-<div class="section-title">Diagn&oacute;stico</div>
-<div class="field-row" style="min-height: 24px;">
-    <span class="field-value">{{diagnostico}}</span>
-</div>
-
-<div class="section-title">Servicio / Refacci&oacute;n</div>
-<div class="checkboxes">
-    <div class="check-row"><input type="checkbox" {{checked_mant}}> Mantenimiento</div>
-    <div class="check-row"><input type="checkbox" {{checked_refac}}> Refacci&oacute;n: {{tipo_refaccion}}</div>
-    <div class="check-row"><input type="checkbox" {{checked_soft}}> Software</div>
-    <div class="check-row"><input type="checkbox" {{checked_otro}}> Otro: {{otro_servicio}}</div>
-</div>
-
-<div class="section-title">Pago</div>
-<div class="row-2">
-    <div class="field-row">
-        <span class="field-label">Total:</span>
-        <span class="field-value">${{total}}</span>
-    </div>
-    <div class="field-row">
-        <span class="field-label">Anticipo:</span>
-        <span class="field-value">${{anticipo}}</span>
-    </div>
-</div>
-<div class="row-2">
-    <div class="field-row">
-        <span class="field-label">Saldo:</span>
-        <span class="field-value">${{saldo}}</span>
-    </div>
-    <div class="field-row">
-        <span class="field-label">Forma pago:</span>
-        <span class="field-value">{{forma_pago}}</span>
-    </div>
-</div>
-
-<div class="auth-box">
-    <strong>AUTORIZACI&Oacute;N DE REPARACI&Oacute;N</strong><br><br>
-    Autorizo a Tecnology Support a realizar el servicio descrito.<br>
-    Entiendo que el presupuesto fue explicado y aceptado.<br><br>
-    <div class="sig-line"></div>
-    <em>Nombre y firma del cliente</em>
+<div class="factura">
+    Para facturar enviar una foto de esta nota de servicio adjuntando constancia de situaci&oacute;n fiscal, concepto y
+    r&eacute;gimen al siguiente correo: <b>factura@tecnology.support</b>
 </div>
 
 </div>
-
-<div class="footer">
-    <span>Tecnology Support &mdash; Plazuela de la Fama 1, Col. La Fama, Tlalpan, CDMX</span>
-    <span>Tel: 55 9730 7793</span>
-</div>
-
 </body>
 </html>

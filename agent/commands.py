@@ -11,6 +11,11 @@ from collections import defaultdict
 
 logger = logging.getLogger("agentkit")
 
+from agent.nota_parser import (
+    es_nota_etiquetada, procesar_nota, cancelar_borrador, datos_para_pdf,
+    AYUDA_NOTA_CORTA, AYUDA_NOTA_COMPLETA, fmt_dinero as _fmt_dinero,
+)
+
 # ════════════════════════════════════════════════════════════════════════════
 # CONFIGURACIÓN Y CONSTANTES
 # ════════════════════════════════════════════════════════════════════════════
@@ -46,12 +51,13 @@ TEXTO_MENU = (
     "*cita:* [número] → Puede pasar sin cita\n"
     "*pausa:* [número] → Pausa agente 2h (tú atiendes)\n"
     "*reanudar:* [número] → Reanuda agente\n\n"
+    "*── Nota de servicio en PDF ──*\n"
+    + AYUDA_NOTA_CORTA + "\n"
+    "*nota ayuda* → todos los campos opcionales\n"
+    "*nota: cancelar [folio]* → borra un borrador incompleto\n\n"
     "*── CRM / Órdenes ──*\n"
-    "*nota:* [folio_físico] [número] [equipo] [modelo] [falla] [total] [pago] [refaccion:costo]\n"
+    "*nota (solo CRM, sin PDF):* [folio_físico] [número] [equipo] [modelo] [falla] [total] [pago] [refaccion:costo]\n"
     "   _Ej: nota: 13054 5541576333 iPhone 13 pantalla 1200 tarjeta refaccion:500_\n"
-    "*nota (PDF):* [número] folio: [folio] fecha: [DD/MM/AA] marca: [x] modelo: [x] diagnostico: [x] costo: [x]\n"
-    "   _Ej: nota: 5542576331 folio: 13054 fecha: 21/09/26 marca: Samsung modelo: s24 ultra diagnostico: falla display costo: 3500_\n"
-    "   _Genera PDF y lo envía al cliente + copia aquí. Opcionales: cliente: tipo: imei: falla: anticipo: pago: refaccion:_\n"
     "*orden:* [número] [equipo] [total] [pago] [refacción?] — folio auto-asignado\n"
     "   _Ej: orden: 5541576331 PS5 2500 tarjeta 350_\n"
     "*estatus:* [folio] [recibido|proceso|listo|entregado]\n"
@@ -328,119 +334,7 @@ def parsear_nota(payload: str) -> dict | None:
 
 
 # ── nota: con etiquetas → PDF de nota de servicio ───────────────────────────
-# Ej: nota: 5542576331 folio: 13054 fecha: 21/09/26 marca: Samsung modelo: s24 ultra
-#            diagnostico: falla display costo: 3500 [anticipo: 500] [pago: efectivo]
-#            [cliente: Juan Pérez] [tipo: Celular] [imei: ...] [falla: ...] [refaccion: 1200]
-_ETIQUETAS_NOTA = (
-    "folio", "fecha", "cliente", "tipo", "equipo", "marca", "modelo", "imei",
-    "falla", "diagnostico", "diagnóstico", "costo", "total", "anticipo",
-    "pago", "refaccion", "refacción", "domicilio",
-)
-_RE_ETIQUETA_NOTA = re.compile(
-    r"(?<![\w])(" + "|".join(_ETIQUETAS_NOTA) + r")\s*:", re.IGNORECASE
-)
-# Etiquetas que SOLO existen en el formato nuevo (refaccion: también existe en el viejo)
-_RE_NOTA_ETIQUETADA = re.compile(
-    r"(?<![\w])(folio|fecha|costo|diagnostico|diagnóstico|marca|modelo)\s*:", re.IGNORECASE
-)
-
-
-def es_nota_etiquetada(payload: str) -> bool:
-    return bool(_RE_NOTA_ETIQUETADA.search(payload or ""))
-
-
-def _num_mx(txt: str) -> float | None:
-    limpio = re.sub(r"[\s$,]", "", txt or "")
-    if not re.fullmatch(r"\d+(\.\d+)?", limpio):
-        return None
-    return float(limpio)
-
-
-def parsear_nota_etiquetada(payload: str) -> tuple[dict | None, list[str]]:
-    """
-    Retorna (datos, errores). Si errores no está vacío, datos es None.
-    Obligatorios: teléfono (primer token), folio, costo/total.
-    """
-    errores: list[str] = []
-    matches = list(_RE_ETIQUETA_NOTA.finditer(payload or ""))
-    if not matches:
-        return None, ["No se detectaron etiquetas"]
-
-    valores: dict[str, str] = {}
-    for i, m in enumerate(matches):
-        fin = matches[i + 1].start() if i + 1 < len(matches) else len(payload)
-        clave = m.group(1).lower().replace("ó", "o")
-        valores[clave] = payload[m.end():fin].strip()
-
-    phone = re.sub(r"\D", "", payload[: matches[0].start()])
-    if len(phone) < 10:
-        errores.append("teléfono (primer dato, 10 dígitos)")
-
-    folio = re.sub(r"[^\w-]", "", valores.get("folio", ""))
-    if not folio:
-        errores.append("folio: (folio físico de la nota)")
-
-    total = _num_mx(valores.get("costo") or valores.get("total", ""))
-    if total is None:
-        errores.append("costo: (monto numérico)")
-
-    anticipo = 0.0
-    if valores.get("anticipo"):
-        anticipo = _num_mx(valores["anticipo"])
-        if anticipo is None:
-            errores.append("anticipo: (debe ser numérico)")
-            anticipo = 0.0
-
-    if total is not None and anticipo > total:
-        errores.append("anticipo mayor que el costo")
-
-    fecha_txt = valores.get("fecha", "").strip()
-    if fecha_txt:
-        fecha = None
-        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%d-%m-%y", "%d-%m-%Y"):
-            try:
-                fecha = datetime.strptime(fecha_txt, fmt)
-                break
-            except ValueError:
-                continue
-        if not fecha:
-            errores.append(f"fecha: '{fecha_txt}' inválida (usa DD/MM/AA)")
-            fecha_fmt = ""
-        else:
-            fecha_fmt = fecha.strftime("%d/%m/%Y")
-    else:
-        from zoneinfo import ZoneInfo
-        fecha_fmt = datetime.now(ZoneInfo("America/Mexico_City")).strftime("%d/%m/%Y")
-
-    if errores:
-        return None, errores
-
-    forma_pago = valores.get("pago", "").lower()
-    if forma_pago == "trans":
-        forma_pago = "transferencia"
-    ref = _num_mx(valores.get("refaccion", "")) or 0.0
-
-    return {
-        "phone":       phone,
-        "folio":       folio,
-        "fecha":       fecha_fmt,
-        "cliente":     valores.get("cliente", ""),
-        "domicilio":   valores.get("domicilio", ""),
-        "equipo_tipo": valores.get("tipo") or valores.get("equipo", ""),
-        "marca":       valores.get("marca", ""),
-        "modelo":      valores.get("modelo", ""),
-        "imei":        valores.get("imei", ""),
-        "falla":       valores.get("falla", ""),
-        "diagnostico": valores.get("diagnostico", ""),
-        "total":       total,
-        "anticipo":    anticipo,
-        "forma_pago":  forma_pago,
-        "refaccion":   ref,
-    }, []
-
-
-def _fmt_dinero(n: float) -> str:
-    return f"{n:,.0f}" if float(n).is_integer() else f"{n:,.2f}"
+# El parser de notas vive en agent/nota_parser.py (importado al inicio del archivo)
 
 
 # Anti-duplicados: el webhook de Whapi puede reentregar el mismo mensaje
@@ -701,6 +595,11 @@ async def procesar_comando_grupo(
         logger.info("[CMD] Menú enviado")
         return True
 
+    # ── nota ayuda: guía completa para generar notas de servicio ──
+    if texto_lower in ("nota ayuda", "nota: ayuda", "nota ayuda:", "ayuda nota"):
+        await proveedor.enviar_mensaje(chat_id_raw, AYUDA_NOTA_COMPLETA)
+        return True
+
     # ── reporte ──
     if texto_lower == "reporte" or texto_lower == "reporte:":
         await _cmd_reporte_dia(chat_id_raw, proveedor, obtener_historial_fn)
@@ -909,15 +808,18 @@ async def procesar_comando_grupo(
     # COMANDOS CRM (nota, orden, estatus, consultar)
     # ════════════════════════════════════════════════════════════════════════════
 
+    if cmd == "nota" and payload.strip().lower().startswith("cancelar"):
+        folio_cancel = payload.strip()[len("cancelar"):].strip()
+        if folio_cancel and cancelar_borrador(chat_id_raw, folio_cancel):
+            await _responder(f"🗑️ Borrador de la nota #{folio_cancel} eliminado.")
+        else:
+            await _responder("ℹ️ No encontré ese borrador. Uso: nota: cancelar [folio]")
+        return True
+
     if cmd == "nota" and es_nota_etiquetada(payload):
-        datos, errores = parsear_nota_etiquetada(payload)
-        if errores:
-            await _responder(
-                "⚠️ Nota NO generada. Falta/error: " + "; ".join(errores) + "\n"
-                "Formato: nota: 5542576331 folio: 13054 fecha: 21/09/26 marca: Samsung "
-                "modelo: s24 ultra diagnostico: falla display costo: 3500\n"
-                "Opcionales: cliente: tipo: imei: falla: anticipo: pago: refaccion:"
-            )
+        datos, aviso = procesar_nota(chat_id_raw, payload)
+        if not datos:
+            await _responder(aviso)
             return True
 
         phone_fmt, advertencia = _formatear_numero_destino(datos["phone"])
@@ -940,23 +842,9 @@ async def procesar_comando_grupo(
             historial = await obtener_historial_fn(phone_fmt)
             cliente = datos["cliente"] or extraer_nombre_cliente(historial)
             saldo = datos["total"] - datos["anticipo"]
-            pdf_bytes = await generar_pdf_async({
-                "folio":       datos["folio"],
-                "fecha":       datos["fecha"],
-                "cliente":     cliente,
-                "telefono":    _normalizar_numero(phone_fmt),
-                "domicilio":   datos["domicilio"],
-                "equipo_tipo": datos["equipo_tipo"],
-                "marca":       datos["marca"],
-                "modelo":      datos["modelo"],
-                "imei":        datos["imei"],
-                "falla":       datos["falla"],
-                "diagnostico": datos["diagnostico"],
-                "total":       _fmt_dinero(datos["total"]),
-                "anticipo":    _fmt_dinero(datos["anticipo"]),
-                "saldo":       _fmt_dinero(saldo),
-                "forma_pago":  datos["forma_pago"].capitalize(),
-            })
+            pdf_bytes = await generar_pdf_async(
+                datos_para_pdf(datos, cliente, _normalizar_numero(phone_fmt))
+            )
         except Exception as e:
             _NOTAS_RECIENTES.pop(clave, None)
             logger.error(f"[NOTA-PDF] Error generando PDF: {e}", exc_info=True)
