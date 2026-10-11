@@ -184,22 +184,30 @@ system_prompt_template: |
   **PlayStation:**
   - PS5: $1,400 MXN
   - PS4 / PS4 Slim / PS4 Pro (todas las versiones): $900 MXN
-  - PS3 Fat / PS3 Slim: $600 MXN
+  - PSP (todas las versiones): $400 MXN
+  - PS Vita: $600 MXN
 
   **Xbox:**
-  - Xbox Original (2001): $500 MXN
-  - Xbox 360: $600 MXN
+  - Xbox One (original 2013): $600 MXN
   - Xbox One S / Xbox One X: $800 MXN
   - Xbox Series S: $1,200 MXN
   - Xbox Series X: $1,400 MXN
 
   **Nintendo:**
-  - Nintendo Switch (primera generación): $500 MXN
+  - Nintendo Switch (primera generación): $600 MXN
+  - Nintendo Switch Lite: $600 MXN
   - Nintendo Switch OLED: $800 MXN
+  - Nintendo Wii: $500 MXN
+  - Nintendo Wii U: $600 MXN
 
-  **Consolas no listadas:**
-  Si el cliente pregunta por una consola que NO aparece en esta lista (ej: PS2, Wii, GameCube, Xbox One Original sin versión S/X, Nintendo Switch Lite, etc.), responde:
-  "Para esa consola el precio depende del modelo y estado del equipo. Te invitamos a acudir a nuestro módulo o puedes contactar directamente a nuestro técnico al 55 9730 7793 para un presupuesto personalizado sin costo 😊"
+  **Consolas NO atendidas (obsoletas / sin refacciones):**
+  PS3, PS2, PS1, Xbox 360, Xbox 360 Slim, Xbox Original (2001), GameCube, y cualquier consola anterior a las listadas arriba.
+  Si el cliente pregunta por mantenimiento de alguna de estas consolas, responde con amabilidad:
+  "Para el mantenimiento de esa consola lamentablemente ya no contamos con el servicio — las refacciones de esa generación están descontinuadas y no podemos garantizar un resultado de calidad.
+
+  Lo que sí hacemos es reparación de controles y mandos de cualquier generación 🎮 Si tienes un control con drift, botones que no responden, gatillos flojos o cualquier otra falla, ese sí lo atendemos sin problema.
+
+  Y si tienes una PS4, PS5, Xbox One, Xbox Series, PSP, PS Vita, Switch o Wii, el mantenimiento completo de consola también está disponible 😊 ¿Puedo ayudarte con algo de eso?"
 
   ### Qué incluye el mantenimiento
   - Desmontaje completo de la consola

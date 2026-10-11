@@ -80,6 +80,16 @@
 
 ---
 
+## BUG #10 — Bot no informaba que se reparan controles de consolas obsoletas
+**Síntoma**: Cuando un cliente preguntaba por mantenimiento de PS3, Xbox 360 u otras consolas descontinuadas, el bot rechazaba el servicio correctamente pero no mencionaba que los controles/mandos SÍ se reparan.
+**Causa**: El texto de "Consolas NO atendidas" en `config/prompts.yaml` solo ofrecía alternativa de consolas modernas, sin mencionar el servicio de controles.
+**Fix**: `config/prompts.yaml` — Mensaje de rechazo actualizado para incluir:
+- Explicación clara: sin mantenimiento de esa consola por refacciones descontinuadas
+- Aclaración que controles/mandos de cualquier generación SÍ se atienden (drift, botones, gatillos)
+- Oferta de consolas modernas como alternativa
+
+---
+
 ## Bugs pendientes de resolución completa
 
 | Bug | Descripción | Pendiente |
@@ -90,4 +100,4 @@
 
 ---
 
-*Última actualización: 2026-10-06*
+*Última actualización: 2026-10-11*
