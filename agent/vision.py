@@ -293,10 +293,11 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
         else:
             desc = f"Veo que tu *{equipo_txt}* tiene {dano}."
 
-        pregunta_final = pregunta_suger or "¿Te gustaría traerlo para revisarlo sin costo?"
+        pregunta_final = pregunta_suger or "¿Te gustaría traerlo para que lo revisemos?"
         return (
             f"{intro} {desc} "
-            f"El diagnóstico es sin costo y lo hacemos en el momento. "
+            f"Para darte el precio exacto de la reparación lo revisamos en el momento — "
+            f"sin cargo por el diagnóstico. "
             f"{pregunta_final}"
         )
 
