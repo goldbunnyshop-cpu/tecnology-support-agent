@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from agent.pricing import obtener_cotizacion_display, buscar_modelo_sin_marca, ALIAS_MARCAS
 from agent.pricing_fallback import cotizar_con_fallback
 from agent.filtro_sensible import respuesta_sensible
+from agent.filtro_domicilio import respuesta_domicilio, en_modo_domicilio
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
@@ -882,8 +883,19 @@ async def generar_respuesta(
         logger.info(f"[{asesor}] Consulta sensible de software → respuesta fija (módulo)")
         return _fija
 
+    # Servicio a domicilio: sí existe, pero por chat NO se dan precios; la cotización y la
+    # cita se concretan de forma manual con el equipo. Texto fijo y pricing bloqueado.
+    _dom = respuesta_domicilio(mensaje, historial)
+    if _dom:
+        logger.info(f"[{asesor}] Servicio a domicilio → respuesta fija (sin precios)")
+        return _dom
+    _modo_domicilio = en_modo_domicilio(historial)
+
     # Prioridad alta: consultas de precio/cotizacion se resuelven con motor de pricing.
-    respuesta_pricing = await _intentar_respuesta_pricing_contextual(mensaje, historial)
+    # (No en conversaciones a domicilio: ahí nunca se comparten precios.)
+    respuesta_pricing = None
+    if not _modo_domicilio:
+        respuesta_pricing = await _intentar_respuesta_pricing_contextual(mensaje, historial)
     if respuesta_pricing:
         logger.info(f"[{asesor}] Respuesta de pricing directa aplicada")
         return respuesta_pricing
