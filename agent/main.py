@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
+from agent.filtro_domicilio import evaluar_domicilio, mensaje_grupo_domicilio
 from agent.memory import (
     inicializar_db, guardar_mensaje, obtener_historial,
     obtener_perfil, guardar_nombre_cliente,
@@ -754,6 +755,17 @@ async def messenger_handler(request: Request):
             partes_ctx.append(f"Canal: Facebook Messenger")
             contexto_extra = "\n\n".join(partes_ctx)
 
+            # Servicio a domicilio: si se transfiere, avisar al grupo (Messenger no tiene pausa)
+            _dec_dom = evaluar_domicilio(msg.texto, historial)
+            if _dec_dom and _dec_dom.transferir:
+                try:
+                    from agent.appointment_notifications import _enviar_grupo
+                    _aviso = mensaje_grupo_domicilio(msg.telefono, _dec_dom, historial, msg.texto)
+                    _aviso = _aviso.split("\n\n⏸️")[0] + "\n\n💬 Canal: *Facebook Messenger* — contestar desde la página."
+                    await _enviar_grupo(_aviso)
+                except Exception as e:
+                    logger.error(f"[DOMICILIO] Error avisando al grupo (Messenger): {e}")
+
             respuesta = await generar_respuesta(msg.texto, historial, asesor, contexto_extra)
             await guardar_mensaje(msg.telefono, "user", msg.texto)
             await guardar_mensaje(msg.telefono, "assistant", _para_historial(respuesta))
@@ -1181,6 +1193,35 @@ async def _procesar_lote_mensajes(mensajes):
                         "(ubicación, cambios, precios, etc.). "
                         "NO repitas la confirmación. NO incluyas [[AGENDAR:...]] de nuevo."
                     )
+
+                # ── Servicio a domicilio: texto fijo, sin precios; al ubicar al cliente se
+                #    transfiere a un responsable (aviso al grupo + pausa del bot en este chat) ──
+                _dec_dom = evaluar_domicilio(msg.texto, historial)
+                if _dec_dom:
+                    await guardar_mensaje(msg.telefono, "user", msg.texto)
+                    await guardar_mensaje(msg.telefono, "assistant", _dec_dom.texto)
+                    await proveedor.enviar_mensaje(msg.telefono, _dec_dom.texto)
+                    logger.info(f"[DOMICILIO] {msg.telefono} → transferir={_dec_dom.transferir} "
+                                f"cobertura={getattr(_dec_dom.ubicacion, 'cobertura', None)}")
+                    if _dec_dom.transferir:
+                        # 1) Avisar al grupo (mismo envío que los avisos de citas). 2) Solo si el aviso
+                        # llegó, pausar el bot: así nunca queda un cliente en pausa sin que nadie lo sepa.
+                        _ok_grupo = False
+                        try:
+                            from agent.appointment_notifications import _enviar_grupo
+                            _ok_grupo = await _enviar_grupo(
+                                mensaje_grupo_domicilio(msg.telefono, _dec_dom, historial, msg.texto)
+                            )
+                        except Exception as e:
+                            logger.error(f"[DOMICILIO] Error avisando al grupo: {e}")
+                        if _ok_grupo:
+                            try:
+                                await pausar_conversacion(msg.telefono, horas=24)
+                            except Exception as e:
+                                logger.error(f"[DOMICILIO] Error al pausar {msg.telefono}: {e}")
+                        else:
+                            logger.error(f"[DOMICILIO] Aviso al grupo falló — {msg.telefono} NO se pausó")
+                    continue
 
                 await proveedor.enviar_typing(msg.telefono)
                 respuesta = await generar_respuesta(

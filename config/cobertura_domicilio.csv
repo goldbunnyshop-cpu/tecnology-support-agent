@@ -1,0 +1,1269 @@
+# Cobertura servicio a domicilio: 8 km en linea recta desde La Comer Tlalpan (19.28891,-99.17922).
+# dentro = CP completo dentro del radio; borde = parte dentro; fuera = fuera del radio.
+# Fuente: poligonos CP open-mexico/mexico-geojson (SEPOMEX) + catalogo SEPOMEX 2019/2021. Generado 2026-10-21.
+cp,alcaldia,cobertura,km,colonias
+01000,Álvaro Obregón,dentro,6.5,San Ángel
+01010,Álvaro Obregón,borde,8.1,Los Alpes
+01020,Álvaro Obregón,borde,7.6,Guadalupe Inn
+01030,Álvaro Obregón,borde,7.6,Axotla|Florida
+01040,Álvaro Obregón,dentro,7.5,Campestre
+01048,Álvaro Obregón,fuera,,Las Águilas
+01049,Álvaro Obregón,dentro,7.4,Tlacopac
+01050,Álvaro Obregón,dentro,6.7,Ex-Hacienda de Guadalupe Chimalistac
+01060,Álvaro Obregón,dentro,6.9,Altavista|San Ángel Inn
+01070,Álvaro Obregón,dentro,6.2,Chimalistac
+01080,Álvaro Obregón,dentro,6.2,Progreso Tizapan
+01089,Álvaro Obregón,dentro,5.9,Ermita Tizapan
+01090,Álvaro Obregón,dentro,5.7,La Otra Banda|Loreto|Tizapan
+01100,Álvaro Obregón,fuera,11.8,Pólvora
+01109,Álvaro Obregón,fuera,11.7,La Conchita
+01110,Álvaro Obregón,fuera,12.4,Belém de las Flores|El Capulín|Ampliación El Capulín|Liberales de 1857
+01120,Álvaro Obregón,fuera,12.5,Acueducto|Cove|Hidalgo|Las Américas
+01125,Álvaro Obregón,fuera,12.3,Ampliación Acueducto
+01130,Álvaro Obregón,fuera,12.0,Paraíso|Molino de Santo Domingo|Real del Monte
+01139,Álvaro Obregón,fuera,12.1,Reacomodo Pino Suárez
+01140,Álvaro Obregón,fuera,12.0,Bellavista|José Maria Pino Suárez
+01150,Álvaro Obregón,fuera,11.4,Cristo Rey|Tolteca
+01160,Álvaro Obregón,fuera,11.2,Bosque|Isidro Fabela|Maria G. de García Ruiz|1a Victoria
+01170,Álvaro Obregón,fuera,11.1,Abraham M. González|Santa Fe IMSS
+01180,Álvaro Obregón,fuera,11.2,Carola|8 de Agosto|San Pedro de los Pinos
+01184,Álvaro Obregón,fuera,,Nelli Campo Bello
+01200,Álvaro Obregón,fuera,11.5,Arturo Martínez
+01210,Álvaro Obregón,fuera,12.3,Santa Fe
+01219,Álvaro Obregón,fuera,12.6,Lomas de Santa Fe
+01220,Álvaro Obregón,fuera,12.2,La Estrella|Bonanza|Cuevitas|El Cuernito|Mártires de Tacubaya|Zenón Delgado
+01230,Álvaro Obregón,fuera,12.0,Campo de Tiro los Gamitos|Los Gamitos|Tlapechico|El Piru Santa Fe|El Piru 2a Ampliación
+01239,Álvaro Obregón,fuera,11.9,La Huerta
+01240,Álvaro Obregón,fuera,12.0,Pueblo Nuevo
+01250,Álvaro Obregón,fuera,11.8,El Árbol|Ladera|Lomas de Nuevo México|Margarita Maza de Juárez|Tecolalco
+01259,Álvaro Obregón,fuera,11.5,Ampliación La Cebada|La Mexicana 2a Ampliación
+01260,Álvaro Obregón,fuera,11.5,Calzada Jalalpa|La Mexicana|Ampliación La Mexicana|La Palmita|Liberación Proletaria
+01269,Álvaro Obregón,fuera,11.5,1a Sección Cañada|2a Sección Cañada
+01270,Álvaro Obregón,fuera,10.7,El Tejocote|La Presa|Golondrinas|Golondrinas 1a Sección|Golondrinas 2a Sección|Lomas de Capula
+01275,Álvaro Obregón,fuera,11.3,Villa Solidaridad
+01276,Álvaro Obregón,fuera,10.9,El Pirul
+01278,Álvaro Obregón,fuera,11.2,Desarrollo Urbano
+01279,Álvaro Obregón,fuera,11.4,Lomas de Becerra
+01280,Álvaro Obregón,fuera,10.9,Arvide|El Pocito|Francisco Villa|La Joya|Lomas de Becerra
+01285,Álvaro Obregón,fuera,10.6,El Rodeo
+01289,Álvaro Obregón,fuera,10.8,Reacomodo El Cuernito
+01290,Álvaro Obregón,fuera,10.8,Piloto Adolfo López Mateos|Presidentes
+01296,Álvaro Obregón,fuera,11.2,Jalalpa Tepito 2a Ampliación|Ampliación Jalalpa|Jalalpa Tepito
+01298,Álvaro Obregón,fuera,10.4,Ampliación Piloto Adolfo López Mateos
+01299,Álvaro Obregón,fuera,10.8,1a Ampliación Presidentes|2a Ampliación Presidentes
+01310,Álvaro Obregón,fuera,12.8,San Gabriel
+01320,Álvaro Obregón,fuera,12.4,Carlos A. Madrazo
+01330,Álvaro Obregón,fuera,12.9,Paseo de las Lomas
+01340,Álvaro Obregón,fuera,12.3,Bejero del Pueblo Santa Fe
+01376,Álvaro Obregón,fuera,12.0,Santa Fe|Santa Fe Peña Blanca|Santa Fe La Loma|Santa Fe Centro Ciudad
+01377,Álvaro Obregón,fuera,11.2,Jalalpa El Grande
+01379,Álvaro Obregón,fuera,,Antonio Carrillo Flores
+01389,Álvaro Obregón,fuera,11.4,Santa Fe Tlayapaca
+01400,Álvaro Obregón,fuera,9.9,Olivar del Conde 1a Sección|Preconcreto
+01407,Álvaro Obregón,fuera,10.2,Galeana
+01408,Álvaro Obregón,fuera,10.1,Olivar del Conde 2a Sección
+01410,Álvaro Obregón,fuera,10.3,Barrio Norte|Palmas
+01419,Álvaro Obregón,fuera,10.3,Minas Cristo Rey
+01420,Álvaro Obregón,fuera,10.4,Sacramento|Santa María Nonoalco
+01430,Álvaro Obregón,fuera,9.9,Colina del Sur
+01450,Álvaro Obregón,fuera,9.6,Hogar y Redención|Batallón de San Patricio|Unidad Popular Emiliano Zapata
+01460,Álvaro Obregón,fuera,9.8,Alfonso XIII
+01470,Álvaro Obregón,fuera,9.5,Alfalfar|Molino de Rosas
+01480,Álvaro Obregón,fuera,9.1,Lomas de Plateros
+01490,Álvaro Obregón,fuera,9.2,La Cascada|Torres de Mixcoac
+01500,Álvaro Obregón,fuera,10.8,Santa Lucía|Miguel Gaona Armenta
+01509,Álvaro Obregón,fuera,10.0,Santa Lucía Chantepec
+01510,Álvaro Obregón,fuera,10.5,Garcimarrero|La Araña|Los Cedros
+01520,Álvaro Obregón,fuera,10.8,Ampliación Los Pirules|Estado de Hidalgo|Ampliación Estado de Hidalgo|Piru Santa Lucía|El Politoco
+01530,Álvaro Obregón,fuera,10.7,Corpus Christy
+01537,Álvaro Obregón,fuera,,Universal
+01538,Álvaro Obregón,fuera,11.1,Tepopotla
+01539,Álvaro Obregón,fuera,10.8,Acuilotla|Cooperativa Unión Olivos
+01540,Álvaro Obregón,fuera,10.2,Balcones de Cehuayo|Cehuaya|Llano Redondo|Punta de Cehuaya|Providencia
+01548,Álvaro Obregón,fuera,9.9,Villa Progresista
+01549,Álvaro Obregón,fuera,10.3,Dos Ríos del Pueblo Santa Lucía
+01550,Álvaro Obregón,fuera,9.8,Tepeaca|Ampliación Tepeaca|Rinconada Las Cuevitas
+01560,Álvaro Obregón,fuera,9.8,Ave Real|Canutillo|Canutillo 3a Sección|Canutillo 2a Sección
+01566,Álvaro Obregón,fuera,9.5,Hueytlale
+01567,Álvaro Obregón,fuera,,Tepeaca
+01569,Álvaro Obregón,fuera,9.6,Reacomodo Valentín Gómez Farías
+01588,Álvaro Obregón,fuera,9.6,Tarango
+01590,Álvaro Obregón,fuera,10.0,El Rincón
+01600,Álvaro Obregón,fuera,8.8,Merced Gómez
+01610,Álvaro Obregón,fuera,9.1,Colinas de Tarango|Profesor J. Arturo López Martínez
+01618,Álvaro Obregón,fuera,9.2,Arcos Centenario|Ex-Hacienda de Tarango
+01619,Álvaro Obregón,fuera,9.2,Rinconada de Tarango|La Martinica
+01620,Álvaro Obregón,fuera,9.0,Lomas de Tarango
+01630,Álvaro Obregón,fuera,9.3,Lomas de Puerta Grande|Puerta Grande|Los Juristas|Belém de las Flores
+01640,Álvaro Obregón,fuera,9.3,Herón Proal
+01645,Álvaro Obregón,fuera,9.2,Ponciano Arriaga
+01650,Álvaro Obregón,fuera,9.5,La Milagrosa|Palmas Axotitla|Tlacuitlapa|Ampliación Tlacuitlapa|2o Reacomodo Tlacuitlapa|El Ruedo|Santa Lucía Chantepec
+01700,Álvaro Obregón,borde,7.7,La Joyita del Pueblo Tetelpan|Ocotillos del Pueblo Tetelpan|San Agustín del Pueblo Tetelpan|2a Del Moral del Pueblo Tetelpan|Tecalcapa del Pueblo Tetelpan|Tetelpan
+01708,Álvaro Obregón,borde,8.0,El Encino del Pueblo Tetelpan|El Mirador del Pueblo Tetelpan
+01710,Álvaro Obregón,borde,8.1,Las Águilas|Ampliación Alpes
+01720,Álvaro Obregón,fuera,9.0,Lomas de Guadalupe
+01729,Álvaro Obregón,fuera,9.1,Alcantarilla
+01730,Álvaro Obregón,borde,8.5,Lomas de las Águilas|Puente Colorado
+01740,Álvaro Obregón,borde,8.2,La Peñita del Pueblo Tetelpan|San Clemente Norte|San Clemente Sur
+01750,Álvaro Obregón,fuera,8.6,Las Águilas 1a Sección|Las Águilas 2o Parque|Las Águilas 3er Parque
+01759,Álvaro Obregón,borde,7.9,Ampliación Las Águilas
+01760,Álvaro Obregón,borde,7.4,Atlamaya|Flor de María|La Herradura del Pueblo Tetelpan
+01770,Álvaro Obregón,borde,7.6,La Angostura|San José del Olivar
+01780,Álvaro Obregón,borde,7.3,Olivar de los Padres|Tizampampano del Pueblo Tetelpan
+01789,Álvaro Obregón,dentro,6.5,Miguel Hidalgo
+01790,Álvaro Obregón,dentro,6.8,Lomas de los Ángeles del Pueblo Tetelpan|Lomas de San Ángel Inn
+01800,Álvaro Obregón,fuera,10.7,San Bartolo Ameyalco
+01807,Álvaro Obregón,fuera,9.6,Rancho San Francisco Pueblo San Bartolo Ameyalco
+01810,Álvaro Obregón,fuera,9.9,Villa Verdún
+01820,Álvaro Obregón,fuera,10.3,Lomas Axomiatla|Ejido San Mateo
+01830,Álvaro Obregón,fuera,11.8,Santa Rosa Xochiac
+01840,Álvaro Obregón,fuera,8.6,Torres de Potrero
+01849,Álvaro Obregón,fuera,9.2,Rincón de la Bolsa|Rancho del Carmen del Pueblo San Bartolo Ameyalco
+01857,Álvaro Obregón,fuera,10.0,Lomas de Chamontoya
+01859,Álvaro Obregón,fuera,10.6,Tlacoyaque
+01860,Álvaro Obregón,fuera,9.4,Lomas de La Era
+01863,Álvaro Obregón,fuera,9.7,Lomas del Capulín
+01864,,fuera,12.6,
+01870,Álvaro Obregón,fuera,9.1,Lomas de los Cedros
+01900,Álvaro Obregón,dentro,4.5,Jardines del Pedregal
+01904,Álvaro Obregón,dentro,5.4,San Jerónimo Aculco
+02000,Azcapotzalco,fuera,21.3,Centro de Azcapotzalco
+02010,Azcapotzalco,fuera,21.9,Los Reyes|San Rafael|Nuevo Barrio San Rafael
+02020,Azcapotzalco,fuera,21.9,San Marcos|Santo Tomás
+02040,Azcapotzalco,fuera,21.2,Del Maestro|San Sebastián
+02050,Azcapotzalco,fuera,20.9,Libertad|Santa María Malinalco
+02060,Azcapotzalco,fuera,20.5,Sindicato Mexicano de Electricistas|Un Hogar Para Cada Trabajador
+02070,Azcapotzalco,fuera,20.4,Del Recreo|Nextengo
+02080,Azcapotzalco,fuera,19.6,Clavería|Sector Naval
+02090,Azcapotzalco,fuera,19.1,San Álvaro
+02099,Azcapotzalco,fuera,19.8,Ángel Zimbrón
+02100,Azcapotzalco,fuera,24.4,El Rosario
+02109,Azcapotzalco,fuera,,Manuel Rivera Anaya CROC 1
+02120,Azcapotzalco,fuera,23.8,San Martín Xochinahuac
+02128,Azcapotzalco,fuera,23.6,Nueva El Rosario
+02129,Azcapotzalco,fuera,23.1,Nueva España
+02130,Azcapotzalco,fuera,23.4,Tierra Nueva
+02140,Azcapotzalco,fuera,22.8,Santa Inés
+02150,Azcapotzalco,fuera,22.8,Pasteros
+02160,Azcapotzalco,fuera,22.1,Santo Domingo
+02169,Azcapotzalco,fuera,,Villas de Azcapotzalco
+02200,Azcapotzalco,fuera,22.7,Reynosa Tamaulipas
+02230,Azcapotzalco,fuera,23.3,Santa Bárbara
+02240,Azcapotzalco,fuera,22.5,San Andrés
+02250,Azcapotzalco,fuera,22.5,Santa Catarina
+02300,Azcapotzalco,fuera,22.9,Industrial Vallejo
+02310,Azcapotzalco,fuera,24.0,Ferrería
+02320,Azcapotzalco,fuera,22.4,San Andrés de las Salinas
+02330,Azcapotzalco,fuera,22.2,Huautla de las Salinas
+02340,Azcapotzalco,fuera,22.1,Santa Cruz de las Salinas
+02360,Azcapotzalco,fuera,22.0,Las Salinas
+02400,Azcapotzalco,fuera,22.4,San Juan Tlihuaca
+02410,Azcapotzalco,fuera,24.0,Prados del Rosario
+02419,Azcapotzalco,fuera,,Trabajadores de PEMEX
+02420,Azcapotzalco,fuera,23.2,Ex-Hacienda El Rosario|Francisco Villa
+02430,Azcapotzalco,fuera,,Presidente Madero
+02440,Azcapotzalco,fuera,22.6,Providencia
+02450,Azcapotzalco,fuera,,Las Trancas|Miguel Hidalgo
+02459,Azcapotzalco,fuera,22.3,Tezozomoc
+02460,Azcapotzalco,fuera,21.9,La Preciosa
+02470,Azcapotzalco,fuera,21.5,Ampliación Petrolera
+02479,Azcapotzalco,fuera,,Lázaro Cárdenas
+02480,Azcapotzalco,fuera,21.8,Petrolera
+02490,Azcapotzalco,fuera,21.5,San Mateo
+02500,Azcapotzalco,fuera,20.3,Unidad Cuitláhuac|Unidad Cuitlahuac
+02510,Azcapotzalco,fuera,,El Jagüey|Pantaco
+02519,Azcapotzalco,fuera,21.8,El Jagüey
+02520,Azcapotzalco,fuera,21.6,Estación Pantaco
+02525,Azcapotzalco,fuera,,Granjas Pantaco Campamento Ferrocarrilero
+02530,Azcapotzalco,fuera,20.3,Jardín Azpeitia
+02540,Azcapotzalco,fuera,,Hogares Ferrocarrileros
+02600,Azcapotzalco,fuera,20.8,Pro-Hogar
+02630,Azcapotzalco,fuera,21.6,Coltongo
+02640,Azcapotzalco,fuera,21.3,Monte Alto
+02650,Azcapotzalco,fuera,21.2,Trabajadores de Hierro
+02660,Azcapotzalco,fuera,21.0,Euzkadi
+02670,Azcapotzalco,fuera,20.6,Cosmopolita
+02680,Azcapotzalco,fuera,20.6,Potrero del Llano
+02700,Azcapotzalco,fuera,20.8,San Miguel Amantla
+02710,Azcapotzalco,fuera,21.9,San Pedro Xalpa
+02719,Azcapotzalco,fuera,21.4,Ampliación San Pedro Xalpa
+02720,Azcapotzalco,fuera,21.3,San Antonio|San Bartolo Cahualtongo
+02729,Azcapotzalco,fuera,,Campo Encantado
+02730,Azcapotzalco,fuera,21.2,San Francisco Tetecala
+02739,Azcapotzalco,fuera,,Miguel Lerdo de Tejada
+02750,Azcapotzalco,fuera,21.0,Santiago Ahuizotla|La Providencia
+02760,Azcapotzalco,fuera,21.0,Industrial San Antonio|Santa Lucía
+02770,Azcapotzalco,fuera,20.7,Santa Cruz Acayucan
+02780,Azcapotzalco,fuera,20.5,Plenitud
+02790,Azcapotzalco,fuera,20.6,Santa Apolonia
+02800,Azcapotzalco,fuera,19.4,Nueva Santa María
+02810,Azcapotzalco,fuera,19.9,Ignacio Allende|Victoria de las Democracias
+02830,Azcapotzalco,fuera,19.8,San Bernabé
+02840,Azcapotzalco,fuera,19.4,Obrero Popular
+02850,Azcapotzalco,fuera,,Tlatilco
+02860,Azcapotzalco,fuera,19.1,Tlatilco
+02870,Azcapotzalco,fuera,18.9,San Salvador Xochimanca
+02900,Azcapotzalco,fuera,20.5,Aguilera
+02910,Azcapotzalco,fuera,20.3,Aldana
+02920,Azcapotzalco,fuera,20.4,Ampliación Cosmopolita
+02930,Azcapotzalco,fuera,20.3,Liberación
+02940,Azcapotzalco,fuera,20.4,Porvenir
+02950,Azcapotzalco,fuera,20.2,Del Gas
+02960,Azcapotzalco,fuera,20.1,San Francisco Xocotitla
+02970,Azcapotzalco,fuera,19.8,Ampliación Del Gas
+02980,Azcapotzalco,fuera,19.7,Arenal|Patrimonio Familiar
+02990,Azcapotzalco,fuera,19.9,La Raza
+03000,Benito Juárez,fuera,12.8,Piedad Narvarte
+03010,Benito Juárez,fuera,13.1,Atenor Salas
+03020,Benito Juárez,fuera,11.6,Narvarte Poniente
+03023,Benito Juárez,fuera,11.9,Narvarte Oriente
+03100,Benito Juárez,fuera,10.6,Del Valle Centro|Insurgentes San Borja
+03103,Benito Juárez,fuera,11.8,Del Valle Norte
+03104,Benito Juárez,fuera,9.2,Del Valle Sur
+03200,Benito Juárez,fuera,9.7,Tlacoquemécatl
+03230,Benito Juárez,fuera,8.8,Actipan
+03240,Benito Juárez,borde,8.3,Acacias
+03300,Benito Juárez,fuera,8.6,Portales Sur
+03303,Benito Juárez,fuera,9.4,Portales Norte
+03310,Benito Juárez,fuera,9.0,Santa Cruz Atoyac
+03320,Benito Juárez,fuera,9.1,Residencial Emperadores
+03330,Benito Juárez,borde,8.2,Xoco
+03340,Benito Juárez,borde,8.2,General Pedro María Anaya
+03400,Benito Juárez,fuera,12.7,Álamos
+03410,Benito Juárez,fuera,11.9,Postal
+03420,Benito Juárez,fuera,11.7,Miguel Alemán
+03430,Benito Juárez,fuera,11.6,Josefa Ortiz de Domínguez
+03440,Benito Juárez,fuera,11.4,Niños Héroes
+03500,Benito Juárez,fuera,11.2,Nativitas
+03510,Benito Juárez,fuera,12.7,Moderna
+03520,Benito Juárez,fuera,12.1,Iztaccihuatl
+03530,Benito Juárez,fuera,11.8,Villa de Cortes
+03540,Benito Juárez,fuera,10.5,Del Carmen
+03550,Benito Juárez,fuera,10.2,Zacahuitzco
+03560,Benito Juárez,fuera,10.0,Albert
+03570,Benito Juárez,fuera,9.5,Portales Oriente
+03580,Benito Juárez,fuera,9.0,Miravalle
+03590,Benito Juárez,fuera,8.6,Ermita
+03600,Benito Juárez,fuera,10.6,Vértiz Narvarte
+03610,Benito Juárez,fuera,11.1,Américas Unidas
+03620,Benito Juárez,fuera,10.9,Periodista
+03630,Benito Juárez,fuera,10.6,Independencia
+03640,Benito Juárez,fuera,10.7,Del Lago
+03650,Benito Juárez,fuera,10.0,Letrán Valle
+03660,Benito Juárez,fuera,10.2,San Simón Ticumac
+03700,Benito Juárez,fuera,10.3,Santa María Nonoalco
+03710,Benito Juárez,fuera,10.4,Ciudad de los Deportes
+03720,Benito Juárez,fuera,10.1,Nochebuena
+03730,Benito Juárez,fuera,9.9,San Juan
+03740,Benito Juárez,fuera,9.7,Extremadura Insurgentes
+03800,Benito Juárez,fuera,11.2,San Pedro de los Pinos
+03810,Benito Juárez,fuera,11.6,Nápoles
+03820,Benito Juárez,fuera,11.7,8 de Agosto
+03840,Benito Juárez,fuera,10.9,Ampliación Nápoles
+03900,Benito Juárez,fuera,8.6,San José Insurgentes
+03910,Benito Juárez,fuera,9.4,Mixcoac
+03920,Benito Juárez,fuera,9.3,Insurgentes Mixcoac
+03930,Benito Juárez,fuera,8.6,Merced Gómez
+03940,Benito Juárez,fuera,8.4,Crédito Constructor
+04000,Coyoacán,dentro,6.7,Villa Coyoacán
+04010,Coyoacán,dentro,6.6,Santa Catarina
+04020,Coyoacán,dentro,6.8,La Concepción
+04030,Coyoacán,dentro,7.1,San Lucas
+04040,Coyoacán,dentro,7.0,Parque San Andrés
+04100,Coyoacán,borde,7.4,Del Carmen
+04120,Coyoacán,borde,7.9,San Diego Churubusco|San Mateo
+04200,Coyoacán,borde,7.8,Campestre Churubusco
+04210,Coyoacán,borde,8.0,Churubusco Country Club
+04230,Coyoacán,fuera,9.1,Prado Churubusco
+04239,Coyoacán,fuera,,Ermita Churubusco
+04240,Coyoacán,fuera,8.4,Hermosillo
+04250,Coyoacán,borde,8.4,Paseos de Taxqueña
+04260,Coyoacán,borde,8.4,San Francisco Culhuacán Barrio de San Francisco|San Francisco Culhuacán Barrio de La Magdalena|San Francisco Culhuacán Barrio de Santa Ana|San Francisco Culhuacán Barrio de San Juan
+04270,Coyoacán,fuera,,Santa Martha del Sur Quetzalcoatl
+04300,Coyoacán,dentro,4.0,Ajusco
+04310,Coyoacán,dentro,5.8,Romero de Terreros
+04318,Coyoacán,dentro,6.0,Oxtopulco Universidad
+04320,Coyoacán,dentro,5.9,Cuadrante de San Francisco|Pedregal de San Francisco|Romero de Terreros
+04326,Coyoacán,fuera,,Villa de San Francisco
+04330,Coyoacán,dentro,6.0,El Rosedal|Los Reyes|Del Niño Jesús|Pedregal de Coyoacán
+04340,Coyoacán,dentro,5.5,Copilco El Bajo
+04350,Coyoacán,fuera,,Integración Latinoamericana|Villas Copilco
+04359,Coyoacán,fuera,,Empleados Federales
+04360,Coyoacán,dentro,5.0,Copilco El Alto|Copilco Universidad
+04368,Coyoacán,fuera,,Residencial la Cantera
+04369,Coyoacán,dentro,4.5,Pedregal de Santo Domingo
+04370,Coyoacán,dentro,6.4,Atlántida|Ciudad Jardín
+04380,Coyoacán,dentro,5.7,El Rosario|La Candelaria
+04390,Coyoacán,dentro,5.2,Huayamilpas|Nueva Díaz Ordaz
+04400,Coyoacán,dentro,7.1,Educación
+04410,Coyoacán,dentro,7.3,Petrolera Taxqueña
+04420,Coyoacán,borde,7.5,Ex-Ejido de San Francisco Culhuacán
+04440,Coyoacán,borde,8.2,Culhuacán CTM Sección V|Culhuacán CTM Sección II|Culhuacán CTM Sección I
+04450,Coyoacán,dentro,6.7,El Centinela
+04460,Coyoacán,dentro,6.4,Avante
+04470,Coyoacán,dentro,6.9,Presidentes Ejidales 1a Sección|Presidentes Ejidales 2a Sección
+04480,Coyoacán,borde,7.5,Culhuacán CTM Sección VI|Culhuacán CTM Sección III|Culhuacán CTM CROC|Culhuacán CTM Sección X-A
+04489,Coyoacán,borde,8.3,Culhuacán CTM Sección VII
+04490,Coyoacán,borde,8.4,Culhuacán CTM Sección Piloto|Culhuacán CTM Canal Nacional
+04500,Coyoacán,dentro,2.8,Jardines del Pedregal de San Ángel
+04510,Coyoacán,dentro,3.6,Universidad Nacional Autónoma de México
+04519,Coyoacán,dentro,5.4,La Otra Banda
+04530,Coyoacán,dentro,2.1,Insurgentes Cuicuilco
+04600,Coyoacán,dentro,3.6,Pedregal de Santa Úrsula
+04610,Coyoacán,dentro,5.9,Xotepingo
+04620,Coyoacán,dentro,5.4,San Pablo Tepetlapa
+04630,Coyoacán,dentro,4.5,Adolfo Ruiz Cortínes
+04640,Coyoacán,dentro,5.0,El Reloj
+04650,Coyoacán,dentro,3.8,Santa Úrsula Coapa
+04660,Coyoacán,dentro,2.9,Joyas del Pedregal|Pedregal de La Zorra
+04700,Coyoacán,dentro,2.1,Pedregal de Carrasco
+04710,Coyoacán,dentro,2.0,Olímpica
+04718,Coyoacán,fuera,,Vistas del Maurel
+04719,Coyoacán,fuera,,Pedregal del Sur
+04730,Coyoacán,dentro,2.7,Cantil del Pedregal|Bosques de Tetlameya
+04738,Coyoacán,fuera,,Modulo Social Imán
+04739,Coyoacán,dentro,2.4,El Caracol
+04800,Coyoacán,dentro,7.0,Alianza Popular Revolucionaria|Los Cedros
+04810,Coyoacán,dentro,5.9,Prados de Coyoacán
+04815,Coyoacán,dentro,6.0,Emiliano Zapata
+04830,Coyoacán,dentro,6.3,Los Cipreses
+04840,Coyoacán,dentro,7.0,Ex-Ejido de San Pablo Tepetlapa
+04849,Coyoacán,fuera,,Sector Marina
+04870,Coyoacán,dentro,5.6,Espartaco
+04890,Coyoacán,dentro,6.0,Jardines de Coyoacán|Los Olivos
+04899,Coyoacán,dentro,5.6,El Parque de Coyoacán
+04908,Coyoacán,fuera,,La Virgen
+04909,Coyoacán,borde,8.5,Culhuacán CTM Sección VIII|Culhuacán CTM Sección IX-A|Culhuacán CTM Sección IX-B
+04910,Coyoacán,borde,8.2,Carmen Serdán
+04918,Coyoacán,borde,7.8,Cafetales
+04919,Coyoacán,borde,7.9,Emiliano Zapata Fraccionamiento Popular
+04920,Coyoacán,dentro,6.3,Los Girasoles
+04929,Coyoacán,dentro,6.6,Las Campanas
+04930,Coyoacán,dentro,7.1,Santa Cecilia
+04938,Coyoacán,dentro,6.9,Campestre Coyoacán
+04939,Coyoacán,dentro,7.5,Culhuacán CTM Sección X
+04940,Coyoacán,dentro,6.6,Los Sauces
+04950,Coyoacán,dentro,7.5,El Mirador
+04960,Coyoacán,borde,8.0,Villa Quietud
+04970,Coyoacán,dentro,7.2,Haciendas de Coyoacán
+04980,Coyoacán,dentro,4.8,Ex-Ejido de Santa Úrsula Coapa|Ex-Hacienda Coapa|Viejo Ejido de Santa Úrsula Coapa
+05000,Cuajimalpa de Morelos,fuera,14.7,Cuajimalpa
+05010,Cuajimalpa de Morelos,fuera,15.4,Zentlapatl
+05020,Cuajimalpa de Morelos,fuera,15.3,Loma del Padre
+05030,Cuajimalpa de Morelos,fuera,14.6,San Pedro|La Manzanita
+05039,Cuajimalpa de Morelos,fuera,16.1,Ahuatenco
+05050,Cuajimalpa de Morelos,fuera,16.4,San Pablo Chimalpa
+05060,Cuajimalpa de Morelos,fuera,,José María Castorena
+05100,Cuajimalpa de Morelos,fuera,13.9,Lomas de Vista Hermosa
+05110,Cuajimalpa de Morelos,fuera,13.0,Cooperativa Palo Alto
+05118,Cuajimalpa de Morelos,fuera,13.1,Granjas Palo Alto
+05119,Cuajimalpa de Morelos,fuera,13.1,Campestre Palo Alto
+05120,Cuajimalpa de Morelos,fuera,13.6,Bosques de las Lomas
+05129,Cuajimalpa de Morelos,fuera,14.5,Lomas del Chamizal
+05200,Cuajimalpa de Morelos,fuera,14.4,San José de los Cedros
+05214,Cuajimalpa de Morelos,fuera,,Club de Golf Bosques
+05219,Cuajimalpa de Morelos,fuera,14.5,Granjas Navidad
+05220,Cuajimalpa de Morelos,fuera,15.0,Tepetongo
+05230,Cuajimalpa de Morelos,fuera,14.9,El Ébano
+05240,Cuajimalpa de Morelos,fuera,13.8,El Molino
+05260,Cuajimalpa de Morelos,fuera,14.5,Jesús del Monte
+05268,Cuajimalpa de Morelos,fuera,,Villas de Cuajimalpa
+05269,Cuajimalpa de Morelos,fuera,15.0,Amado Nervo
+05270,Cuajimalpa de Morelos,fuera,15.2,Manzanastitla
+05280,Cuajimalpa de Morelos,fuera,14.9,Adolfo López Mateos
+05310,Cuajimalpa de Morelos,fuera,13.9,El Molinito
+05320,Cuajimalpa de Morelos,fuera,13.2,El Yaqui
+05330,Cuajimalpa de Morelos,fuera,13.7,Lomas de Memetla|Memetla|Ampliación Memetla|Ampliación el Yaqui
+05348,Cuajimalpa de Morelos,fuera,12.1,Santa Fe Cuajimalpa
+05360,Cuajimalpa de Morelos,fuera,13.8,Locaxco
+05370,Cuajimalpa de Morelos,fuera,13.2,Las Tinajas
+05379,Cuajimalpa de Morelos,fuera,13.5,Lomas de San Pedro
+05400,Cuajimalpa de Morelos,fuera,15.5,El Tianguillo
+05410,Cuajimalpa de Morelos,fuera,16.2,San Lorenzo Acopilco|1° de Mayo
+05500,Cuajimalpa de Morelos,fuera,13.9,Contadero
+05520,Cuajimalpa de Morelos,fuera,14.6,La Venta
+05530,Cuajimalpa de Morelos,fuera,13.8,Abdías García Soto
+05600,Cuajimalpa de Morelos,fuera,12.4,San Mateo Tlaltenango
+05610,Cuajimalpa de Morelos,fuera,12.6,Santa Rosa Xochiac
+05700,Cuajimalpa de Morelos,fuera,15.8,Cruz Blanca
+05710,Cuajimalpa de Morelos,fuera,16.4,Las Maromas
+05730,Cuajimalpa de Morelos,fuera,16.0,Xalpa
+05733,,fuera,14.3,
+05750,Cuajimalpa de Morelos,fuera,16.6,La Pila
+05753,,fuera,15.9,
+05754,,fuera,17.6,
+05760,Cuajimalpa de Morelos,fuera,16.4,Las Lajas
+05780,Cuajimalpa de Morelos,fuera,15.6,Agua Bendita
+05790,,fuera,17.8,
+06000,Cuauhtémoc,fuera,16.5,Centro (Área 1)
+06010,Cuauhtémoc,fuera,17.3,Centro (Área 2)
+06020,Cuauhtémoc,fuera,17.4,Centro (Área 3)
+06030,Cuauhtémoc,fuera,16.5,Tabacalera
+06040,Cuauhtémoc,fuera,16.0,Centro (Área 4)
+06050,Cuauhtémoc,fuera,16.4,Centro (Área 5)
+06060,Cuauhtémoc,fuera,16.6,Centro (Área 6)
+06070,Cuauhtémoc,fuera,15.9,Centro (Área 7)
+06080,Cuauhtémoc,fuera,15.7,Centro (Área 8)
+06090,Cuauhtémoc,fuera,16.0,Centro (Área 9)
+06100,Cuauhtémoc,fuera,13.3,Hipódromo
+06140,Cuauhtémoc,fuera,13.9,Condesa
+06170,Cuauhtémoc,fuera,13.3,Hipódromo Condesa
+06200,Cuauhtémoc,fuera,18.2,Morelos
+06220,Cuauhtémoc,fuera,19.7,Peralvillo
+06240,Cuauhtémoc,fuera,19.6,Valle Gómez
+06250,Cuauhtémoc,fuera,19.1,Ex-Hipódromo de Peralvillo
+06270,Cuauhtémoc,fuera,19.2,Maza
+06280,Cuauhtémoc,fuera,19.1,Felipe Pescador
+06300,Cuauhtémoc,fuera,17.6,Guerrero
+06350,Cuauhtémoc,fuera,17.6,Buenavista
+06400,Cuauhtémoc,fuera,17.8,Santa María la Ribera
+06430,Cuauhtémoc,fuera,19.4,Santa María Insurgentes
+06450,Cuauhtémoc,fuera,18.9,Atlampa
+06470,Cuauhtémoc,fuera,16.6,San Rafael
+06500,Cuauhtémoc,fuera,15.7,Cuauhtémoc
+06600,Cuauhtémoc,fuera,15.4,Juárez
+06700,Cuauhtémoc,fuera,14.4,Roma Norte
+06720,Cuauhtémoc,fuera,14.5,Doctores
+06760,Cuauhtémoc,fuera,13.1,Roma Sur
+06780,Cuauhtémoc,fuera,13.3,Buenos Aires
+06800,Cuauhtémoc,fuera,14.6,Obrera
+06820,Cuauhtémoc,fuera,15.1,Tránsito
+06840,Cuauhtémoc,fuera,15.5,Esperanza
+06850,Cuauhtémoc,fuera,13.7,Asturias
+06860,Cuauhtémoc,fuera,14.3,Vista Alegre
+06870,Cuauhtémoc,fuera,14.5,Paulino Navarro
+06880,Cuauhtémoc,fuera,13.5,Algarin
+06890,Cuauhtémoc,fuera,14.0,Ampliación Asturias
+06900,Cuauhtémoc,fuera,18.6,Nonoalco Tlatelolco
+06920,Cuauhtémoc,fuera,19.2,San Simón Tolnáhuac
+07000,Gustavo A. Madero,fuera,22.2,Aragón la Villa
+07010,Gustavo A. Madero,fuera,24.1,Rosas del Tepeyac|Santa Isabel Tola|Tepetates
+07020,Gustavo A. Madero,fuera,22.5,Tepeyac Insurgentes
+07040,Gustavo A. Madero,fuera,24.6,Santiago Atzacoalco
+07050,Gustavo A. Madero,fuera,22.6,Villa Gustavo A. Madero
+07058,Gustavo A. Madero,fuera,23.0,15 de Agosto
+07060,Gustavo A. Madero,fuera,23.4,Estanzuela
+07069,Gustavo A. Madero,fuera,23.6,Triunfo de La República
+07070,Gustavo A. Madero,fuera,23.3,La Cruz|Dinamita|Martín Carrera
+07080,Gustavo A. Madero,fuera,24.4,Gabriel Hernández
+07089,Gustavo A. Madero,fuera,25.2,Ampliación Gabriel Hernández
+07090,Gustavo A. Madero,fuera,25.8,C.T.M. Atzacoalco|C.T.M. El Risco
+07100,Gustavo A. Madero,fuera,30.0,Cuautepec Barrio Alto|San Miguel
+07109,Gustavo A. Madero,fuera,30.3,San Antonio
+07110,Gustavo A. Madero,fuera,31.3,Lomas de Cuautepec
+07119,Gustavo A. Madero,fuera,32.8,Malacates|Ampliación Malacates
+07130,Gustavo A. Madero,fuera,30.8,Compositores Mexicanos|El Tepetatal
+07135,,fuera,31.4,
+07140,Gustavo A. Madero,fuera,30.8,Arboledas|Ampliación Arboledas|Forestal|Forestal I
+07144,Gustavo A. Madero,fuera,31.5,Forestal II|La Lengüeta
+07145,,fuera,31.1,
+07146,,fuera,32.1,
+07149,Gustavo A. Madero,fuera,31.2,Parque Metropolitano
+07150,Gustavo A. Madero,fuera,30.1,Juventino Rosas|La Casilda
+07155,,fuera,30.1,
+07160,Gustavo A. Madero,fuera,29.6,Loma La Palma
+07164,Gustavo A. Madero,fuera,30.3,Luis Donaldo Colosio|Tlacaélel|Graciano Sánchez|Prados de Cuautepec
+07170,Gustavo A. Madero,fuera,29.5,Palmatitla
+07180,Gustavo A. Madero,fuera,29.5,Cocoyotes|General Felipe Berriozabal|Ampliación Cocoyotes
+07183,Gustavo A. Madero,fuera,29.4,6 de Junio
+07187,Gustavo A. Madero,fuera,29.5,Vista Hermosa
+07188,Gustavo A. Madero,fuera,28.9,Tlalpexco
+07189,Gustavo A. Madero,fuera,28.8,Ahuehuetes
+07190,Gustavo A. Madero,fuera,29.2,Valle de Madero
+07199,Gustavo A. Madero,fuera,28.5,Del Carmen
+07200,Gustavo A. Madero,fuera,28.7,Cuautepec de Madero
+07207,Gustavo A. Madero,fuera,28.6,Del Bosque
+07209,Gustavo A. Madero,fuera,28.0,Guadalupe Victoria Cuautepec
+07210,Gustavo A. Madero,fuera,29.2,Chalma de Guadalupe
+07214,Gustavo A. Madero,fuera,29.9,Ampliación Chalma de Guadalupe
+07220,Gustavo A. Madero,fuera,28.1,Castillo Chico|Castillo Grande
+07224,Gustavo A. Madero,fuera,27.9,Ampliación Castillo Grande
+07230,Gustavo A. Madero,fuera,27.8,Zona Escolar
+07239,Gustavo A. Madero,fuera,27.6,Zona Escolar Oriente
+07240,Gustavo A. Madero,fuera,27.6,El Arbolillo
+07250,Gustavo A. Madero,fuera,27.3,Benito Juárez
+07255,,fuera,27.3,
+07259,Gustavo A. Madero,fuera,27.6,Ampliación Benito Juárez
+07268,Gustavo A. Madero,fuera,27.1,Solidaridad Nacional
+07270,Gustavo A. Madero,fuera,26.1,Residencial Acueducto de Guadalupe
+07279,Gustavo A. Madero,fuera,26.5,Acueducto de Guadalupe
+07280,Gustavo A. Madero,fuera,26.7,Jorge Negrete
+07290,Gustavo A. Madero,fuera,26.7,La Pastora
+07300,Gustavo A. Madero,fuera,23.2,Lindavista Norte|Lindavista Sur
+07310,Gustavo A. Madero,fuera,26.0,Candelaria Ticomán
+07320,Gustavo A. Madero,fuera,25.1,La Purísima Ticomán|Residencial la Escalera
+07330,Gustavo A. Madero,fuera,25.5,Santa María Ticomán
+07340,Gustavo A. Madero,fuera,25.0,La Laguna Ticomán|San José Ticomán
+07350,Gustavo A. Madero,fuera,26.1,Guadalupe Ticomán|San Juan y Guadalupe Ticomán
+07359,Gustavo A. Madero,fuera,25.8,San Rafael Ticomán
+07360,Gustavo A. Madero,fuera,24.8,San Pedro Zacatenco|Juan de Dios Bátiz
+07363,Gustavo A. Madero,fuera,25.2,Lomas de San Juan Ixhuatepec 2a Sección
+07369,Gustavo A. Madero,fuera,24.2,Residencial Zacatenco
+07370,Gustavo A. Madero,fuera,21.5,Capultitlan
+07380,Gustavo A. Madero,fuera,21.1,Maximino Ávila Camacho|Tlacamaca
+07400,Gustavo A. Madero,fuera,23.6,Salvador Díaz Mirón
+07410,Gustavo A. Madero,fuera,25.7,Juan González Romero|Villa Hermosa
+07420,Gustavo A. Madero,fuera,24.8,El Coyol|Nueva Atzacoalco
+07430,Gustavo A. Madero,fuera,25.1,Del Obrero
+07440,Gustavo A. Madero,fuera,24.3,Vasco de Quiroga
+07450,Gustavo A. Madero,fuera,22.7,DM Nacional
+07455,Gustavo A. Madero,fuera,23.2,Ferrocarrilera
+07456,Gustavo A. Madero,fuera,23.3,LI Legislatura|Residencial Oriente
+07458,Gustavo A. Madero,fuera,,Eduardo Molina
+07460,Gustavo A. Madero,fuera,22.5,Granjas Modernas
+07469,Gustavo A. Madero,fuera,23.0,Constitución de la República
+07470,Gustavo A. Madero,fuera,22.0,Ampliación San Juan de Aragón
+07480,Gustavo A. Madero,fuera,22.0,San Pedro El Chico
+07500,Gustavo A. Madero,fuera,23.9,La Pradera
+07509,Gustavo A. Madero,fuera,23.6,Pradera II Sección
+07510,Gustavo A. Madero,fuera,25.4,San Felipe de Jesús
+07520,Gustavo A. Madero,fuera,25.1,25 de Julio
+07530,Gustavo A. Madero,fuera,24.1,Campestre Aragón
+07540,Gustavo A. Madero,fuera,23.9,La Esmeralda
+07550,Gustavo A. Madero,fuera,24.4,Providencia
+07560,Gustavo A. Madero,fuera,23.9,Ampliación Providencia
+07570,Gustavo A. Madero,fuera,23.4,Villa de Aragón
+07580,Gustavo A. Madero,fuera,23.1,Ampliación Casas Alemán
+07600,Gustavo A. Madero,fuera,25.6,Progreso Nacional
+07620,Gustavo A. Madero,fuera,26.1,Santa Rosa
+07630,Gustavo A. Madero,fuera,26.3,San José de la Escalera
+07640,Gustavo A. Madero,fuera,26.2,Santiago Atepetlac
+07650,Gustavo A. Madero,fuera,25.2,Ampliación Progreso Nacional
+07670,Gustavo A. Madero,fuera,25.9,Guadalupe Proletaria
+07680,Gustavo A. Madero,fuera,25.9,Ampliación Guadalupe Proletaria
+07700,Gustavo A. Madero,fuera,24.2,Nueva Industrial Vallejo
+07707,Gustavo A. Madero,fuera,25.3,Siete Maravillas
+07708,Gustavo A. Madero,fuera,24.7,Torres Lindavista
+07709,Gustavo A. Madero,fuera,,Lasalle
+07720,Gustavo A. Madero,fuera,23.6,Lindavista Vallejo I Sección
+07730,Gustavo A. Madero,fuera,22.8,Churubusco Tepeyac|Montevideo|San Bartolo Atepehuacan
+07739,Gustavo A. Madero,fuera,23.1,Planetario Lindavista
+07740,Gustavo A. Madero,fuera,22.4,Valle del Tepeyac
+07750,Gustavo A. Madero,fuera,22.6,Nueva Vallejo
+07754,Gustavo A. Madero,fuera,22.7,Lindavista Vallejo III Sección
+07755,Gustavo A. Madero,fuera,23.2,Lindavista Vallejo II Sección
+07760,Gustavo A. Madero,fuera,21.8,Magdalena de las Salinas
+07770,Gustavo A. Madero,fuera,21.3,Panamericana|Ampliación Panamericana
+07780,Gustavo A. Madero,fuera,20.8,Defensores de La República|Héroe de Nacozari
+07790,Gustavo A. Madero,fuera,20.5,Guadalupe Victoria|Vallejo Poniente
+07800,Gustavo A. Madero,fuera,21.3,Industrial
+07810,Gustavo A. Madero,fuera,21.6,Estrella
+07820,Gustavo A. Madero,fuera,21.5,Aragón Inguarán|Tres Estrellas
+07830,Gustavo A. Madero,fuera,21.5,Gertrudis Sánchez 1a Sección
+07838,Gustavo A. Madero,fuera,20.7,Gertrudis Sánchez 3a Sección
+07839,Gustavo A. Madero,fuera,21.3,Gertrudis Sánchez 2a Sección
+07840,Gustavo A. Madero,fuera,20.5,Guadalupe Tepeyac|7 de Noviembre
+07850,Gustavo A. Madero,fuera,21.0,Bondojito|Faja de Oro
+07858,Gustavo A. Madero,fuera,20.9,Ampliación Emiliano Zapata
+07859,Gustavo A. Madero,fuera,20.6,Ampliación Mártires de Río Blanco
+07860,Gustavo A. Madero,fuera,20.6,La Joyita|Tablas de San Agustín
+07869,Gustavo A. Madero,fuera,20.5,Belisario Domínguez
+07870,Gustavo A. Madero,fuera,20.5,Guadalupe Insurgentes|Vallejo
+07880,Gustavo A. Madero,fuera,20.1,Mártires de Río Blanco
+07889,Gustavo A. Madero,fuera,20.1,Emiliano Zapata
+07890,Gustavo A. Madero,fuera,20.1,Nueva Tenochtitlán|Cuchilla La Joya|La Joya
+07899,Gustavo A. Madero,fuera,19.7,La Malinche
+07900,Gustavo A. Madero,fuera,21.7,Cuchilla del Tesoro
+07910,Gustavo A. Madero,fuera,23.1,San Juan de Aragón VII Sección
+07918,Gustavo A. Madero,fuera,23.1,San Juan de Aragón VI Sección
+07919,Gustavo A. Madero,fuera,22.3,Ex Ejido San Juan de Aragón Sector 32
+07920,Gustavo A. Madero,fuera,22.0,El Olivo|San Juan de Aragón
+07930,Gustavo A. Madero,fuera,22.5,Indeco
+07939,Gustavo A. Madero,fuera,22.5,Héroes de Chapultepec
+07940,Gustavo A. Madero,fuera,21.9,Ex Ejido San Juan de Aragón Sector 33
+07950,Gustavo A. Madero,fuera,22.3,San Juan de Aragón
+07960,Gustavo A. Madero,fuera,20.0,Héroes de Cerro Prieto|Ex Escuela de Tiro|Fernando Casas Alemán
+07969,Gustavo A. Madero,fuera,20.8,San Juan de Aragón I Sección|San Juan de Aragón II Sección
+07970,Gustavo A. Madero,fuera,21.2,San Juan de Aragón III Sección
+07979,Gustavo A. Madero,fuera,21.9,San Juan de Aragón IV Sección|San Juan de Aragón V Sección
+07980,Gustavo A. Madero,fuera,22.7,Narciso Bassols
+07990,Gustavo A. Madero,fuera,22.3,C.T.M. Aragón
+08000,Iztacalco,fuera,14.4,Gabriel Ramos Millán Sección Bramadero
+08010,Iztacalco,fuera,14.9,Ex-Ejido de La Magdalena Mixiuhca
+08020,Iztacalco,fuera,13.8,Ampliación Gabriel Ramos Millán
+08030,Iztacalco,fuera,14.3,Gabriel Ramos Millán Sección Cuchilla
+08040,Iztacalco,fuera,13.5,Carlos Zapata Vela
+08100,Iztacalco,fuera,18.1,Agrícola Pantitlán
+08200,Iztacalco,fuera,13.4,Viaducto Piedad
+08210,Iztacalco,fuera,13.4,Nueva Santa Anita
+08220,Iztacalco,fuera,12.8,San Pedro
+08230,Iztacalco,fuera,13.1,San Francisco Xicaltongo
+08240,Iztacalco,fuera,12.8,Santiago Norte
+08300,Iztacalco,fuera,13.8,Santa Anita
+08310,Iztacalco,fuera,14.3,La Cruz
+08320,Iztacalco,fuera,14.0,Fraccionamiento Coyuya
+08400,Iztacalco,fuera,15.2,Granjas México
+08420,Iztacalco,fuera,16.5,Cuchilla Agrícola Oriental
+08500,Iztacalco,fuera,16.4,Agrícola Oriental
+08510,Iztacalco,fuera,15.2,El Rodeo
+08600,Iztacalco,fuera,12.9,La Asunción
+08610,Iztacalco,fuera,13.2,Zapotla
+08620,Iztacalco,fuera,13.6,Los Reyes
+08650,Iztacalco,fuera,13.2,San Miguel
+08700,Iztacalco,fuera,13.6,Juventino Rosas
+08710,Iztacalco,fuera,13.8,Tlazintla
+08720,Iztacalco,fuera,14.1,Gabriel Ramos Millán Sección Tlacotal
+08730,Iztacalco,fuera,14.1,Gabriel Ramos Millán
+08760,Iztacalco,fuera,13.4,INPI Picos|Los Picos de Iztacalco Sección 2A|Los Picos de Iztacalco Sección 1B
+08770,Iztacalco,fuera,13.0,Los Picos de Iztacalco Sección 1A
+08800,Iztacalco,fuera,12.3,Santiago Sur
+08810,Iztacalco,fuera,12.0,Reforma Iztaccíhuatl Norte
+08830,Iztacalco,fuera,11.5,Militar Marte
+08840,Iztacalco,fuera,11.1,Reforma Iztaccíhuatl Sur
+08900,Iztacalco,fuera,13.0,INFONAVIT Iztacalco
+08910,Iztacalco,fuera,12.6,Santa Cruz
+08920,Iztacalco,fuera,12.7,Jardines Tecma
+08930,Iztacalco,fuera,12.5,Campamento 2 de Octubre
+09000,Iztapalapa,fuera,12.1,La Asunción|San Ignacio|San José|San Lucas|San Pablo|San Pedro|Santa Bárbara
+09010,Iztapalapa,fuera,15.0,Real del Moral
+09020,Iztapalapa,fuera,15.0,Dr. Alfonso Ortiz Tirado
+09030,Iztapalapa,fuera,14.5,Paseos de Churubusco
+09040,Iztapalapa,fuera,13.4,Central de Abasto
+09060,Iztapalapa,fuera,10.8,Escuadrón 201|Sector Popular
+09070,Iztapalapa,fuera,11.2,Granjas de San Antonio
+09080,Iztapalapa,fuera,9.6,Cacama
+09089,Iztapalapa,fuera,10.0,Unidad Modelo
+09090,Iztapalapa,fuera,10.3,Héroes de Churubusco
+09099,Iztapalapa,fuera,9.9,Mexicaltzingo
+09100,Iztapalapa,fuera,18.3,Juan Escutia
+09110,Iztapalapa,fuera,,La Valenciana
+09120,Iztapalapa,fuera,,Voceadores de México
+09130,Iztapalapa,fuera,19.1,San Lorenzo Xicotencatl
+09140,Iztapalapa,fuera,19.9,Santa Martha Acatitla Norte
+09180,Iztapalapa,fuera,20.8,Ermita Zaragoza
+09200,Iztapalapa,fuera,15.0,Unidad Vicente Guerrero
+09208,Iztapalapa,fuera,16.5,Chinampac de Juárez
+09209,Iztapalapa,fuera,16.0,Renovación
+09210,Iztapalapa,fuera,17.3,Tepalcates
+09220,Iztapalapa,fuera,17.0,Unidad Ejército Constitucionalista
+09230,Iztapalapa,fuera,18.2,Álvaro Obregón|Ejército de Oriente|El Paraíso|José María Morelos y Pavón
+09233,Iztapalapa,fuera,,Peñón Viejo
+09239,Iztapalapa,fuera,18.2,Ejército de Oriente Zona Peñón
+09240,Iztapalapa,fuera,14.2,Progresista
+09250,Iztapalapa,fuera,14.0,La Regadera
+09260,Iztapalapa,fuera,14.0,Constitución de 1917
+09270,Iztapalapa,fuera,14.5,Colonial Iztapalapa
+09280,Iztapalapa,fuera,14.8,Jacarandas
+09290,Iztapalapa,fuera,15.9,Santa Cruz Meyehualco
+09300,Iztapalapa,fuera,13.9,Guadalupe del Moral
+09310,Iztapalapa,fuera,14.8,Leyes de Reforma 1a Sección|Leyes de Reforma 2a Sección|Leyes de Reforma 3a Sección
+09319,Iztapalapa,fuera,15.5,Cuchilla del Moral
+09320,Iztapalapa,fuera,15.2,Sideral
+09350,Iztapalapa,fuera,13.9,Albarrada
+09359,Iztapalapa,fuera,14.0,Eva Sámano de López Mateos
+09360,Iztapalapa,fuera,13.0,San Miguel|Ampliación San Miguel
+09369,Iztapalapa,fuera,,El Gavilán|Gama Gavilán|Alborada
+09400,Iztapalapa,fuera,11.3,San Juanico Nextipac|El Sifón
+09410,Iztapalapa,fuera,12.4,Aculco|Jardines de Churubusco|Magdalena Atlazolpa|San José Aculco
+09420,Iztapalapa,fuera,12.6,Los Picos VI-B|Nueva Rosita
+09429,Iztapalapa,fuera,12.5,Purísima Atlazolpa
+09430,Iztapalapa,fuera,11.9,Apatlaco|El Triunfo
+09438,Iztapalapa,fuera,11.7,Ampliación El Triunfo
+09440,Iztapalapa,fuera,10.5,El Retoño|San Andrés Tetepilco|Zacahuitzco
+09450,Iztapalapa,fuera,9.3,Banjidal
+09460,Iztapalapa,fuera,9.5,Justo Sierra
+09470,Iztapalapa,fuera,9.4,Sinatel
+09479,Iztapalapa,fuera,9.9,Ampliación Sinatel
+09480,Iztapalapa,fuera,8.9,El Prado
+09500,Iztapalapa,fuera,17.4,Santa María Aztahuacán|Santa María Aztahuacán Ampliación
+09510,Iztapalapa,fuera,19.6,Santa Martha Acatitla
+09520,Iztapalapa,fuera,18.9,El Edén|San Sebastián Tecoloxtitla
+09530,Iztapalapa,fuera,18.9,Santa Martha Acatitla Sur
+09550,Iztapalapa,fuera,18.1,Monte Alban
+09560,Iztapalapa,fuera,18.5,Paraje Zacatepec
+09570,Iztapalapa,fuera,17.1,Santa María Aztahuacán
+09577,Iztapalapa,fuera,,Fuerte de Loreto|Artículo 4°. Constitucional
+09578,Iztapalapa,fuera,17.5,Ejército de Agua Prieta
+09579,Iztapalapa,fuera,,Las Rosas
+09600,Iztapalapa,fuera,19.7,Santiago Acahualtepec
+09608,Iztapalapa,fuera,19.2,Santiago Acahualtepec 1ra. Ampliación
+09609,Iztapalapa,fuera,18.8,Santiago Acahualtepec 2a. Ampliación
+09620,Iztapalapa,fuera,20.3,Lomas de Zaragoza
+09630,Iztapalapa,fuera,20.9,San Miguel Teotongo Sección Corrales|San Miguel Teotongo Sección Acorralado|San Miguel Teotongo Sección Avisadero|San Miguel Teotongo Sección Capilla|San Miguel Teotongo Sección Guadalupe|San Miguel Teotongo Sección Iztlahuaca|San Miguel Teotongo Sección Jardines|San Miguel Teotongo Sección La Cruz|San Miguel Teotongo Sección Loma Alta|San Miguel Teotongo Sección Mercedes|San Miguel Teotongo Sección Palmitas|San Miguel Teotongo Sección Puente|San Miguel Teotongo Sección Ranchito|San Miguel Teotongo Sección Rancho Bajo|San Miguel Teotongo Sección Torres
+09637,Iztapalapa,fuera,21.7,Campestre Potrero
+09638,Iztapalapa,fuera,21.8,Ampliación Emiliano Zapata
+09640,Iztapalapa,fuera,18.3,Lomas de la Estancia|Xalpa
+09648,Iztapalapa,fuera,19.1,San Pablo
+09660,Iztapalapa,fuera,17.4,Citlalli
+09670,Iztapalapa,fuera,16.9,Palmitas
+09680,Iztapalapa,fuera,17.3,Tenorios
+09689,Iztapalapa,fuera,17.3,Barranca de Guadalupe
+09690,Iztapalapa,fuera,20.0,Iztlahuacán
+09696,Iztapalapa,fuera,19.7,Miravalles
+09698,Iztapalapa,fuera,19.5,Miguel de La Madrid Hurtado
+09700,Iztapalapa,fuera,15.5,Buenavista|Carlos Hank Gonzalez|Desarrollo Urbano Quetzalcoatl|Santa Cruz Meyehualco
+09704,Iztapalapa,fuera,14.9,Degollado|Arboledas Zafiro
+09705,Iztapalapa,fuera,15.5,Degollado - Mexicatlalli
+09706,Iztapalapa,fuera,15.7,San José Buenavista
+09708,Iztapalapa,fuera,14.4,Mixcoatl
+09709,Iztapalapa,fuera,15.8,Lomas de Santa Cruz
+09710,Iztapalapa,fuera,13.7,Los Ángeles Apanoaya
+09719,Iztapalapa,fuera,,STUNAM
+09720,Iztapalapa,fuera,13.9,Francisco Villa|La Era
+09730,Iztapalapa,fuera,16.6,Reforma Política
+09740,Iztapalapa,fuera,13.3,Presidentes de México
+09750,Iztapalapa,fuera,14.3,Insurgentes|La Polvorilla|Las Peñas
+09760,Iztapalapa,fuera,13.5,Consejo Agrarista Mexicano
+09767,Iztapalapa,fuera,,Residencial del Valle
+09769,Iztapalapa,fuera,13.9,El Triángulo
+09770,Iztapalapa,fuera,12.8,Puente Blanco
+09780,Iztapalapa,fuera,12.4,Año de Juárez|Lomas de San Lorenzo
+09790,Iztapalapa,fuera,13.0,San Lorenzo Tezonco
+09800,Iztapalapa,fuera,9.5,Culhuacán|El Mirador|Estrella Culhuacán|Fuego Nuevo|San Antonio Culhuacán|San Simón Culhuacán|Tula|Valle de Luces|Predio Maravillas|San Marcos
+09809,Iztapalapa,fuera,,Valle de Luces
+09810,Iztapalapa,fuera,9.9,Granjas Esmeralda|Los Cipreses|Minerva|Progreso del Sur
+09819,Iztapalapa,fuera,9.4,Valle del Sur
+09820,Iztapalapa,fuera,10.8,El Santuario|Estrella del Sur|Ricardo Flores Magón|Santa Isabel Industrial|La Mora Grande
+09828,Iztapalapa,fuera,10.9,Ampliación Ricardo Flores Magón
+09829,Iztapalapa,fuera,11.2,Ampliación El Santuario
+09830,Iztapalapa,fuera,12.8,El Manto|El Molino|Lomas El Manto|Los Ángeles|Paraje San Juan
+09836,Iztapalapa,fuera,,Cuitlahuac
+09837,Iztapalapa,fuera,12.6,San Miguel 8va. Ampliación
+09838,Iztapalapa,fuera,12.2,Plan de Iguala
+09839,Iztapalapa,fuera,12.9,Ampliación Paraje San Juan|San Juan Joya
+09840,Iztapalapa,fuera,9.7,Los Reyes Culhuacán
+09849,Iztapalapa,fuera,10.1,Ampliación Los Reyes
+09850,Iztapalapa,fuera,11.3,San Juan Xalpa|San Nicolás Tolentino|Santa María del Monte
+09856,Iztapalapa,fuera,11.7,Estado de Veracruz|Ampliación Veracruzana
+09857,Iztapalapa,fuera,,El Tule
+09858,Iztapalapa,fuera,12.1,Paraje San Juan Cerro
+09859,Iztapalapa,fuera,11.3,Benito Juárez
+09860,Iztapalapa,fuera,11.3,Bellavista|Ampliación Bellavista|Casa Blanca|Cerro de La Estrella|Parque Nacional Cerro  de la Estrella|El Rodeo|Sabadell Bellavista
+09864,Iztapalapa,fuera,,Bertha Von Bloumer
+09868,Iztapalapa,fuera,12.1,San Juan Estrella
+09870,Iztapalapa,fuera,9.3,12 de Diciembre|San Andrés Tomatlán|Santa María Tomatlán
+09880,Iztapalapa,fuera,10.3,El Vergel|Granjas Estrella
+09889,Iztapalapa,fuera,,Rinconada Estrella
+09890,Iztapalapa,fuera,9.7,Lomas Estrella
+09897,Iztapalapa,fuera,9.5,Carlos Jonguitud Barrios
+09899,Iztapalapa,fuera,,Lomas Estrella FOVISSSTE
+09900,Iztapalapa,fuera,11.4,Guadalupe|San Antonio|San Lorenzo
+09910,Iztapalapa,fuera,11.2,La Esperanza|Los Mirasoles
+09920,Iztapalapa,fuera,10.4,José López Portillo
+09930,Iztapalapa,fuera,12.0,El Rosario
+09940,Iztapalapa,fuera,11.1,Jardines de San Lorenzo Tezonco
+09960,Iztapalapa,fuera,11.6,Celoalliotli|USCOVI|El Molino Tezonco|Allapetlalli|La Planta
+09969,Iztapalapa,fuera,11.3,Cananea
+09970,Iztapalapa,fuera,10.7,Valle de San Lorenzo
+09979,Iztapalapa,fuera,,Carmen Serdán
+10000,La Magdalena Contreras,dentro,7.1,Lomas Quebradas
+10010,La Magdalena Contreras,borde,7.7,La Malinche|San Bartolo Ameyalco
+10020,La Magdalena Contreras,borde,7.6,Cuauhtémoc
+10100,La Magdalena Contreras,fuera,,Unidad Independencia IMSS
+10130,La Magdalena Contreras,dentro,6.2,El Maestro
+10200,La Magdalena Contreras,dentro,6.3,San Jerónimo Lídice
+10300,La Magdalena Contreras,fuera,8.7,San Bernabé Ocotepec
+10309,La Magdalena Contreras,fuera,,El Oasis de San Bernabé
+10320,La Magdalena Contreras,fuera,8.5,El Tanque
+10330,La Magdalena Contreras,borde,8.6,Las Cruces
+10340,La Magdalena Contreras,borde,8.0,Los Padres
+10350,La Magdalena Contreras,fuera,9.2,Lomas de San Bernabé
+10360,La Magdalena Contreras,fuera,9.0,Huayatla
+10368,La Magdalena Contreras,fuera,8.6,Ampliación Potrerillo
+10369,La Magdalena Contreras,fuera,9.6,Ampliación Lomas de San Bernabé|Tierra Unida
+10370,La Magdalena Contreras,borde,8.0,Palmas
+10378,La Magdalena Contreras,borde,8.0,Atacaxco
+10379,La Magdalena Contreras,fuera,8.3,Vista Hermosa
+10380,La Magdalena Contreras,borde,7.7,Barros Sierra
+10400,La Magdalena Contreras,dentro,5.9,San Jerónimo Aculco
+10500,La Magdalena Contreras,dentro,6.5,Barrio San Francisco
+10580,La Magdalena Contreras,dentro,6.6,Barranca Seca
+10600,La Magdalena Contreras,borde,7.8,El Rosal
+10610,La Magdalena Contreras,dentro,7.5,El Toro
+10620,La Magdalena Contreras,borde,8.0,Potrerillo
+10630,La Magdalena Contreras,borde,8.6,El Ocotal
+10640,La Magdalena Contreras,borde,7.7,La Carbonera|Pueblo Nuevo Alto|Pueblo Nuevo Bajo
+10643,,fuera,11.6,
+10660,La Magdalena Contreras,fuera,9.2,El Ermitaño
+10700,La Magdalena Contreras,dentro,5.5,Héroes de Padierna
+10710,La Magdalena Contreras,dentro,5.6,Santa Teresa
+10800,La Magdalena Contreras,dentro,6.2,La Cruz
+10810,La Magdalena Contreras,dentro,6.0,San Francisco
+10820,La Magdalena Contreras,dentro,5.9,La Guadalupe
+10830,La Magdalena Contreras,dentro,6.0,La Concepción
+10840,La Magdalena Contreras,dentro,5.9,Las Calles|Plazuela del Pedregal
+10900,La Magdalena Contreras,borde,7.4,San Nicolás Totolapan
+10910,La Magdalena Contreras,borde,7.5,La Magdalena
+10920,La Magdalena Contreras,dentro,6.1,Las Huertas
+10926,La Magdalena Contreras,borde,8.4,Tierra Colorada
+10927,,borde,9.9,
+10928,,fuera,13.4,
+11000,Miguel Hidalgo,fuera,15.0,Lomas de Chapultepec I Sección|Lomas de Chapultepec VIII Sección|Lomas de Chapultepec II Sección|Lomas de Chapultepec III Sección|Lomas de Chapultepec IV Sección|Lomas de Chapultepec V Sección|Lomas de Chapultepec VI Sección|Lomas de Chapultepec VII Sección
+11040,Miguel Hidalgo,fuera,15.1,Molino del Rey
+11100,Miguel Hidalgo,fuera,13.8,Bosque de Chapultepec II Sección|Bosque de Chapultepec III Sección
+11109,Miguel Hidalgo,fuera,,Residencia Oficial de los Pinos
+11200,Miguel Hidalgo,fuera,18.0,Lomas Hermosa|Lomas de Sotelo
+11210,Miguel Hidalgo,fuera,19.9,San Lorenzo Tlaltenango
+11220,Miguel Hidalgo,fuera,18.1,Periodista|Hermanos Serdán
+11230,Miguel Hidalgo,fuera,19.2,Argentina Poniente
+11239,Miguel Hidalgo,fuera,,México Tacuba
+11240,Miguel Hidalgo,fuera,19.4,Ignacio Manuel Altamirano
+11250,Miguel Hidalgo,fuera,17.9,10 de Abril
+11260,Miguel Hidalgo,fuera,18.3,México Nuevo|San Joaquín
+11270,Miguel Hidalgo,fuera,18.6,Argentina Antigua
+11280,Miguel Hidalgo,fuera,18.7,Torre Blanca
+11289,Miguel Hidalgo,fuera,18.5,Ampliación Torre Blanca
+11290,Miguel Hidalgo,fuera,19.1,Huíchapan|San Diego Ocoyoacac
+11300,Miguel Hidalgo,fuera,16.3,Verónica Anzures
+11310,Miguel Hidalgo,fuera,17.3,Mariano Escobedo
+11320,Miguel Hidalgo,fuera,17.2,Anáhuac I Sección|Anáhuac II Sección
+11330,Miguel Hidalgo,fuera,17.7,Un Hogar Para Nosotros
+11340,Miguel Hidalgo,fuera,18.0,Santo Tomas
+11350,Miguel Hidalgo,fuera,18.4,Plutarco Elías Calles
+11360,Miguel Hidalgo,fuera,17.9,Agricultura
+11370,Miguel Hidalgo,fuera,16.8,Tlaxpana
+11400,Miguel Hidalgo,fuera,18.3,Popotla
+11410,Miguel Hidalgo,fuera,18.6,Legaria|Tacuba
+11420,Miguel Hidalgo,fuera,18.4,Nextitla
+11430,Miguel Hidalgo,fuera,18.0,Pensil Norte|Ventura Pérez de Alva
+11440,Miguel Hidalgo,fuera,17.9,Reforma Pensil|San Juanico
+11450,Miguel Hidalgo,fuera,17.5,Ahuehuetes Anáhuac|Modelo Pensil|Peralitos
+11460,Miguel Hidalgo,fuera,17.4,Dos Lagos|Lago Norte|Lago Sur|Los Manzanos
+11470,Miguel Hidalgo,fuera,17.9,5 de Mayo|Deportivo Pensil
+11479,Miguel Hidalgo,fuera,,Unidad Legaria IMSS
+11480,Miguel Hidalgo,fuera,17.6,Francisco I Madero|Popo
+11489,Miguel Hidalgo,fuera,17.3,Ampliación Popo
+11490,Miguel Hidalgo,fuera,17.4,Cuauhtémoc Pensil|Pensil Sur
+11500,Miguel Hidalgo,fuera,17.3,Irrigación
+11510,Miguel Hidalgo,fuera,16.6,Polanco I Sección
+11520,Miguel Hidalgo,fuera,16.8,Granada
+11529,Miguel Hidalgo,fuera,17.2,Ampliación Granada
+11530,Miguel Hidalgo,fuera,16.3,Polanco II Sección
+11540,Miguel Hidalgo,fuera,16.0,Polanco III Sección
+11550,Miguel Hidalgo,fuera,15.9,Polanco IV Sección
+11560,Miguel Hidalgo,fuera,15.9,Polanco V Sección
+11580,Miguel Hidalgo,fuera,14.7,Bosque de Chapultepec I Sección
+11590,Miguel Hidalgo,fuera,15.7,Anzures
+11600,Miguel Hidalgo,fuera,16.7,Residencial Militar
+11610,Miguel Hidalgo,fuera,17.2,Manuel Avila Camacho
+11619,Miguel Hidalgo,fuera,17.8,Campo Militar 1
+11649,Miguel Hidalgo,fuera,,Hospital Central Militar
+11650,Miguel Hidalgo,fuera,16.3,Reforma Social
+11700,Miguel Hidalgo,fuera,14.4,Bosque de las Lomas
+11800,Miguel Hidalgo,fuera,12.5,Escandón I Sección|Escandón II Sección
+11810,Miguel Hidalgo,fuera,12.8,16 de Septiembre
+11820,Miguel Hidalgo,fuera,12.9,América
+11830,Miguel Hidalgo,fuera,13.0,Daniel Garza
+11840,Miguel Hidalgo,fuera,13.3,Ampliación Daniel Garza
+11850,Miguel Hidalgo,fuera,13.6,San Miguel Chapultepec I Sección|San Miguel Chapultepec II Sección
+11860,Miguel Hidalgo,fuera,13.0,Observatorio
+11870,Miguel Hidalgo,fuera,12.4,Tacubaya
+11910,Miguel Hidalgo,fuera,13.2,Lomas de Bezares
+11920,Miguel Hidalgo,fuera,13.7,Real de las Lomas
+11930,Miguel Hidalgo,fuera,13.9,Lomas de Reforma
+11950,Miguel Hidalgo,fuera,13.3,Lomas Altas
+12000,Milpa Alta,fuera,18.6,La Concepción|La Luz|Los Ángeles|San Mateo|Santa Cruz|Santa Martha|Villa Milpa Alta Centro
+12070,Milpa Alta,fuera,20.6,San Agustin
+12080,Milpa Alta,fuera,20.4,San Agustin Ohtenco
+12100,Milpa Alta,fuera,21.0,Cruztitla|Tecaxtitla|Tenantitla|Xaltipac|Xochitepec
+12110,Milpa Alta,fuera,23.5,Emiliano Zapata|La Conchita
+12200,Milpa Alta,fuera,16.6,Nochtla|Ocotitla|Panchimalco|Tula
+12250,Milpa Alta,fuera,15.0,San Bartolomé Xicomulco
+12300,Milpa Alta,fuera,14.6,San Salvador Cuauhtenco
+12303,,fuera,17.3,
+12305,,fuera,23.6,
+12400,Milpa Alta,fuera,16.3,Centro|San Juan|San Miguel
+12410,Milpa Alta,fuera,17.5,Chalmita
+12420,,fuera,22.2,
+12500,Milpa Alta,fuera,20.0,San Lorenzo Tlacoyucan
+12600,Milpa Alta,fuera,21.3,San Jerónimo Miacatlán
+12700,Milpa Alta,fuera,21.3,San Francisco Tecoxpa
+12800,Milpa Alta,fuera,22.5,San Juan Tepenahuac
+12810,,fuera,23.8,
+12910,Milpa Alta,fuera,23.8,La Lupita Teticpac
+12913,,fuera,25.8,
+12920,Milpa Alta,fuera,24.1,San Marcos
+12923,,fuera,27.7,
+12930,Milpa Alta,fuera,22.9,San Miguel
+12940,Milpa Alta,fuera,22.2,San José
+12950,Milpa Alta,fuera,22.0,La Lupita Xolco
+13000,Tláhuac,fuera,18.3,La Asunción
+13010,Tláhuac,fuera,18.2,Santa Cecilia
+13020,Tláhuac,fuera,19.3,San José
+13030,Tláhuac,fuera,18.2,San Juan
+13040,Tláhuac,fuera,18.8,San Mateo
+13050,Tláhuac,fuera,20.6,La Habana
+13060,Tláhuac,fuera,18.1,La Guadalupe|Santa Ana|Hombres de la Reforma
+13063,Tláhuac,fuera,,Geovillas de Xochimilco
+13070,Tláhuac,fuera,18.7,La Magdalena|San Miguel
+13080,Tláhuac,fuera,18.4,Los Reyes
+13090,Tláhuac,fuera,18.6,Quiahuatla
+13093,Tláhuac,fuera,18.4,San Sebastián
+13094,Tláhuac,fuera,17.9,San Isidro
+13099,Tláhuac,fuera,18.9,San Andrés
+13100,Tláhuac,fuera,21.5,La Guadalupe
+13110,Tláhuac,fuera,21.6,Cañada
+13115,,fuera,20.1,
+13119,Tláhuac,fuera,21.4,La Poblanita
+13120,Tláhuac,fuera,23.0,Ampliación Santa Catarina|Santiago
+13123,Tláhuac,fuera,,Teozoma|La Mesa|Chichilaula
+13129,Tláhuac,fuera,,San Francisco Apolocalco
+13150,Tláhuac,fuera,22.5,La Concepción
+13180,Tláhuac,fuera,21.7,San Miguel
+13200,Tláhuac,fuera,14.0,Miguel Hidalgo
+13210,Tláhuac,fuera,12.7,Los Olivos
+13219,Tláhuac,fuera,13.5,Las Arboledas|Ampliación Los Olivos
+13220,Tláhuac,fuera,13.3,La Nopalera
+13230,Tláhuac,fuera,12.3,Granjas Cabrera
+13250,Tláhuac,fuera,12.7,La Turba
+13270,Tláhuac,fuera,12.5,Del Mar
+13273,Tláhuac,fuera,14.1,La Draga
+13278,Tláhuac,fuera,13.2,Villa Centroamericana|Villas Trabajadores del Gobierno del Distrito Federal
+13280,Tláhuac,fuera,13.3,Agrícola Metropolitana
+13300,Tláhuac,fuera,14.9,Santa Ana Centro|Santiago Centro|Santa Ana Poniente|Santa Ana Norte|Santiago Norte
+13310,Tláhuac,fuera,14.9,Zapotitla
+13315,Tláhuac,fuera,15.2,Ampliación Zapotitla
+13317,Tláhuac,fuera,,Nueva Tenochtitlán|Aurorita
+13318,Tláhuac,fuera,,La Herradura
+13319,Tláhuac,fuera,14.6,La Estación
+13360,Tláhuac,fuera,15.1,La Conchita Zapotitlán|Santa Ana Sur|Santiago Sur
+13363,Tláhuac,fuera,15.9,Tempiluli
+13400,Tláhuac,fuera,18.2,San Francisco Tlaltenco
+13410,Tláhuac,fuera,16.6,López Portillo|La Orilla
+13419,Tláhuac,fuera,16.4,Ampliación José López Portillo
+13420,Tláhuac,fuera,18.4,Selene
+13430,Tláhuac,fuera,20.7,Ampliación Selene
+13440,Tláhuac,fuera,16.4,Zacatenco
+13450,Tláhuac,fuera,17.6,Guadalupe Tlaltenco|Ojo de Agua
+13460,Tláhuac,fuera,17.1,El Triángulo
+13465,,fuera,17.1,
+13467,,fuera,16.6,
+13508,Tláhuac,fuera,19.7,San Agustín|La Soledad
+13509,Tláhuac,fuera,19.8,La Concepción
+13510,Tláhuac,fuera,21.4,La Lupita
+13520,Tláhuac,fuera,19.1,Francisco Villa
+13529,Tláhuac,fuera,20.7,La Loma
+13530,Tláhuac,fuera,20.0,Jaime Torres Bodet|La Asunción
+13540,Tláhuac,fuera,19.1,El Rosario|Tierra Blanca
+13545,Tláhuac,fuera,19.7,Ampliación La Conchita
+13546,Tláhuac,fuera,18.3,Olivar Santa María
+13547,,fuera,18.0,
+13549,Tláhuac,fuera,19.1,Peña Alta
+13550,Tláhuac,fuera,21.2,Jardines del Llano|Potrero del Llano
+13559,Tláhuac,fuera,,Villa Tlatempa
+13600,Tláhuac,fuera,24.0,San Bartolomé
+13610,Tláhuac,fuera,23.0,Los Reyes
+13625,Tláhuac,fuera,25.3,Santa Cruz
+13630,Tláhuac,fuera,22.7,San Agustín
+13640,Tláhuac,fuera,24.3,San Miguel
+13700,Tláhuac,fuera,23.0,San Nicolás Tetelco|Tepantitlamilco
+14000,Tlalpan,dentro,0.9,Tlalpan Centro|Tlalpan
+14010,Tlalpan,dentro,1.9,Parque del Pedregal
+14020,Tlalpan,dentro,1.4,Villa Olímpica
+14030,Tlalpan,dentro,1.4,Isidro Fabela
+14038,Tlalpan,fuera,,Luis Donaldo Colosio
+14039,Tlalpan,dentro,1.3,Ampliación Isidro Fabela|Cuitlahuac
+14040,Tlalpan,dentro,1.9,Cantera Puente de Piedra|Pueblo Quieto
+14049,Tlalpan,dentro,2.0,Comuneros de Santa Úrsula
+14050,Tlalpan,dentro,1.9,Toriello Guerra
+14060,Tlalpan,dentro,1.2,Peña Pobre
+14070,Tlalpan,dentro,0.9,Rómulo Sánchez Mireles|San Fernando|San Pedro Apóstol|Paseos de Mendoza
+14080,Tlalpan,dentro,2.3,Belisario Domínguez Sección XVI|Del Niño Jesús
+14090,Tlalpan,dentro,1.8,La Joya
+14098,Tlalpan,fuera,,Torres Tlalpan FOVISSSTE
+14100,Tlalpan,dentro,6.0,Pedregal de San Nicolás 1A Sección|Pedregal de San Nicolás 2A Sección|Pedregal de San Nicolás 3A Sección|Pedregal de San Nicolás 4A Sección|Pedregal de San Nicolás 5ª Sección|Pedregal de San Nicolás 5A Sección
+14108,Tlalpan,dentro,6.9,Chichicaspatl|Pedregal Chichicaspatl
+14110,Tlalpan,dentro,4.0,Ampliación Fuentes del Pedregal|Pedregal del Lago
+14120,Tlalpan,dentro,4.9,Rincón del Pedregal
+14129,Tlalpan,fuera,,Residencial Pedregal Picacho
+14130,Tlalpan,fuera,,"Lic. Emilio Portes Gil ""PEMEX"""
+14140,Tlalpan,dentro,5.3,Fuentes del Pedregal
+14150,Tlalpan,dentro,5.2,Lomas del Pedregal Framboyanes
+14160,Tlalpan,dentro,4.9,Popular Santa Teresa
+14200,Tlalpan,dentro,4.2,Héroes de Padierna|Jardines del Ajusco
+14208,Tlalpan,dentro,4.2,Colinas del Ajusco
+14209,Tlalpan,dentro,5.2,Torres de Padierna
+14210,Tlalpan,dentro,2.8,Jardines en la Montaña
+14219,Tlalpan,dentro,2.3,Six Flags (Reino Aventura)|Parque Nacional Bosque del Pedregal
+14220,Tlalpan,dentro,4.4,Cuchilla de Padierna|Lomas del Pedregal
+14230,Tlalpan,dentro,4.8,Cultura Maya
+14239,Tlalpan,dentro,5.2,Los Encinos
+14240,Tlalpan,dentro,4.6,Lomas de Padierna|Lomas Hidalgo
+14248,Tlalpan,dentro,4.0,Cruz del Farol
+14250,Tlalpan,dentro,2.5,Miguel Hidalgo 2A Sección|Miguel Hidalgo 3A Sección|Miguel Hidalgo 4A Sección|Miguel Hidalgo
+14260,Tlalpan,dentro,1.5,El Capulín|Miguel Hidalgo 1A Sección
+14266,Tlalpan,dentro,1.2,Zacayucan Peña Pobre
+14267,Tlalpan,dentro,0.7,De Caramagüey
+14268,Tlalpan,dentro,0.4,La Lonja
+14269,Tlalpan,dentro,0.3,La Fama
+14270,Tlalpan,dentro,2.8,Primavera
+14273,Tlalpan,dentro,6.0,Solidaridad
+14275,Tlalpan,dentro,4.0,Paraje 38
+14276,Tlalpan,dentro,3.9,Verano
+14300,Tlalpan,dentro,5.6,Nueva Oriental Coapa|Residencial Acoxpa|Residencial Miramontes
+14307,Tlalpan,fuera,,Villa del Sur
+14308,Tlalpan,dentro,6.0,Ex Hacienda Coapa|Real del Sur
+14310,Tlalpan,dentro,5.3,Belisario Domínguez|Floresta Coyoacán|Vergel Tlalpan
+14320,Tlalpan,dentro,5.8,Vergel Coapa
+14325,Tlalpan,dentro,6.9,Rinconada Coapa 2A Sección
+14326,Tlalpan,dentro,6.5,Tenorios
+14328,Tlalpan,fuera,,Lotería Nacional|Villa Valbadena
+14330,Tlalpan,borde,7.6,Granjas Coapa|Rinconada Coapa 1A Sección|Residencial Hacienda Coapa
+14334,Tlalpan,fuera,,Sauzales Cebadales
+14335,Tlalpan,fuera,,Villa del Puente
+14336,Tlalpan,fuera,,Villa Cuemanco INFONAVIT
+14337,Tlalpan,fuera,,Urbano Coapa
+14338,Tlalpan,fuera,,Fuerza Armada de México
+14340,Tlalpan,dentro,4.6,Vergel de Coyoacán|Vergel del Sur
+14350,Tlalpan,dentro,5.4,Prado Coapa 1A Sección
+14356,Tlalpan,fuera,,Jardines Villa Coapa
+14357,Tlalpan,dentro,4.9,Prado Coapa 2A Sección|Prado Coapa 3A Sección
+14358,Tlalpan,fuera,,Residencial Villa Prado Coapa
+14360,Tlalpan,dentro,6.9,Magisterial|Magisterial Coapa|Villa Cuemanco
+14370,Tlalpan,dentro,3.6,Residencial Chimali|San Lorenzo Huipulco|Villa Lázaro Cárdenas
+14376,Tlalpan,dentro,4.2,Arboledas del Sur
+14377,Tlalpan,dentro,3.8,Hacienda San Juan
+14378,Tlalpan,fuera,,Rincón de San Juan
+14380,Tlalpan,dentro,4.7,A.M.S.A|San Bartolo El Chico
+14386,Tlalpan,dentro,4.4,Rancho los Colorines
+14387,Tlalpan,dentro,5.0,Ex Hacienda San Juan de Dios
+14388,Tlalpan,dentro,3.8,Guadalupe
+14389,Tlalpan,dentro,3.5,Arenal de Guadalupe
+14390,Tlalpan,dentro,5.9,Rinconada Las Hadas|Narciso Mendoza|Residencial Villa Coapa|Villa Coapa
+14399,Tlalpan,fuera,,Villa Royale
+14400,Tlalpan,dentro,4.6,San Andrés Totoltepec
+14406,Tlalpan,dentro,4.5,Divisadero
+14408,Tlalpan,dentro,4.0,Nuevo Renacimiento de Axalco
+14409,Tlalpan,dentro,3.5,Tecorral
+14410,Tlalpan,dentro,1.0,Fuentes Brotantes
+14420,Tlalpan,dentro,1.1,Cumbres de Tepetongo|Mesa de los Hornos|Santa Úrsula Xitla
+14426,Tlalpan,dentro,1.8,Texcaltenco|Tlaxcaltenco la Mesa
+14427,Tlalpan,dentro,2.3,San Juan Tepeximilpa|Tepeximilpa la Paz
+14428,Tlalpan,fuera,,Cantera
+14429,Tlalpan,dentro,2.0,Santísima Trinidad
+14430,Tlalpan,dentro,1.6,El Truenito|Tlalcoligia
+14438,Tlalpan,dentro,1.7,Pedregal de Santa Úrsula Xitla
+14439,Tlalpan,dentro,1.9,Pedregal de las Águilas
+14440,Tlalpan,dentro,2.1,Los Volcanes
+14449,Tlalpan,dentro,2.1,El Mirador 1A Sección|El Mirador 2A Sección|El Mirador 3A Sección
+14450,,dentro,2.6,
+14456,Tlalpan,dentro,3.9,Atocpa
+14460,Tlalpan,dentro,4.5,Tlalpuente
+14470,Tlalpan,dentro,6.6,Plan de Ayala
+14475,,borde,7.3,
+14476,Tlalpan,dentro,5.1,La Palma
+14479,Tlalpan,dentro,5.7,Viveros Coatectlán
+14480,Tlalpan,dentro,6.1,La Magdalena Petlacalco
+14490,Tlalpan,dentro,6.1,San Miguel Xicalco
+14492,,dentro,7.0,
+14500,Tlalpan,fuera,11.5,San Miguel Topilejo
+14520,Tlalpan,borde,7.9,La Quinta
+14529,Tlalpan,fuera,,Estación Ajusco
+14550,Tlalpan,borde,9.0,Estrella Mora
+14600,Tlalpan,dentro,3.9,Valle Escondido
+14608,Tlalpan,dentro,3.4,Colinas del Bosque
+14609,Tlalpan,dentro,3.2,Las Tórtolas
+14610,Tlalpan,dentro,3.1,Arenal Tepepan
+14620,Tlalpan,dentro,2.6,Club de Golf México
+14629,Tlalpan,dentro,2.1,San Buenaventura
+14630,Tlalpan,dentro,2.1,Chimalcoyoc|Villa Tlalpan
+14639,Tlalpan,fuera,,San Pedro Mártir FOVISSSTE
+14640,Tlalpan,dentro,3.1,Ejidos de San Pedro Mártir
+14643,Tlalpan,dentro,3.8,Fuentes de Tepepan
+14646,Tlalpan,dentro,4.1,Valle de Tepepan
+14647,Tlalpan,dentro,3.6,Juventud Unida|Movimiento Organizado de Tlalpan|Rinconada El Mirador
+14650,Tlalpan,dentro,2.7,San Pedro Mártir
+14653,Tlalpan,dentro,4.7,Heróico Colegio Militar
+14654,Tlalpan,dentro,6.2,Dolores Tlali|La Magueyera
+14655,Tlalpan,dentro,6.2,Valle Verde o Lomas Verdes
+14657,Tlalpan,dentro,3.2,Tlalmille
+14658,Tlalpan,dentro,3.4,Mirador del Valle
+14659,Tlalpan,dentro,3.4,María Esther Zuno de Echeverría
+14700,Tlalpan,dentro,6.4,San Miguel Ajusco
+14710,Tlalpan,borde,10.3,Santo Tomas Ajusco
+14713,,fuera,12.9,
+14715,,fuera,11.8,
+14720,Tlalpan,dentro,5.5,Belvedere Ajusco
+14730,Tlalpan,dentro,5.9,Lomas de Cuilotepec
+14734,Tlalpan,dentro,7.1,Zacatón
+14735,Tlalpan,dentro,6.4,Lomas de Tepemecatl|San Nicolás 2
+14737,Tlalpan,dentro,6.1,Vistas del Pedregal
+14738,Tlalpan,dentro,6.6,Bosques del Pedregal
+14739,Tlalpan,dentro,5.7,2 de Octubre
+14740,Tlalpan,dentro,5.2,Lomas de Padierna Sur
+14748,Tlalpan,dentro,4.9,Mirador I|Mirador II
+14749,Tlalpan,dentro,4.6,Chimilli
+14750,Tlalpan,fuera,,Rancho Viejo
+14760,Tlalpan,borde,7.7,Héroes de 1910
+14763,,borde,7.2,
+14780,Tlalpan,fuera,,El Charco
+14790,Tlalpan,borde,8.3,San Jorge
+14900,Tlalpan,fuera,18.3,Parres El Guarda
+14904,,fuera,19.5,
+14906,,fuera,15.9,
+15000,Venustiano Carranza,fuera,16.4,General Ignacio Zaragoza
+15010,Venustiano Carranza,fuera,16.7,Valentín Gómez Farias
+15020,Venustiano Carranza,fuera,16.8,Puebla
+15100,Venustiano Carranza,fuera,16.7,Zona Centro
+15120,Venustiano Carranza,fuera,,Candelaria de los Patos FOVISSSTE
+15200,Venustiano Carranza,fuera,18.7,Janitzio
+15210,Venustiano Carranza,fuera,19.6,Valle Gómez
+15220,Venustiano Carranza,fuera,19.2,Nicolás Bravo|Popular Rastro
+15230,Venustiano Carranza,fuera,18.8,Emilio Carranza
+15240,Venustiano Carranza,fuera,18.7,Michoacana
+15250,Venustiano Carranza,fuera,18.9,Ampliación Michoacana
+15260,Venustiano Carranza,fuera,18.4,Ampliación 20 de Noviembre
+15270,Venustiano Carranza,fuera,18.2,Morelos
+15280,Venustiano Carranza,fuera,17.7,Penitenciaria
+15290,Venustiano Carranza,fuera,17.2,10 de Mayo
+15300,Venustiano Carranza,fuera,18.7,20 de Noviembre
+15309,Venustiano Carranza,fuera,19.3,5o Tramo 20 de Noviembre
+15310,Venustiano Carranza,fuera,19.4,Felipe Ángeles
+15320,Venustiano Carranza,fuera,18.1,Azteca
+15330,Venustiano Carranza,fuera,18.4,Tres Mosqueteros
+15339,Venustiano Carranza,fuera,18.9,Ampliación Venustiano Carranza
+15340,Venustiano Carranza,fuera,18.1,Venustiano Carranza
+15350,Venustiano Carranza,fuera,17.5,Ampliación Penitenciaria
+15370,Venustiano Carranza,fuera,17.8,Progresista
+15380,Venustiano Carranza,fuera,17.4,Escuela de Tiro
+15390,Venustiano Carranza,fuera,17.2,7 de Julio
+15400,Venustiano Carranza,fuera,19.0,Romero Rubio
+15410,Venustiano Carranza,fuera,19.7,Simón Bolívar
+15420,Venustiano Carranza,fuera,19.5,Ampliación Simón Bolívar
+15430,Venustiano Carranza,fuera,19.8,Aquiles Serdán
+15440,Venustiano Carranza,fuera,19.1,1° de Mayo
+15450,Venustiano Carranza,fuera,18.8,Damián Carmona
+15460,Venustiano Carranza,fuera,18.4,Revolución
+15470,Venustiano Carranza,fuera,17.9,Miguel Hidalgo
+15500,Venustiano Carranza,fuera,17.2,Moctezuma 1a Sección
+15510,Venustiano Carranza,fuera,19.9,Pensador Mexicano
+15520,Venustiano Carranza,fuera,19.5,Peñón de los Baños
+15530,Venustiano Carranza,fuera,18.1,Moctezuma 2a Sección
+15540,Venustiano Carranza,fuera,17.1,Santa Cruz Aviación
+15600,Venustiano Carranza,fuera,19.4,Arenal 1a Sección
+15610,Venustiano Carranza,fuera,19.1,Cuchilla Pantitlán
+15620,Venustiano Carranza,fuera,19.8,México (Lic. Benito Juárez)
+15630,Venustiano Carranza,fuera,19.0,Caracol
+15640,Venustiano Carranza,fuera,20.6,Arenal 4a Sección|Arenal Puerto Aéreo
+15650,Venustiano Carranza,fuera,19.4,Ampliación Caracol
+15660,Venustiano Carranza,fuera,20.1,Arenal 3a Sección
+15670,Venustiano Carranza,fuera,18.4,Adolfo López Mateos
+15680,Venustiano Carranza,fuera,19.8,Arenal 2a Sección
+15700,Venustiano Carranza,fuera,17.4,Federal
+15710,Venustiano Carranza,fuera,17.2,Industrial Puerto Aéreo
+15720,Venustiano Carranza,fuera,,Zaragoza Bahía
+15730,Venustiano Carranza,fuera,17.3,4 Árboles
+15740,Venustiano Carranza,fuera,17.5,Aviación Civil
+15750,Venustiano Carranza,fuera,17.3,Ampliación Aviación Civil
+15800,Venustiano Carranza,fuera,14.3,Jamaica
+15810,Venustiano Carranza,fuera,15.7,Merced Balbuena
+15820,Venustiano Carranza,fuera,15.2,Lorenzo Boturini
+15830,Venustiano Carranza,fuera,14.7,Artes Gráficas
+15840,Venustiano Carranza,fuera,14.7,Sevilla
+15850,Venustiano Carranza,fuera,14.6,Magdalena Mixiuhca
+15860,Venustiano Carranza,fuera,15.0,La Magdalena Mixiuhca
+15870,Venustiano Carranza,fuera,14.9,Aarón Sáenz
+15900,Venustiano Carranza,fuera,16.0,Jardín Balbuena
+15950,Venustiano Carranza,fuera,,Unidad Kennedy
+15960,Venustiano Carranza,fuera,16.2,Del Parque
+15970,Venustiano Carranza,fuera,16.0,Aeronáutica Militar
+15980,Venustiano Carranza,fuera,15.5,24 de Abril
+15990,Venustiano Carranza,fuera,15.1,Álvaro Obregón
+16000,Xochimilco,borde,8.1,La Concepción Tlacoapa|San Antonio|San Juan
+16010,Xochimilco,dentro,5.5,Bosque Residencial del Sur|Las Peritas|Paseos del Sur|San Bartolo El Chico
+16020,Xochimilco,dentro,4.9,San Juan Tepepan|Santa María Tepepan
+16029,Xochimilco,dentro,5.4,Ampliación Tepepan
+16030,Xochimilco,dentro,6.4,Huichapan|La Noria|Potrero de San Bernardino|Ampliación La Noria
+16034,Xochimilco,borde,7.5,18
+16035,Xochimilco,borde,6.3,San Lorenzo La Cebada|Rinconada Coapa
+16036,Xochimilco,fuera,9.0,Mercado de Flores Plantas y Hortalizas
+16038,Xochimilco,borde,7.3,Ampliación San Marcos Norte
+16040,Xochimilco,fuera,9.1,La Asunción|San Lorenzo
+16043,,fuera,9.6,
+16045,,fuera,10.9,
+16050,Xochimilco,borde,7.5,Jardines del Sur|San Marcos|Tierra Nueva
+16059,Xochimilco,dentro,7.0,"Pblo. Stgo.Tepalcatlalpan, U. H. Rinconada del Sur"
+16060,Xochimilco,dentro,5.9,El Mirador
+16070,Xochimilco,fuera,8.5,Belén|El Rosario|La Guadalupita|Santa Crucita
+16080,Xochimilco,fuera,9.2,La Santísima|San Cristóbal|San Diego|San Esteban
+16083,,fuera,10.5,
+16090,Xochimilco,borde,8.8,San Pedro|Tablas de San Lorenzo|Xaltocan
+16100,Xochimilco,dentro,6.2,Santa Cruz Xochitepec
+16106,,dentro,6.4,
+16200,Xochimilco,borde,7.5,Santiago Tepalcatlalpan
+16210,Xochimilco,borde,7.5,La Concha
+16220,,borde,7.9,
+16230,,dentro,7.1,
+16240,,dentro,7.0,
+16243,,borde,8.3,
+16244,,dentro,6.3,
+16247,,borde,7.9,
+16300,Xochimilco,fuera,8.7,San Lucas Xochimanca
+16310,Xochimilco,fuera,8.3,La Cañada
+16320,Xochimilco,fuera,9.7,San Lucas Oriente
+16340,Xochimilco,fuera,9.2,Texmic
+16400,Xochimilco,fuera,9.8,San Lorenzo Atemoaya
+16410,Xochimilco,fuera,9.7,Lomas de Tonalco
+16420,Xochimilco,fuera,10.2,San Jerónimo
+16428,Xochimilco,fuera,10.9,El Jazmín
+16429,Xochimilco,fuera,11.0,Rancho Tejomulco
+16430,Xochimilco,fuera,10.6,Xochipilli
+16440,Xochimilco,fuera,10.8,Año de Juárez
+16443,Xochimilco,fuera,11.2,Pocitos
+16450,Xochimilco,fuera,10.2,Santa María Nativitas
+16457,Xochimilco,fuera,11.3,Lomas de Nativitas
+16459,Xochimilco,fuera,11.4,Ampliación Nativitas
+16500,Xochimilco,fuera,12.3,Santa Cruz Acalpixca
+16510,,fuera,13.0,
+16513,Xochimilco,fuera,11.7,Apatlaco|Del Puente
+16514,Xochimilco,fuera,11.9,La Gallera|Tetitla|Calpulco
+16515,,fuera,12.5,
+16518,,fuera,12.0,
+16520,Xochimilco,fuera,11.6,La Planta
+16530,Xochimilco,fuera,12.2,Las Cruces|Las Flores
+16533,Xochimilco,fuera,12.6,Ahualapa
+16550,Xochimilco,fuera,10.4,Valle de Santa María
+16555,,fuera,13.6,
+16556,,fuera,13.3,
+16600,Xochimilco,fuera,13.6,San Gregorio Atlapulco
+16604,Xochimilco,fuera,14.9,San Andrés
+16605,Xochimilco,fuera,14.1,Los Reyes
+16606,Xochimilco,fuera,13.3,3 de Mayo
+16607,Xochimilco,fuera,13.0,San Antonio
+16608,,fuera,13.3,
+16609,Xochimilco,fuera,14.9,La Candelaria
+16610,Xochimilco,fuera,15.4,San Luis Tlaxialtemalco
+16614,Xochimilco,fuera,15.2,Niños Héroes
+16615,Xochimilco,fuera,14.7,La Asunción
+16616,Xochimilco,fuera,14.7,Santa Cecilia
+16617,Xochimilco,fuera,14.4,San Sebastián
+16618,,fuera,14.7,
+16620,Xochimilco,fuera,15.7,San José
+16623,,fuera,15.7,
+16624,,fuera,16.4,
+16629,Xochimilco,fuera,15.8,La Guadalupana|San Juan
+16630,Xochimilco,fuera,12.4,San Juan Moyotepec
+16633,,fuera,12.7,
+16634,,fuera,13.1,
+16640,Xochimilco,fuera,12.6,San Juan Minas
+16650,,fuera,14.0,
+16653,,fuera,15.1,
+16654,,fuera,14.5,
+16710,Xochimilco,fuera,16.6,Quirino Mendoza
+16720,Xochimilco,fuera,16.4,Del Carmen
+16739,Xochimilco,fuera,17.7,San Isidro
+16740,Xochimilco,fuera,17.5,Guadalupita
+16749,Xochimilco,fuera,17.2,Las Animas
+16750,Xochimilco,fuera,18.2,Calyequita
+16770,Xochimilco,fuera,17.2,San Felipe
+16776,Xochimilco,fuera,16.8,Santiaguito|El Mirador
+16780,Xochimilco,fuera,17.5,Cerrillos Primera Sección|El Sacrificio|Cristo Rey|Cerrillos Segunda Sección|Cerrillos Tercera Sección
+16783,,fuera,17.3,
+16784,,fuera,16.6,
+16785,,fuera,16.8,
+16797,Xochimilco,fuera,18.2,Nativitas
+16799,Xochimilco,fuera,17.9,Las Mesitas
+16800,Xochimilco,borde,8.5,San Mateo Xalpa
+16810,Xochimilco,fuera,10.0,San Andrés Ahuayucan|Santa Inés|Rosario Tlali
+16813,Xochimilco,fuera,10.1,El Calvario
+16819,,fuera,10.2,
+16840,Xochimilco,fuera,9.5,Santa Cruz Chavarrieta
+16850,Xochimilco,fuera,10.6,Chapultepec
+16860,Xochimilco,fuera,9.8,Santa Cruz de Guadalupe
+16866,,fuera,9.2,
+16870,,fuera,10.9,
+16880,Xochimilco,fuera,11.8,Santa Cecilia Tepetlapa
+16888,,fuera,12.5,
+16889,,fuera,13.3,
+16900,Xochimilco,fuera,13.3,San Francisco Tlalnepantla
+16910,,fuera,10.3,
