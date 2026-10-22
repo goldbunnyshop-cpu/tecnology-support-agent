@@ -20,6 +20,14 @@ from dataclasses import dataclass, field
 
 # ── Textos al cliente ─────────────────────────────────────────────────────────
 
+CARGO_DOMICILIO = 400        # cargo fijo por servicio a domicilio, sobre cualquier precio
+DIAGNOSTICO = 200            # diagnóstico normal (bonificable); a domicilio = 200 + 400
+
+NOTA_CARGO = (
+    f"El servicio a domicilio tiene un cargo de ${CARGO_DOMICILIO} adicional al precio de la reparación "
+    f"(si se requiere diagnóstico: ${DIAGNOSTICO} + ${CARGO_DOMICILIO} = ${DIAGNOSTICO + CARGO_DOMICILIO})."
+)
+
 RESPUESTA_DOMICILIO = (
     "¡Sí contamos con servicio a domicilio! 🏠 "
     "Para revisar la cobertura en su zona, ¿me comparte su código postal? "
@@ -37,15 +45,9 @@ RESPUESTA_AMBIGUA = (
     "¿Me confirma su código postal o su alcaldía? 😊"
 )
 
-RESPUESTA_DOMICILIO_PRECIO = (
-    "Para el servicio a domicilio el costo se lo confirma directamente nuestro equipo al concretar la cita, "
-    "porque depende del equipo, la falla y la zona. "
-    "¿Me comparte su código postal (o colonia y alcaldía) para avanzar?"
-)
-
 TXT_DENTRO = (
     "¡Perfecto, sí llegamos a {zona}! 🙌 "
-    "Le transfiero con un responsable que le confirma el costo y concreta la cita a domicilio. "
+    "Le transfiero con un responsable que concreta la cita a domicilio. "
     "En breve le escribe por este mismo chat."
 )
 
@@ -61,7 +63,7 @@ TXT_FUERA = (
 )
 
 # Marcas para reconocer en el historial lo que ya respondió el bot
-_MARCA_INICIO = (RESPUESTA_DOMICILIO[:40], RESPUESTA_PEDIR_CP[:40], RESPUESTA_AMBIGUA[:40], RESPUESTA_DOMICILIO_PRECIO[:40])
+_MARCA_INICIO = (RESPUESTA_DOMICILIO[:40], RESPUESTA_PEDIR_CP[:40], RESPUESTA_AMBIGUA[:40])
 _MARCA_TRANSFERIDO = ("Le transfiero con un responsable", "lo validamos con el técnico")
 
 _VENTANA_MODO = 12   # mensajes recientes del historial que se revisan
@@ -231,6 +233,69 @@ def resolver_ubicacion(texto: str) -> Ubicacion | None:
     return None
 
 
+# ── Cargo por servicio a domicilio ($400 sobre cualquier precio) ──────────────
+
+_RE_MONTO = re.compile(r"\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{2})?(?:\s?MXN)?")
+_MARCA_DESGLOSE = "servicio a domicilio $"
+
+
+def _precios_en_texto(texto: str) -> list[tuple[str, int]]:
+    """[(etiqueta, monto)] por cada precio del texto. Etiqueta = lo que va antes del precio en su línea."""
+    out = []
+    for linea in (texto or "").splitlines():
+        for mt in _RE_MONTO.finditer(linea):
+            monto = int(mt.group(1).replace(",", ""))
+            if monto < 50 or monto == CARGO_DOMICILIO and "domicilio" in linea.lower():
+                continue
+            etiqueta = re.sub(r"^[\s*•\-✅📱🔧]+", "", linea[:mt.start()]).strip(" :=-—")
+            out.append((etiqueta[:60], monto))
+    return out
+
+
+def texto_desglose(texto: str) -> str:
+    """Desglose 'precio + $400 = total' para cada precio del texto ('' si no hay precios)."""
+    items = _precios_en_texto(texto)[:8]
+    if not items:
+        return ""
+    if len(items) == 1:
+        et, m = items[0]
+        return f"${m:,} + {_MARCA_DESGLOSE}{CARGO_DOMICILIO} = *${m + CARGO_DOMICILIO:,} MXN*"
+    lineas = [f"🏠 A domicilio (+{_MARCA_DESGLOSE}{CARGO_DOMICILIO}):"]
+    for et, m in items:
+        lineas.append(f"* {et + ': ' if et else ''}${m:,} + ${CARGO_DOMICILIO} = *${m + CARGO_DOMICILIO:,} MXN*")
+    return "\n".join(lineas)
+
+
+def agregar_cargo_domicilio(respuesta: str) -> str:
+    """Agrega al final de una cotización el desglose con el cargo a domicilio (si tiene precios)."""
+    if not respuesta or _MARCA_DESGLOSE in respuesta:
+        return respuesta
+    d = texto_desglose(respuesta)
+    if not d:
+        return respuesta
+    if "\n" not in d:
+        d = f"🏠 A domicilio: {d}"
+    return f"{respuesta.rstrip()}\n\n{d}"
+
+
+def _ultima_cotizacion(historial: list[dict] | None) -> str:
+    """Último mensaje del bot con precios (que no sea un texto de domicilio)."""
+    for m in reversed(list(historial or [])[-_VENTANA_MODO:]):
+        c = str(m.get("content", ""))
+        if m.get("role") == "assistant" and _RE_MONTO.search(c) and _MARCA_DESGLOSE not in c:
+            return c
+    return ""
+
+
+INSTRUCCION_CLAUDE = (
+    "⚠️ NOTA SISTEMA — SERVICIO A DOMICILIO: este cliente pidió servicio a domicilio. "
+    f"A CUALQUIER precio que menciones súmale ${CARGO_DOMICILIO} y muéstralo con desglose, ej.: "
+    f"\"Mantenimiento PS5 $1,400 + servicio a domicilio ${CARGO_DOMICILIO} = $1,800 MXN\". "
+    f"Diagnóstico a domicilio: ${DIAGNOSTICO} + ${CARGO_DOMICILIO} = ${DIAGNOSTICO + CARGO_DOMICILIO} MXN. "
+    "No confirmes fecha ni hora de la visita: eso lo concreta un responsable."
+)
+
+
 # ── Estado de la conversación ─────────────────────────────────────────────────
 
 
@@ -248,7 +313,7 @@ def ya_transferido(historial: list[dict] | None) -> bool:
 
 
 def _veces_pedido_ubicacion(historial: list[dict] | None) -> int:
-    marcas = (RESPUESTA_DOMICILIO[:40], RESPUESTA_PEDIR_CP[:40], RESPUESTA_AMBIGUA[:40], RESPUESTA_DOMICILIO_PRECIO[:40])
+    marcas = _MARCA_INICIO
     return sum(1 for c in _asistente_reciente(historial) if any(mk in c for mk in marcas))
 
 
@@ -261,11 +326,21 @@ class DecisionDomicilio:
 
 def _decision_por_ubicacion(u: Ubicacion) -> DecisionDomicilio:
     if u.cobertura == "dentro":
-        return DecisionDomicilio(TXT_DENTRO.format(zona=u.zona), True, u)
+        return DecisionDomicilio(TXT_DENTRO.format(zona=u.zona).replace(" a el ", " al "), True, u)
     if u.cobertura == "borde":
         zona_cap = u.zona[:1].upper() + u.zona[1:]
         return DecisionDomicilio(TXT_BORDE.format(zona_cap=zona_cap), True, u)
     return DecisionDomicilio(TXT_FUERA, True, u)
+
+
+def _bloque_cargo(historial: list[dict] | None) -> str:
+    """Desglose de la última cotización + $400, o la nota general del cargo si no hay cotización."""
+    desglose = texto_desglose(_ultima_cotizacion(historial))
+    if desglose:
+        if "\n" not in desglose:
+            return f"Con lo que le cotizamos, a domicilio quedaría: {desglose}"
+        return desglose
+    return NOTA_CARGO
 
 
 def evaluar_domicilio(mensaje: str, historial: list[dict] | None = None) -> DecisionDomicilio | None:
@@ -283,16 +358,21 @@ def evaluar_domicilio(mensaje: str, historial: list[dict] | None = None) -> Deci
 
     u = resolver_ubicacion(mensaje)
     if u and u.cobertura in ("dentro", "borde", "fuera"):
-        return _decision_por_ubicacion(u)
+        d = _decision_por_ubicacion(u)
+        if not modo and u.cobertura != "fuera":
+            # Pidió domicilio y dio su zona en el mismo mensaje: incluir el cargo en el mensaje
+            d.texto = f"{d.texto}\n\n{_bloque_cargo(historial)}"
+        return d
 
     if not modo:
-        return DecisionDomicilio(RESPUESTA_DOMICILIO)   # primera vez: confirmar servicio y pedir CP
+        # Primera vez: confirmar servicio, informar el cargo (con desglose si ya se cotizó) y pedir CP
+        return DecisionDomicilio(f"{RESPUESTA_DOMICILIO}\n\n{_bloque_cargo(historial)}")
 
     # Ya en modo domicilio y no se pudo ubicar
     if _veces_pedido_ubicacion(historial) >= 2:
         return DecisionDomicilio(TXT_FUERA, True, u)   # no se queda atorado: lo ve un responsable
     if _RE_PRECIO.search(_norm(mensaje)):
-        return DecisionDomicilio(RESPUESTA_DOMICILIO_PRECIO)
+        return None   # pregunta de precio: la contesta el flujo normal y brain.py suma el cargo
     if u and u.cobertura == "ambigua":
         return DecisionDomicilio(RESPUESTA_AMBIGUA if u.colonia else RESPUESTA_PEDIR_CP)
     return DecisionDomicilio(RESPUESTA_PEDIR_CP)
@@ -324,6 +404,7 @@ def mensaje_grupo_domicilio(telefono: str, d: DecisionDomicilio, historial: list
         f"📍 {', '.join(zona) or 'sin ubicación clara'}\n"
         f"📏 {etiqueta}\n"
         f"💬 Lo que escribió el cliente:\n{resumen}\n\n"
-        f"⏸️ Bot pausado en este chat 24 h. No se le dieron precios.\n"
+        f"💲 Se le informó el cargo a domicilio de ${CARGO_DOMICILIO} sobre el precio de la reparación.\n"
+        f"⏸️ Bot pausado en este chat 24 h.\n"
         f"Para reactivar el bot: *reanudar: {num}*"
     )

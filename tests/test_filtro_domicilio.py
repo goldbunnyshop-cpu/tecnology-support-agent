@@ -1,6 +1,7 @@
 from agent.filtro_domicilio import (
     es_consulta_domicilio, evaluar_domicilio, respuesta_domicilio, en_modo_domicilio, resolver_ubicacion,
-    mensaje_grupo_domicilio, RESPUESTA_DOMICILIO, RESPUESTA_PEDIR_CP, RESPUESTA_DOMICILIO_PRECIO, TXT_FUERA,
+    mensaje_grupo_domicilio, RESPUESTA_DOMICILIO, RESPUESTA_PEDIR_CP, TXT_FUERA, NOTA_CARGO,
+    agregar_cargo_domicilio, texto_desglose,
 )
 
 DEBE_ACTIVAR = [
@@ -20,7 +21,7 @@ def _h(*pares):
     return [{"role": r, "content": c} for r, c in pares]
 
 
-H_INICIO = _h(("user", "tienen servicio a domicilio?"), ("assistant", RESPUESTA_DOMICILIO))
+H_INICIO = _h(("user", "tienen servicio a domicilio?"), ("assistant", RESPUESTA_DOMICILIO + "\n\n" + NOTA_CARGO))
 
 
 def test_activa():
@@ -33,7 +34,7 @@ def test_no_activa():
 
 def test_primera_vez_pide_cp():
     d = evaluar_domicilio("tienen servicio a domicilio?", [])
-    assert d.texto == RESPUESTA_DOMICILIO and not d.transferir
+    assert d.texto.startswith(RESPUESTA_DOMICILIO) and NOTA_CARGO in d.texto and not d.transferir
 
 
 def test_cp_dentro_transfiere():
@@ -73,9 +74,29 @@ def test_no_se_atora():
     assert d.transferir and d.texto == TXT_FUERA
 
 
-def test_precio_sin_cifras():
-    d = evaluar_domicilio("¿y cuánto cuesta?", H_INICIO)
-    assert d.texto == RESPUESTA_DOMICILIO_PRECIO and "$" not in d.texto
+def test_precio_en_modo_domicilio_lo_contesta_flujo_normal():
+    assert evaluar_domicilio("¿y cuánto cuesta?", H_INICIO) is None
+
+
+def test_cotizacion_previa_ps5_desglose():
+    h = _h(("user", "cuánto el mantenimiento de ps5"),
+           ("assistant", "El mantenimiento de PS5 es de $1,400 MXN, incluye limpieza y pasta térmica."))
+    d = evaluar_domicilio("lo pueden hacer a domicilio?", h)
+    assert "$1,400 + servicio a domicilio $400 = *$1,800 MXN*" in d.texto and not d.transferir
+
+
+def test_cotizacion_display_varias_opciones():
+    q = ("Para SAMSUNG A54 tenemos estas opciones:\n\n* Calidad genérica: $1,200 MXN\n"
+         "* Calidad original: $1,500 MXN\n\nCual opcion te interesa?")
+    r = agregar_cargo_domicilio(q)
+    assert "Calidad genérica: $1,200 + $400 = *$1,600 MXN*" in r
+    assert "Calidad original: $1,500 + $400 = *$1,900 MXN*" in r
+    assert agregar_cargo_domicilio(r) == r          # no duplica
+    assert agregar_cargo_domicilio("¿De qué modelo es?") == "¿De qué modelo es?"
+
+
+def test_diagnostico_domicilio():
+    assert "$200 + $400 = $600" in NOTA_CARGO
 
 
 def test_despues_de_transferir_no_repite():
