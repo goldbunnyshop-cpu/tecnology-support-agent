@@ -56,6 +56,7 @@ Si la imagen muestra un dispositivo físico (no una pantalla de sistema):
   "dano_visible": "pantalla rota | pantalla sin imagen | puerto dañado | no enciende | daño físico externo | sin daño visible | otro",
   "puerto_afectado": "USB-C | Lightning | micro-USB | HDMI | USB-A | lector SD | ninguno | No aplica",
   "severidad": "leve | moderada | grave | no_determinable",
+  "vista": "trasera (se ve la tapa/cámaras/etiqueta posterior) | frontal | otra",
   "nota_tecnica": "observación técnica de 1 línea para el técnico",
   "pregunta_cliente": "pregunta corta para confirmar el modelo si no fue posible determinarlo (ej: '¿Puedes ver el modelo en Ajustes → Acerca del teléfono?'). Deja vacío si el modelo es claro."
 }
@@ -317,3 +318,36 @@ def construir_respuesta_cliente(analisis: dict, tipo_media: str, asesor: str = "
         f"Recibí tu foto \U0001f4f8 "
         f"{pregunta_final}"
     )
+
+
+# ── Fotos de equipos: pedir foto TRASERA para identificar el modelo (manual, Google Lens) ──
+# Regla del dueño: ante una foto del daño el bot NO describe el daño ni habla de costos
+# ("diagnóstico sin costo" generó reclamos). Solo pide la foto de la parte trasera; el equipo
+# identifica el modelo manualmente con la imagen que llega a Christian.
+
+PEDIR_FOTO_TRASERA = (
+    "¡Gracias por la foto! 📸 Para identificar el modelo exacto de su equipo, "
+    "¿nos puede mandar una foto de la parte trasera?"
+)
+FOTO_TRASERA_RECIBIDA = (
+    "¡Gracias! 📸 Con esta foto identificamos el modelo exacto de su equipo "
+    "y en breve le confirmamos."
+)
+
+
+def respuesta_foto_equipo(analisis: dict, historial: list[dict] | None) -> str | None:
+    """
+    Respuesta fija para fotos de equipos. None = usar el flujo anterior
+    (capturas de pantalla de Ajustes con el modelo escrito, o fotos ilegibles).
+    """
+    if not analisis or not analisis.get("puede_diagnosticar", True):
+        return None
+    if analisis.get("es_captura_pantalla"):
+        return None   # el modelo se lee del texto de la pantalla: no hace falta foto trasera
+    ult_bot = next((str(m.get("content", "")) for m in reversed(historial or [])
+                    if m.get("role") == "assistant"), "")
+    ya_pedida = PEDIR_FOTO_TRASERA[:45] in ult_bot
+    es_trasera = str(analisis.get("vista", "")).lower().startswith("trasera")
+    if ya_pedida or es_trasera:
+        return FOTO_TRASERA_RECIBIDA
+    return PEDIR_FOTO_TRASERA

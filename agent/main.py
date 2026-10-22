@@ -83,6 +83,7 @@ from agent.vision import (
     analizar_imagen_bytes,
     analizar_thumbnail_b64,
     construir_respuesta_cliente,
+    respuesta_foto_equipo,
     construir_contexto_historial,
 )
 
@@ -317,7 +318,10 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
     # usar generar_respuesta para que Claude responda de forma coherente y no
     # re-pregunte lo que ya se sabe. construir_respuesta_cliente es solo para
     # clientes nuevos sin ningún historial previo.
-    if historial and len(historial) >= 2:
+    _fija_foto = respuesta_foto_equipo(analisis, historial)
+    if _fija_foto:
+        respuesta = _fija_foto
+    elif historial and len(historial) >= 2:
         _desc_analisis = (
             f"[ANÁLISIS VISUAL DE IMAGEN RECIBIDA]\n"
             f"Dispositivo: {analisis.get('tipo_dispositivo', '')} "
