@@ -80,16 +80,27 @@ def _norm(s: str) -> str:
 
 # ── Detección de la consulta ──────────────────────────────────────────────────
 
+# Solo cuenta si el que va/recoge es el NEGOCIO ("¿vienen a mi casa?", "¿pueden recogerlo?").
+# Frases del cliente sobre sí mismo ("paso a recoger mi equipo", "tengo que ir a mi casa") NO activan.
+_LUGAR = r"(?:mi |la |su )?(?:casa|domicilio|oficina|trabajo|negocio)"
+_PUEDEN = r"\b(?:pued\w+|podri\w+|pudier\w+|se puede)\b (?:\w+ ){0,2}"
 _PATRONES = [
     r"\ba domicilio\b",
     r"\bservicio (?:a|en) (?:domicilio|casa|mi casa|la casa|oficina|mi oficina)\b",
-    r"\b(?:van|vienen|vas|vienes|venir|ir|pasan|pasas|pasar|acuden|acudir) (?:a|hasta) (?:mi |la |su )?(?:casa|domicilio|oficina|trabajo|negocio)\b",
-    r"\b(?:recogen|recoges|recoger|pasan por|pasas por|pasar por|van por|vienen por) (?:el |mi |la |los |las )?(?:equipo|cel\w*|telefono|laptop|compu\w*|consola|tablet\w*|ipad|iphone|control)\w*",
+    rf"\b(?:van|vienen|vas|vienes|pasan|pasas|acuden|llegan|llegas) (?:a|hasta) {_LUGAR}\b",
+    rf"{_PUEDEN}(?:venir|ir|pasar|acudir|llegar) (?:a|hasta) {_LUGAR}\b",
+    r"\b(?:recogen|recoges|pasan por|pasas por|van por|vienen por) (?:el |mi |la |los |las )?(?:equipo|cel\w*|telefono|laptop|compu\w*|consola|tablet\w*|ipad|iphone|control)\w*",
+    rf"{_PUEDEN}(?:recoger\w*|pasar por|ir por|venir por)\b",
     r"\b(?:atienden|reparan|arreglan|trabajan|hacen (?:el )?servicio) (?:a|en) (?:domicilio|casa)\b",
-    r"\ba (?:mi )?casa\b.{0,25}\b(?:servicio|reparar|repara\w*|arregl\w*|tecnico)\b",
-    r"\btecnico\b.{0,25}\b(?:a|hasta) (?:mi )?(?:casa|domicilio|oficina)\b",
+    rf"\btecnico\b.{{0,25}}\b(?:viene|va|puede ir|puede venir|pasa) (?:a|hasta) {_LUGAR}\b",
     r"\bhome service\b",
 ]
+# El cliente dice que él va al módulo / no quiere domicilio → no se activa y se sale del modo domicilio
+_RE_DECLINA = re.compile(
+    r"\b(?:yo paso|yo voy|yo la llevo|yo lo llevo|la llevo|lo llevo|paso (?:a|al|por|mas tarde|en la)|"
+    r"voy (?:al|a la|para alla|para el)|no hay (?:alguien|nadie)|prefiero (?:ir|pasar|llevar)|"
+    r"no (?:quiero|necesito) (?:el servicio )?a domicilio|mejor (?:voy|paso|la llevo|lo llevo))\b"
+)
 _RE_DOMICILIO = re.compile("|".join(f"(?:{p})" for p in _PATRONES))
 
 _RE_PRECIO = re.compile(
@@ -100,7 +111,7 @@ _RE_PRECIO = re.compile(
 def es_consulta_domicilio(texto: str) -> bool:
     """True si el mensaje pregunta/pide servicio a domicilio."""
     t = _norm(texto)
-    return bool(t) and bool(_RE_DOMICILIO.search(t))
+    return bool(t) and bool(_RE_DOMICILIO.search(t)) and not _RE_DECLINA.search(t)
 
 
 # ── Tabla de cobertura ────────────────────────────────────────────────────────
@@ -304,8 +315,16 @@ def _asistente_reciente(historial: list[dict] | None) -> list[str]:
 
 
 def en_modo_domicilio(historial: list[dict] | None) -> bool:
-    """True si la conversación reciente es de servicio a domicilio (pricing bloqueado)."""
-    return any(any(mk in c for mk in _MARCA_INICIO + _MARCA_TRANSFERIDO) for c in _asistente_reciente(historial))
+    """True si la conversación reciente es de servicio a domicilio y el cliente no lo declinó después."""
+    recientes = list(historial or [])[-_VENTANA_MODO:]
+    ult = -1
+    for i, m in enumerate(recientes):
+        if m.get("role") == "assistant" and any(mk in str(m.get("content", "")) for mk in _MARCA_INICIO + _MARCA_TRANSFERIDO):
+            ult = i
+    if ult < 0:
+        return False
+    return not any(m.get("role") == "user" and _RE_DECLINA.search(_norm(str(m.get("content", ""))))
+                   for m in recientes[ult + 1:])
 
 
 def ya_transferido(historial: list[dict] | None) -> bool:
@@ -352,6 +371,8 @@ def evaluar_domicilio(mensaje: str, historial: list[dict] | None = None) -> Deci
     if ya_transferido(historial):
         return None   # ya lo atiende un responsable; si el bot se reanudó, sigue normal (sin precios)
 
+    if _RE_DECLINA.search(_norm(mensaje)):
+        return None   # "yo paso", "la llevo al módulo"... → flujo normal
     modo = en_modo_domicilio(historial)
     if not modo and not es_consulta_domicilio(mensaje):
         return None

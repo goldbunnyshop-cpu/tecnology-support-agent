@@ -9,11 +9,16 @@ DEBE_ACTIVAR = [
     "pueden venir a mi casa?", "¿van a domicilio?", "pasan por el equipo?", "recogen la laptop?",
     "el técnico puede ir hasta mi oficina?", "servicio en casa", "vienen por mi celular?",
     "atienden a domicilio en Coyoacán?", "Servicio A Domicilio",
+    "me lo pueden recoger?", "pueden pasar por el equipo?", "podrían venir a mi oficina?",
 ]
 NO_DEBE_ACTIVAR = [
     "cuánto cuesta el display de un samsung a54", "mi switch no enciende", "dónde están ubicados",
     "quiero agendar una cita", "voy saliendo de mi casa", "lo dejé en casa", "hola buenas tardes",
     "mi laptop no carga", "el control de ps5 tiene drift", "cuál es el horario",
+    # Casos reales / frases del cliente sobre sí mismo
+    "Gracias, más tarde paso a recoger mi equipo", "Yo paso, no hay alguien que la reciba en mi domicilio",
+    "tengo que ir a mi casa por el cargador", "voy a recoger mi celular", "mañana paso a recogerlo",
+    "voy a ir a mi casa y regreso", "lo llevo mañana al módulo",
 ]
 
 
@@ -112,3 +117,10 @@ def test_aviso_grupo():
     d = evaluar_domicilio("14000", H_INICIO)
     txt = mensaje_grupo_domicilio("5215512345678@s.whatsapp.net", d, H_INICIO, "14000")
     assert "reanudar: 5215512345678" in txt and "DENTRO" in txt
+
+
+def test_cliente_declina_sale_de_modo():
+    h = H_INICIO + _h(("user", "Yo paso, no hay alguien que la reciba"), ("assistant", "Perfecto, aquí la esperamos"))
+    assert not en_modo_domicilio(h)
+    assert evaluar_domicilio("a qué hora cierran?", h) is None
+    assert evaluar_domicilio("mejor la llevo yo", H_INICIO) is None
