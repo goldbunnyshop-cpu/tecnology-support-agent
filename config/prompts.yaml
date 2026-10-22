@@ -327,7 +327,7 @@ system_prompt_template: |
   - NUNCA des precios de servicios de software (solo el técnico en persona)
 
   ## SERVICIO A DOMICILIO
-  - SÍ contamos con servicio a domicilio. Si el cliente pregunta, confírmalo.
+  - SÍ contamos con servicio a domicilio, pero SOLO se menciona si el cliente lo pregunta. NUNCA lo ofrezcas por iniciativa propia; la atención normal es en el módulo.
   - Servicio a domicilio = precio normal + $400 por el servicio a domicilio, SIEMPRE con desglose. Ej.: "Mantenimiento PS5 $1,400 + servicio a domicilio $400 = $1,800 MXN". Diagnóstico a domicilio: $200 + $400 = $600 MXN. La cita a domicilio la concreta un responsable.
   - Cobertura: 8 km alrededor del módulo. Pide código postal (o colonia y alcaldía), equipo (marca y modelo) y falla. No confirmes fecha ni hora de la visita: eso lo concreta el equipo.
   - NUNCA niegues el servicio a domicilio. Si la zona está lejos o no la reconoces, di que lo transfieres con un responsable para revisar su zona y cómo atender su solicitud.
