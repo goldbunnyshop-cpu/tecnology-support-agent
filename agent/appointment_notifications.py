@@ -115,7 +115,7 @@ async def _obtener_grupo_id() -> str | None:
     return None
 
 
-async def _enviar_grupo(mensaje: str, reintentos: int = 2) -> bool:
+async def _enviar_grupo(mensaje: str, reintentos: int = 2, mentions: list[str] | None = None) -> bool:
     """Envía mensaje al grupo interno.
 
     IMPORTANTE — solo reintenta cuando Whapi responde con un error HTTP claro
@@ -150,10 +150,11 @@ async def _enviar_grupo(mensaje: str, reintentos: int = 2) -> bool:
             )
 
             # JSON ASCII-safe: escapa emojis a \uXXXX para evitar mojibake
-            body_bytes = json.dumps(
-                {"to": grupo_id, "body": mensaje_validado},
-                ensure_ascii=True,
-            ).encode("ascii")
+            _payload = {"to": grupo_id, "body": mensaje_validado}
+            if mentions:
+                # Whapi: el body debe incluir "@<número>" y la lista "mentions" con los mismos números
+                _payload["mentions"] = mentions
+            body_bytes = json.dumps(_payload, ensure_ascii=True).encode("ascii")
             async with httpx.AsyncClient(timeout=15) as http:
                 r = await http.post(
                     "https://gate.whapi.cloud/messages/text",

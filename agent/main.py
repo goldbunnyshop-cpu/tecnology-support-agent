@@ -84,6 +84,9 @@ from agent.vision import (
     analizar_thumbnail_b64,
     construir_respuesta_cliente,
     respuesta_foto_equipo,
+    FOTO_TRASERA_RECIBIDA,
+    mensaje_grupo_foto_trasera,
+    numero_mencion,
     construir_contexto_historial,
 )
 
@@ -351,6 +354,24 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
             imagen_bytes=imagen_bytes, imagen_mime=mime_type,
         )
     )
+
+    # (B) Llegó la foto trasera → avisar al grupo mencionando a Christian y pausar 2 h
+    #     (solo se pausa si el aviso llegó, para no dejar al cliente sin respuesta)
+    if respuesta == FOTO_TRASERA_RECIBIDA:
+        try:
+            from agent.appointment_notifications import _enviar_grupo
+            from agent.notifications import CHRISTIAN_NUMERO
+            _ok = await _enviar_grupo(
+                mensaje_grupo_foto_trasera(msg.telefono, analisis, historial, CHRISTIAN_NUMERO),
+                mentions=[numero_mencion(CHRISTIAN_NUMERO)],
+            )
+            if _ok:
+                await pausar_conversacion(msg.telefono, horas=2)
+                logger.info(f"[IMG] Foto trasera de {msg.telefono} → aviso al grupo + pausa 2 h")
+            else:
+                logger.error(f"[IMG] Aviso de foto trasera falló — {msg.telefono} NO se pausó")
+        except Exception as e:
+            logger.error(f"[IMG] Error en aviso/pausa de foto trasera: {e}")
     return respuesta
 
 

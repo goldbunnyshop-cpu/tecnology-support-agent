@@ -351,3 +351,29 @@ def respuesta_foto_equipo(analisis: dict, historial: list[dict] | None) -> str |
     if ya_pedida or es_trasera:
         return FOTO_TRASERA_RECIBIDA
     return PEDIR_FOTO_TRASERA
+
+
+def numero_mencion(numero: str) -> str:
+    """Número en formato de WhatsApp MX para @mencionar (ej. 5541576331 → 5215541576331)."""
+    import re as _re
+    d = _re.sub(r"\D", "", numero or "")
+    return "521" + d[-10:] if len(d) >= 10 else d
+
+
+def mensaje_grupo_foto_trasera(telefono: str, analisis: dict, historial: list[dict], numero_dueno: str) -> str:
+    """Aviso al grupo: llegó la foto trasera, hay que identificar el modelo y contestar al cliente."""
+    import re as _re
+    num = _re.sub(r"\D", "", telefono or "")
+    sugerido = " ".join(x for x in (analisis.get("marca", ""), analisis.get("modelo_probable", ""))
+                        if x and x not in ("No identificada", "No determinado", "otra"))
+    msgs = [str(m.get("content", ""))[:120] for m in (historial or []) if m.get("role") == "user"][-4:]
+    resumen = "\n".join(f"  • {m}" for m in msgs if m.strip())
+    return (
+        f"@{numero_mencion(numero_dueno)} 📸 *FOTO TRASERA RECIBIDA — identificar modelo*\n"
+        f"📱 {num}\n"
+        f"🔎 Sugerencia de la IA (no confirmada): {sugerido or 'sin identificar'}\n"
+        f"🖼️ La foto te llegó por mensaje directo (búscala en Google Lens).\n"
+        + (f"💬 Lo último que escribió el cliente:\n{resumen}\n" if resumen else "")
+        + f"\n⏸️ Bot pausado 2 h en este chat para que lo atiendas.\n"
+        f"Para reactivarlo antes: *reanudar: {num}*"
+    )

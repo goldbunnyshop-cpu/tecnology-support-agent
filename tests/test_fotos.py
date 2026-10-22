@@ -25,3 +25,13 @@ def test_foto_trasera_directa():
 def test_captura_ajustes_y_foto_ilegible_siguen_flujo_anterior():
     assert respuesta_foto_equipo({"puede_diagnosticar": True, "es_captura_pantalla": True}, []) is None
     assert respuesta_foto_equipo({"puede_diagnosticar": False}, []) is None
+
+
+def test_aviso_grupo_con_mencion():
+    from agent.vision import mensaje_grupo_foto_trasera, numero_mencion
+    assert numero_mencion("5541576331") == "5215541576331"
+    assert numero_mencion("5215541576331") == "5215541576331"
+    txt = mensaje_grupo_foto_trasera("5215537195598@s.whatsapp.net",
+                                     {"marca": "Samsung", "modelo_probable": "Galaxy A54"},
+                                     [{"role": "user", "content": "se rompió la pantalla"}], "5541576331")
+    assert txt.startswith("@5215541576331") and "reanudar: 5215537195598" in txt and "Galaxy A54" in txt
