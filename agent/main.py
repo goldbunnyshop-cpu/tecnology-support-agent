@@ -85,6 +85,7 @@ from agent.vision import (
     analizar_thumbnail_b64,
     construir_respuesta_cliente,
     respuesta_foto_equipo,
+    PEDIR_FOTO_TRASERA,
     FOTO_TRASERA_RECIBIDA,
     mensaje_grupo_foto_trasera,
     numero_mencion,
@@ -390,7 +391,10 @@ async def _analizar_y_responder_video(msg, historial: list, asesor: str) -> str:
     if not analisis:
         return RESPUESTA_VIDEO_FALLBACK
 
-    respuesta = construir_respuesta_cliente(analisis, "video", asesor)
+    # Igual que con fotos: no describir el video; pedir la foto trasera para identificar el modelo
+    respuesta = respuesta_foto_equipo(analisis, historial)
+    if respuesta == PEDIR_FOTO_TRASERA:
+        respuesta = PEDIR_FOTO_TRASERA.replace("la foto", "el video").replace("📸", "🎥")
     asyncio.create_task(
         notificar_christian_vision(proveedor, msg.telefono, historial, analisis, "video")
     )

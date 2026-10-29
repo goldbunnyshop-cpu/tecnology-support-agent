@@ -22,11 +22,13 @@ def test_foto_trasera_directa():
     assert respuesta_foto_equipo(dict(DANO, vista="trasera"), []) == FOTO_TRASERA_RECIBIDA
 
 
-def test_captura_ajustes_y_foto_ilegible_siguen_flujo_anterior():
-    assert respuesta_foto_equipo({"puede_diagnosticar": True, "es_captura_pantalla": True,
-                                  "modelo_probable": "Redmi 13"}, []) is None
-    assert respuesta_foto_equipo({"puede_diagnosticar": False}, []) is None
-
+def test_captura_y_foto_ilegible_tambien_son_fijas():
+    from agent.vision import FOTO_ILEGIBLE
+    cap = {"puede_diagnosticar": True, "es_captura_pantalla": True, "modelo_probable": "Google Pixel 6 Pro"}
+    assert respuesta_foto_equipo(cap, []) == PEDIR_FOTO_TRASERA      # caso Nubia: ya no se describe la foto
+    assert respuesta_foto_equipo({"puede_diagnosticar": False}, []) == FOTO_ILEGIBLE
+    h = [{"role": "assistant", "content": FOTO_ILEGIBLE}]
+    assert respuesta_foto_equipo(DANO, h) == FOTO_TRASERA_RECIBIDA
 
 def test_aviso_grupo_con_mencion():
     from agent.vision import mensaje_grupo_foto_trasera, numero_mencion

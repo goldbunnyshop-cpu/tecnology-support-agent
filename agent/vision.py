@@ -338,19 +338,24 @@ FOTO_TRASERA_RECIBIDA = (
 )
 
 
-def respuesta_foto_equipo(analisis: dict, historial: list[dict] | None) -> str | None:
+FOTO_ILEGIBLE = (
+    "La foto no se alcanza a ver bien 📸 ¿Nos puede mandar una foto de la parte trasera "
+    "del equipo, con buena luz?"
+)
+
+
+def respuesta_foto_equipo(analisis: dict, historial: list[dict] | None) -> str:
     """
-    Respuesta fija para fotos de equipos. None = usar el flujo anterior
-    (capturas de pantalla de Ajustes con el modelo escrito, o fotos ilegibles).
+    Respuesta FIJA para cualquier foto de equipo: nunca pasa por la IA conversacional, así que
+    nunca describe lo que se ve. Caso real (26-oct, Nubia Z60 Ultra): una foto con la pantalla
+    encendida se tomó como "captura de pantalla", saltó la regla y el bot respondió
+    "veo que la pantalla está activa…". Por eso ya no hay excepción para capturas.
     """
-    if not analisis or not analisis.get("puede_diagnosticar", True):
-        return None
-    modelo_leido = str(analisis.get("modelo_probable", "") or "").strip()
-    if analisis.get("es_captura_pantalla") and modelo_leido and modelo_leido != "No determinado":
-        return None   # captura de Ajustes con el modelo escrito: no hace falta foto trasera
     ult_bot = next((str(m.get("content", "")) for m in reversed(historial or [])
                     if m.get("role") == "assistant"), "")
-    ya_pedida = PEDIR_FOTO_TRASERA[:45] in ult_bot
+    ya_pedida = PEDIR_FOTO_TRASERA[:45] in ult_bot or FOTO_ILEGIBLE[:40] in ult_bot
+    if not analisis or not analisis.get("puede_diagnosticar", True):
+        return FOTO_ILEGIBLE
     es_trasera = str(analisis.get("vista", "")).lower().startswith("trasera")
     if ya_pedida or es_trasera:
         return FOTO_TRASERA_RECIBIDA
