@@ -831,6 +831,25 @@ async def webhook_handler(request: Request):
     return {"status": "ok"}
 
 
+_RE_SALUDO = re.compile(
+    r"^(?:hola+|ola|holi|buen(?:as|os)?(?: (?:dias|tardes|noches))?|hey|que tal|saludos|"
+    r"info|informacion|mas informacion|quiero (?:mas )?informacion|me interesa|"
+    r"(?:hola )?(?:quiero|quisiera|me gustaria) (?:cotizar|una cotizacion|informes|informacion)|"
+    r"(?:hola )?(?:buenas )?(?:quiero|necesito) (?:una )?(?:reparacion|cotizacion)|"
+    r"hola buen(?:as|os)? (?:dias|tardes|noches)|hola buenas)$"
+)
+
+
+def _es_saludo_simple(texto: str) -> bool:
+    """True si el primer mensaje es solo un saludo / 'quiero cotizar' (sin pregunta ni equipo)."""
+    import unicodedata as _ud
+    t = _ud.normalize("NFD", (texto or "").lower())
+    t = "".join(c for c in t if _ud.category(c) != "Mn")
+    t = re.sub(r"[^a-z0-9ñ ]+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return not t or bool(_RE_SALUDO.match(t))
+
+
 async def _procesar_lote_mensajes(mensajes):
     """Procesa los mensajes del webhook en segundo plano (no bloquea la respuesta 200)."""
     try:
@@ -842,6 +861,10 @@ async def _procesar_lote_mensajes(mensajes):
 
             # ── Mensaje propio: el número de negocio envió a un cliente → pausar ──
             if msg.es_propio and not msg.es_grupo:
+                # Eco de un mensaje que envió el BOT por la API → ya está en el historial; ignorar.
+                from agent.providers.whapi import es_eco_del_bot
+                if es_eco_del_bot(msg.mensaje_id, msg.telefono, msg.texto or "", getattr(msg, "source", "")):
+                    continue
                 # Guardar el mensaje manual del dueño como "assistant" en el historial
                 # para que Claude no contradiga lo que el dueño prometió/informó al cliente.
                 # El prefijo [DUEÑO] permite que el motor de pricing lo detecte y lo respete.
@@ -1047,8 +1070,11 @@ async def _procesar_lote_mensajes(mensajes):
                     or "No reconocí tu selección" in _ult_asist_menu
                 )
 
-                if not _historial_previo and not _categoria_ya_guardada:
-                    # Caso A: cero mensajes previos → primer contacto real → menú
+                if not _historial_previo and not _categoria_ya_guardada and _es_saludo_simple(msg.texto):
+                    # Caso A: cero mensajes previos y solo saludó → menú.
+                    # Si el primer mensaje ya trae una pregunta o el equipo ("¿Ofrecen garantía…?",
+                    # "Pantalla rota de un ZTE A54") se atiende directo: antes el menú se tragaba
+                    # la pregunta y nunca se respondía (casos reales 24 y 26-oct).
                     logger.info(f"[MENU] Cliente nuevo {msg.telefono} → enviando menú inicial")
                     await guardar_mensaje(msg.telefono, "user", msg.texto)
                     await proveedor.enviar_typing(msg.telefono)

@@ -15,6 +15,48 @@ logger = logging.getLogger("agentkit")
 _cache_grupos: dict[str, str] = {}
 
 
+# ── Registro de mensajes que envía el BOT ─────────────────────────────────────
+# Whapi manda un webhook (from_me=True) por CADA mensaje saliente, también los que envía
+# el propio bot por la API. main.py los guardaba como "[DUEÑO] ..." (intervención manual),
+# lo que duplicaba el historial y apagaba el motor de precios (que se desactiva cuando el
+# último mensaje es del dueño). Aquí se registra lo que envía el bot para reconocer su eco.
+import hashlib as _hashlib
+import time as _time
+
+_ECO_TTL = 15 * 60
+_enviados_ids: dict[str, float] = {}
+_enviados_txt: dict[str, float] = {}
+
+
+def _clave_txt(destino: str, texto: str) -> str:
+    num = "".join(ch for ch in (destino or "") if ch.isdigit())
+    return num + ":" + _hashlib.sha1((texto or "").strip().encode("utf-8", "replace")).hexdigest()
+
+
+def _limpiar_registro() -> None:
+    ahora = _time.time()
+    for d in (_enviados_ids, _enviados_txt):
+        for k in [k for k, t in d.items() if ahora - t > _ECO_TTL]:
+            d.pop(k, None)
+
+
+def registrar_envio_bot(destino: str, texto: str = "", mensaje_id: str = "") -> None:
+    _limpiar_registro()
+    if mensaje_id:
+        _enviados_ids[mensaje_id] = _time.time()
+    if texto:
+        _enviados_txt[_clave_txt(destino, texto)] = _time.time()
+
+
+def es_eco_del_bot(mensaje_id: str, telefono: str, texto: str, source: str = "") -> bool:
+    """True si un mensaje from_me lo envió el bot (y no el dueño desde su teléfono)."""
+    if (source or "").lower() == "api":
+        return True
+    if mensaje_id and mensaje_id in _enviados_ids:
+        return True
+    return bool(texto) and _clave_txt(telefono, texto) in _enviados_txt
+
+
 @dataclass
 class MensajeEntranteWhapi(MensajeEntrante):
     fuente: str = "desconocido"
@@ -151,6 +193,7 @@ class ProveedorWhapi(ProveedorWhatsApp):
                 media_id     = media_id,
                 media_mime_type = media_mime_type,
             ))
+            mensajes[-1].source = str(msg.get("source", "") or "")
 
         return mensajes
 
@@ -197,6 +240,7 @@ class ProveedorWhapi(ProveedorWhatsApp):
             # entre nuestro servidor y la API de Whapi (causa probada de mojibake).
             body_bytes = json.dumps(payload, ensure_ascii=True).encode("ascii")
 
+            registrar_envio_bot(destino, mensaje_limpio)   # antes de enviar: el eco puede llegar muy rápido
             r = await client.post(
                 self.url_envio,
                 content=body_bytes,
@@ -207,6 +251,10 @@ class ProveedorWhapi(ProveedorWhatsApp):
                 logger.error(f"[WHAPI] Mensaje fallido: {mensaje_limpio[:100]}")
             else:
                 logger.info(f"[WHAPI] ✅ Mensaje enviado a {destino}")
+                try:
+                    registrar_envio_bot(destino, mensaje_id=str((r.json().get("message") or {}).get("id", "")))
+                except Exception:
+                    pass
             return r.status_code == 200
 
     async def enviar_imagen_bytes(

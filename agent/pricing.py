@@ -293,9 +293,23 @@ def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> list[t
     if not descripcion:
         return []
 
-    # Quitar parentesis (notas como "(MOVIL IC)", "(BOUTIQUE)", etc.)
-    d = re.sub(r'\([^)]*\)', '', descripcion).strip().lower()
-    chunks = [c.strip() for c in d.split('/') if c.strip()]
+    d = descripcion.lower()
+    # Quitar marcadores de marco/proveedor que contienen "/" ANTES de partir por "/":
+    # "W/F S20 FE" se partía en "w" + "f s20 fe" y "S/M(BOUTIQUE)" en "s" + "m" → ~120 productos
+    # del catálogo (13%) no se encontraban (ej. Samsung S20 FE, Moto E20/E22/E30).
+    d = re.sub(r'\b[cs]/m\b', ' ', d)                       # C/M, S/M (con/sin marco)
+    d = re.sub(r'^\s*w/f\b', ' ', d)                         # prefijo W/F
+    # Quitar parentesis (notas como "(MOVIL IC)", "(BOUTIQUE)", etc.) y restos sin abrir: "BOUTIQUE)"
+    d = re.sub(r'\([^)]*\)', ' ', d)
+    d = re.sub(r'[^\s/]*\)', ' ', d)
+    d = re.sub(r'\bboutique\b', ' ', d)
+    chunks = []
+    for c in d.split('/'):
+        # Prefijos de proveedor/calidad al inicio: WF, WF-B, WF-G…, AA, HG
+        c = re.sub(r'^\s*(?:wf(?:-[a-z]+)?|aa|hg)\s+', '', c)
+        c = re.sub(r'\s+', ' ', c).strip()
+        if c:
+            chunks.append(c)
 
     pares: list[tuple[str | None, str | None]] = []
     vistos: set[tuple[str | None, str | None]] = set()
@@ -399,6 +413,9 @@ def normalizar_modelo_query(modelo_str: str, marca: str) -> tuple[str | None, st
     # Colapsar "10 plus" → "10plus" también para variante
     m = re.sub(r'(\d)\s+plus\b', r'\1plus', m)
 
+    # "5g"/"4g"/"lte" son conectividad, no variante de pantalla ("s20 fe 5g" → "s20 fe").
+    m = re.sub(r'\b(?:[45]g|lte)\b', ' ', m)
+    m = re.sub(r'\s+', ' ', m).strip()
     tokens = m.split()
     if not tokens:
         return None, None
