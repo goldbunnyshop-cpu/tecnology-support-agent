@@ -23,7 +23,8 @@ def test_foto_trasera_directa():
 
 
 def test_captura_ajustes_y_foto_ilegible_siguen_flujo_anterior():
-    assert respuesta_foto_equipo({"puede_diagnosticar": True, "es_captura_pantalla": True}, []) is None
+    assert respuesta_foto_equipo({"puede_diagnosticar": True, "es_captura_pantalla": True,
+                                  "modelo_probable": "Redmi 13"}, []) is None
     assert respuesta_foto_equipo({"puede_diagnosticar": False}, []) is None
 
 
@@ -35,3 +36,16 @@ def test_aviso_grupo_con_mencion():
                                      {"marca": "Samsung", "modelo_probable": "Galaxy A54"},
                                      [{"role": "user", "content": "se rompió la pantalla"}], "5541576331")
     assert txt.startswith("@5215541576331") and "reanudar: 5215537195598" in txt and "Galaxy A54" in txt
+
+
+def test_foto_de_pantalla_encendida_sin_modelo_pide_trasera():
+    # Caso Nubia: foto del celular con la pantalla encendida que la IA tomó como "captura"
+    a = {"puede_diagnosticar": True, "es_captura_pantalla": True, "modelo_probable": ""}
+    assert respuesta_foto_equipo(a, []) == PEDIR_FOTO_TRASERA
+
+
+def test_historial_foto_marca_estimacion():
+    from agent.vision import construir_contexto_historial
+    t = construir_contexto_historial({"tipo_dispositivo": "celular", "marca": "Google",
+                                      "modelo_probable": "Pixel 6 Pro", "dano_visible": "pantalla rota"})
+    assert "NO confirmada" in t and "Pixel 6 Pro" in t

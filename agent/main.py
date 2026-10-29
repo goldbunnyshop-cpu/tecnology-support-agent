@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
+from agent.cliente_foraneo import cliente_foraneo_en_historial, NOTA_FORANEO
 from agent.filtro_domicilio import evaluar_domicilio, mensaje_grupo_domicilio
 from agent.memory import (
     inicializar_db, guardar_mensaje, obtener_historial,
@@ -327,14 +328,16 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
     elif historial and len(historial) >= 2:
         _desc_analisis = (
             f"[ANÁLISIS VISUAL DE IMAGEN RECIBIDA]\n"
-            f"Dispositivo: {analisis.get('tipo_dispositivo', '')} "
+            f"Dispositivo (estimación de la IA, NO confirmada): {analisis.get('tipo_dispositivo', '')} "
             f"{analisis.get('marca', '')} {analisis.get('modelo_probable', '')}\n"
             f"Daño visible: {analisis.get('dano_visible', 'no determinado')}\n"
             f"Nota técnica: {analisis.get('nota_tecnica', '')}\n\n"
-            f"REGLA CRÍTICA: El modelo y el problema ya están establecidos en esta "
-            f"conversación — NO preguntes de nuevo por ellos. Usa este análisis visual "
-            f"como confirmación adicional. Si el daño en la foto confirma lo que dijo "
-            f"el cliente, exprésalo de forma natural y avanza en la atención."
+            f"REGLAS CRÍTICAS:\n"
+            f"- NO describas al cliente lo que se ve en la foto (ni daño, ni estado de la pantalla, "
+            f"ni el modelo que parece). Solo agradece la foto y avanza en la atención.\n"
+            f"- El modelo que dijo el CLIENTE es el que vale. La marca/modelo de este análisis es una "
+            f"estimación de la IA y NO se usa si el cliente ya dijo su modelo (ni en citas ni en cotizaciones).\n"
+            f"- No preguntes de nuevo el modelo ni el problema si ya están en la conversación."
         )
         _ctx_vision = f"{_ctx_fecha_cdmx()}\n\n{_desc_analisis}"
         respuesta = await generar_respuesta(
@@ -1204,6 +1207,11 @@ async def _procesar_lote_mensajes(mensajes):
                                 partes_ctx.append(formatear_slots_multiples_para_claude(_dias_fb))
                                 logger.info(f"[CALENDAR] Disponibilidad fallback inyectada (afirmación tras pregunta de horario) para {[str(f) for f in _fechas_fb]}")
                                 break
+
+                # Cliente que viene de fuera de CDMX en una fecha futura → aclarar, ubicación y refacción
+                if cliente_foraneo_en_historial(await obtener_historial(msg.telefono, limite=6), msg.texto):
+                    partes_ctx.append(NOTA_FORANEO)
+                    logger.info(f"[FORANEO] {msg.telefono} — nota de cliente foráneo inyectada")
 
                 contexto_cliente = "\n\n".join(partes_ctx)
 

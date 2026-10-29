@@ -224,7 +224,10 @@ def construir_contexto_historial(analisis: dict, tipo_media: str = "image") -> s
     if puerto in ("ninguno", "No aplica", ""):
         puerto = ""
 
-    partes_equipo = " ".join(filter(None, [tipo, marca, modelo])) or "equipo no identificado"
+    # La marca/modelo que deduce la IA de una foto es solo una ESTIMACIÓN. Caso real: el cliente dijo
+    # "Nubia Z60 Ultra" y la cita se guardó como "Google Pixel 6 Pro" por la foto. Se marca como no confirmado.
+    estimado = " ".join(filter(None, [marca, modelo]))
+    partes_equipo = " ".join(filter(None, [tipo, f"(estimación de la IA, NO confirmada: {estimado})" if estimado else ""])) or "equipo no identificado"
     partes_dano   = " - ".join(filter(None, [dano, f"puerto {puerto}" if puerto else ""]))
     resumen = partes_equipo + (f" - {partes_dano}" if partes_dano else "")
 
@@ -342,8 +345,9 @@ def respuesta_foto_equipo(analisis: dict, historial: list[dict] | None) -> str |
     """
     if not analisis or not analisis.get("puede_diagnosticar", True):
         return None
-    if analisis.get("es_captura_pantalla"):
-        return None   # el modelo se lee del texto de la pantalla: no hace falta foto trasera
+    modelo_leido = str(analisis.get("modelo_probable", "") or "").strip()
+    if analisis.get("es_captura_pantalla") and modelo_leido and modelo_leido != "No determinado":
+        return None   # captura de Ajustes con el modelo escrito: no hace falta foto trasera
     ult_bot = next((str(m.get("content", "")) for m in reversed(historial or [])
                     if m.get("role") == "assistant"), "")
     ya_pedida = PEDIR_FOTO_TRASERA[:45] in ult_bot
