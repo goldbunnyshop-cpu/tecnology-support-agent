@@ -412,9 +412,9 @@ async def limpiar_historial(telefono: str):
         await session.commit()
 
 
-async def pausar_conversacion(telefono: str, horas: int = 2):
-    """Pausa el agente para este cliente durante N horas (intervención humana)."""
-    minutos = horas * 60
+async def pausar_conversacion(telefono: str, horas: int = 2, minutos: int | None = None):
+    """Pausa el agente para este cliente durante N horas (o N minutos si se indica)."""
+    minutos = int(minutos) if minutos else horas * 60
     async with async_session() as session:
         # Desactivar pausas previas activas para este cliente
         result = await session.execute(
@@ -429,7 +429,7 @@ async def pausar_conversacion(telefono: str, horas: int = 2):
         ))
         await session.commit()
     # Compatibilidad con código existente que lee ClientePerfil.pausada_hasta
-    hasta = datetime.utcnow() + timedelta(hours=horas)
+    hasta = datetime.utcnow() + timedelta(minutes=minutos)
     await _upsert_perfil(telefono, pausada_hasta=hasta)
     logger.info(f"[PAUSA] Cliente {telefono} pausado — {minutos} min (intervención manual de Christian)")
 

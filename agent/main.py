@@ -19,6 +19,7 @@ from sqlalchemy import select, text
 from dotenv import load_dotenv
 
 from agent.brain import generar_respuesta
+from agent.horario import fuera_de_horario, minutos_hasta_apertura, nota_claude
 from agent.cliente_foraneo import cliente_foraneo_en_historial, NOTA_FORANEO
 from agent.filtro_domicilio import evaluar_domicilio, mensaje_grupo_domicilio
 from agent.memory import (
@@ -370,8 +371,11 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
                 mentions=[numero_mencion(CHRISTIAN_NUMERO)],
             )
             if _ok:
-                await pausar_conversacion(msg.telefono, horas=2)
-                logger.info(f"[IMG] Foto trasera de {msg.telefono} → aviso al grupo + pausa 2 h")
+                if fuera_de_horario():
+                    await pausar_conversacion(msg.telefono, minutos=minutos_hasta_apertura())
+                else:
+                    await pausar_conversacion(msg.telefono, horas=2)
+                logger.info(f"[IMG] Foto trasera de {msg.telefono} → aviso al grupo + pausa")
             else:
                 logger.error(f"[IMG] Aviso de foto trasera falló — {msg.telefono} NO se pausó")
         except Exception as e:
@@ -1008,7 +1012,9 @@ async def _procesar_lote_mensajes(mensajes):
                 await cancelar_retoma(msg.telefono)
 
                 # ── Modo nocturno ──
-                if es_horario_nocturno() and not _es_numero_excepcion_pruebas(msg.telefono):
+                # Modo nocturno desactivado: el bot contesta 24 h y, fuera de horario, avisa cuándo
+                # retoma el equipo humano (agent/horario.py). Se deja el bloque por si se reactiva.
+                if False and es_horario_nocturno() and not _es_numero_excepcion_pruebas(msg.telefono):
                     contenido = msg.texto or f"[{msg.tipo}]"
                     await manejar_mensaje_nocturno(msg.telefono, contenido, asesor)
                     continue
@@ -1238,6 +1244,10 @@ async def _procesar_lote_mensajes(mensajes):
                                 logger.info(f"[CALENDAR] Disponibilidad fallback inyectada (afirmación tras pregunta de horario) para {[str(f) for f in _fechas_fb]}")
                                 break
 
+                _nota_hor = nota_claude()
+                if _nota_hor:
+                    partes_ctx.append(_nota_hor)
+
                 # Cliente que viene de fuera de CDMX en una fecha futura → aclarar, ubicación y refacción
                 if cliente_foraneo_en_historial(await obtener_historial(msg.telefono, limite=6), msg.texto):
                     partes_ctx.append(NOTA_FORANEO)
@@ -1279,7 +1289,10 @@ async def _procesar_lote_mensajes(mensajes):
                             logger.error(f"[DOMICILIO] Error avisando al grupo: {e}")
                         if _ok_grupo:
                             try:
-                                await pausar_conversacion(msg.telefono, horas=24)
+                                if fuera_de_horario():
+                                    await pausar_conversacion(msg.telefono, minutos=minutos_hasta_apertura())
+                                else:
+                                    await pausar_conversacion(msg.telefono, horas=24)
                             except Exception as e:
                                 logger.error(f"[DOMICILIO] Error al pausar {msg.telefono}: {e}")
                         else:

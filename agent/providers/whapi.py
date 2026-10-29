@@ -230,6 +230,14 @@ class ProveedorWhapi(ProveedorWhatsApp):
             logger.error(f"[WHAPI ENCODING] Error validando UTF-8: {e}")
             mensaje_limpio = mensaje
 
+        # Fuera de horario: a clientes no se les promete atención humana "en breve" (horario.py)
+        if not str(destino).endswith("@g.us"):
+            try:
+                from agent.horario import ajustar_promesas
+                mensaje_limpio = ajustar_promesas(mensaje_limpio)
+            except Exception as e:
+                logger.error(f"[HORARIO] No se pudo ajustar el mensaje: {e}")
+
         async with httpx.AsyncClient() as client:
             payload = {
                 "to": destino,

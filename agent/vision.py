@@ -383,6 +383,16 @@ def mensaje_grupo_foto_trasera(telefono: str, analisis: dict, historial: list[di
         f"🔎 Sugerencia de la IA (no confirmada): {sugerido or 'sin identificar'}\n"
         f"🖼️ La foto te llegó por mensaje directo (búscala en Google Lens).\n"
         + (f"💬 Lo último que escribió el cliente:\n{resumen}\n" if resumen else "")
-        + f"\n⏸️ Bot pausado 2 h en este chat para que lo atiendas.\n"
+        + f"\n⏸️ Bot pausado en este chat para que lo atiendas ({_txt_pausa(2)}).\n"
         f"Para reactivarlo antes: *reanudar: {num}*"
     )
+
+
+def _txt_pausa(horas_en_horario: int) -> str:
+    try:
+        from agent.horario import fuera_de_horario, texto_retoma
+        if fuera_de_horario():
+            return f"fuera de horario: hasta {texto_retoma().replace('a partir de las', 'a las')}"
+    except Exception:
+        pass
+    return f"{horas_en_horario} h"

@@ -426,6 +426,16 @@ def mensaje_grupo_domicilio(telefono: str, d: DecisionDomicilio, historial: list
         f"📏 {etiqueta}\n"
         f"💬 Lo que escribió el cliente:\n{resumen}\n\n"
         f"💲 Se le informó el cargo a domicilio de ${CARGO_DOMICILIO} sobre el precio de la reparación.\n"
-        f"⏸️ Bot pausado en este chat 24 h.\n"
+        f"⏸️ Bot pausado en este chat ({_txt_pausa_dom()}).\n"
         f"Para reactivar el bot: *reanudar: {num}*"
     )
+
+
+def _txt_pausa_dom() -> str:
+    try:
+        from agent.horario import fuera_de_horario, texto_retoma
+        if fuera_de_horario():
+            return f"fuera de horario: hasta {texto_retoma().replace('a partir de las', 'a las')}"
+    except Exception:
+        pass
+    return "24 h"
