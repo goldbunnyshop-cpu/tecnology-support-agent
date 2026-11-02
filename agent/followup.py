@@ -481,8 +481,10 @@ async def ejecutar_alerta_factura():
         # Buscar el chat_id del grupo interno
         import httpx, os
         token = os.getenv("WHAPI_TOKEN", "")
-        grupo_id = None
-        async with httpx.AsyncClient(timeout=10) as http:
+        grupo_id = (os.getenv("GRUPO_CHRISTIAN_INTERNO", "").strip()
+                    or os.getenv("GRUPO_INTERNO_ID", "").strip() or None)
+        if not grupo_id:
+          async with httpx.AsyncClient(timeout=10) as http:
             r = await http.get(
                 "https://gate.whapi.cloud/chats",
                 headers={"Authorization": f"Bearer {token}"},

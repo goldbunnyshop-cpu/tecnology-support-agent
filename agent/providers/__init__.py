@@ -12,6 +12,9 @@ def obtener_proveedor() -> ProveedorWhatsApp:
     if proveedor == "whapi":
         from agent.providers.whapi import ProveedorWhapi
         return ProveedorWhapi()
+    if proveedor == "waha":
+        from agent.providers.waha import ProveedorWaha
+        return ProveedorWaha()
     if proveedor == "messenger":
         from agent.providers.messenger import ProveedorMessenger
         return ProveedorMessenger()
@@ -21,5 +24,5 @@ def obtener_proveedor() -> ProveedorWhatsApp:
     else:
         raise ValueError(
             f"Proveedor no soportado: {proveedor}. "
-            "Usa uno de: whapi, messenger, meta_inbox (o meta)."
+            "Usa uno de: whapi, waha, messenger, meta_inbox (o meta)."
         )

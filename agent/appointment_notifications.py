@@ -129,6 +129,15 @@ async def _enviar_grupo(mensaje: str, reintentos: int = 2, mentions: list[str] |
         logger.warning("[CITAS GRUPO] ❌ No se encontró el grupo — revisa GRUPO_CHRISTIAN_INTERNO en .env")
         return False
 
+    # Proveedor distinto de Whapi (ej. WAHA): enviar por la capa de providers
+    if os.getenv("WHATSAPP_PROVIDER", "whapi").lower() != "whapi":
+        from agent.providers import obtener_proveedor
+        _prv = obtener_proveedor()
+        try:
+            return await _prv.enviar_mensaje(grupo_id, mensaje, mentions=mentions)
+        except TypeError:
+            return await _prv.enviar_mensaje(grupo_id, mensaje)
+
     token = os.getenv("WHAPI_TOKEN", "")
     if not token:
         logger.warning("[CITAS GRUPO] ❌ WHAPI_TOKEN no configurado")

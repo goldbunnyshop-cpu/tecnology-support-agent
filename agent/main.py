@@ -293,8 +293,14 @@ async def _analizar_y_responder_imagen(msg, historial: list, asesor: str) -> str
         f"media_id='{getattr(msg, 'media_id', '')}' mime='{getattr(msg, 'media_mime_type', '')}'"
     )
 
+    # WAHA: la media se descarga del propio servidor WAHA (X-Api-Key), no de Whapi
+    if hasattr(proveedor, "descargar_media") and msg.media_url:
+        resultado = await proveedor.descargar_media(msg.media_url)
+        if resultado is None:
+            return RESPUESTA_IMAGEN_FALLBACK
+
     # Intento 1: URL directa del payload
-    if msg.media_url and whapi_token:
+    if resultado is None and msg.media_url and whapi_token:
         resultado = await descargar_media(msg.media_url, whapi_token)
 
     # Intento 2: fallback por media_id si URL falla o está vacía
