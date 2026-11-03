@@ -68,9 +68,19 @@ class ProveedorWaha(ProveedorWhatsApp):
     def _chat_id(destino: str) -> str:
         """Número → 52155...@c.us ; deja intactos @g.us / @lid / @c.us."""
         d = str(destino or "").strip()
+        sufijo = ""
         if "@" in d:
-            return d.replace("@s.whatsapp.net", "@c.us")
-        return "".join(ch for ch in d if ch.isdigit()) + "@c.us"
+            d, sufijo = d.split("@", 1)
+            if sufijo in ("g.us", "lid", "broadcast", "newsletter"):
+                return f"{d}@{sufijo}"
+        num = "".join(ch for ch in d if ch.isdigit())
+        # México: WhatsApp usa 521 + 10 dígitos. Whapi completaba el prefijo solo; WAHA no
+        # (error real: "recipient is not on WhatsApp: no LID found for 5541576331").
+        if len(num) == 10:
+            num = "521" + num
+        elif len(num) == 12 and num.startswith("52") and not num.startswith("521"):
+            num = "521" + num[2:]
+        return num + "@c.us"
 
     async def _post(self, path: str, payload: dict, timeout: int = 20) -> httpx.Response | None:
         try:

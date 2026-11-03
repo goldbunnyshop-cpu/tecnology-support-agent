@@ -491,75 +491,31 @@ def _fusionar_categorias(
 
 
 async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
-    """Cotización de DISPLAY con prioridad exclusiva Hugo Shop → imobile (Sheets).
+    """Cotización de DISPLAY — fuente única: catálogo Hugo Shop (regla x3, sep-2026).
 
-    Regla de negocio (jul-2026):
-      1. Hugo Shop: fuente principal. Si tiene el modelo → se usa SOLO Hugo, sin mezclar.
-         Los precios de imobile son de un proveedor diferente (más caro, partes premium)
-         y combinarlos con Hugo distorsiona el promedio.
-      2. imobile (Google Sheets): solo si Hugo NO tiene el modelo. Usa MULTIPLICADOR_IMOBILE
-         (1.5) en lugar del ×4 de Hugo — sus precios de costo son mucho más altos.
-      3. fixoem/Sheet genérico: último recurso si ninguna lista interna lo tiene.
+    imobile (Google Sheets, ×1.5) y fixoem quedaron obsoletos para displays.
+    Si Hugo no tiene el modelo → mensaje de transferencia a técnico (no se inventa precio).
     """
-    from agent.pricing import (
-        recolectar_categorias_hugo,
-        formatear_cotizacion_tiers,
-    )
-    from agent.pricing_sheets import recolectar_categorias_display_sheets
+    from agent.pricing import _resolver_match_hugo, formatear_cotizacion_hugo
 
-    # 1. Hugo Shop (fuente primaria y exclusiva cuando tiene el modelo)
-    hugo = await recolectar_categorias_hugo(marca, modelo)
+    hugo = _resolver_match_hugo(marca, modelo)
 
-    # Si Hugo pide confirmar variante → preguntar antes de cotizar
     if hugo["tipo"] == "variante":
         logger.info(f"[PRICING] Hugo pide variante para {marca} {modelo}")
         return hugo["respuesta"]
 
-    # Hugo tiene el modelo → usar SOLO Hugo, nunca mezclar con imobile
     if hugo["tipo"] == "ok":
-        modelo_fmt = hugo["modelo"]
-        logger.info(f"[PRICING] Hugo encontró {marca} {modelo_fmt} → usando solo Hugo (sin imobile)")
-        return formatear_cotizacion_tiers(marca, modelo_fmt, hugo["categorias"])
+        logger.info(f"[PRICING] Hugo encontró {marca} {hugo['modelo']} ({len(hugo['productos'])} productos) → regla x3")
+        return formatear_cotizacion_hugo(marca, hugo["modelo"], hugo["productos"])
 
-    # Hugo no tiene el modelo (ni variante). Intentar buscar sin marca si no se especificó.
+    # Sin marca: buscar el modelo en todas las marcas de Hugo
     if not (marca or "").strip():
         from agent.pricing import buscar_modelo_sin_marca
-        logger.info(f"[PRICING] Hugo sin marca para '{modelo}' → buscando sin marca en Hugo")
         resp_sm = await buscar_modelo_sin_marca(modelo)
         if resp_sm and not es_respuesta_no_disponible(resp_sm):
-            logger.info(f"[PRICING] buscar_modelo_sin_marca resolvió '{modelo}' ✓")
             return resp_sm
 
-    # 2. Hugo no tiene el modelo → imobile (Google Sheets) como secundario exclusivo
-    logger.info(f"[PRICING] Hugo sin '{marca} {modelo}' → consultando imobile (Sheets)")
-    sheets = await recolectar_categorias_display_sheets(marca, modelo)
-
-    if sheets.get("tipo") == "variante":
-        logger.info(f"[PRICING] imobile pide variante para {marca} {modelo}")
-        return sheets["respuesta"]
-    if sheets.get("tipo") == "ok":
-        logger.info(f"[PRICING] imobile cotizó display {marca} {modelo} (Hugo no tenía) → ×1.5")
-        return formatear_cotizacion_tiers(
-            sheets.get("marca") or marca, sheets["modelo"], sheets["categorias"]
-        )
-
-    # 4. Ninguna lista interna tiene el display → fixoem + Sheet genérico
-    # EXCEPCIÓN: iPhone/Apple — fixoem tiene precios de catálogo no confiables para Apple
-    # (muy por debajo del precio real de mercado). Si Hugo e imobile no lo tienen,
-    # es un modelo que aún no manejamos → devolver "no disponible" sin inventar precio.
-    if (marca or "").lower() in _MARCAS_IPHONE:
-        logger.info(
-            f"[PRICING] iPhone '{modelo}' no en Hugo/imobile → "
-            f"saltando fixoem (precios Apple no confiables en fixoem)"
-        )
-        return _mensaje_no_disponible(marca, modelo)
-
-    logger.info(f"[PRICING] Hugo/Sheets sin display '{marca} {modelo}' → fixoem/Sheet genérico")
-    externa = await cotizar_fuentes_externas(marca, modelo, "display")
-    if externa:
-        return externa
-
-    logger.info(f"[PRICING] Ninguna fuente tiene display '{marca} {modelo}'")
+    logger.info(f"[PRICING] Hugo no tiene display '{marca} {modelo}' → técnico")
     return _mensaje_no_disponible(marca, modelo)
 
 

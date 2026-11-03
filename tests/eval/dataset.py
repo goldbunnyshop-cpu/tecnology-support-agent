@@ -26,10 +26,10 @@ HECHOS_NEGOCIO = """
 - Nombre del negocio: Tecnology Support. SIEMPRE se le llama "módulo" (nunca taller/tienda/local/sucursal).
 - Ubicación: interior de La Comer Tlalpan (Comercial Mexicana), zona Fuentes Brotantes, a 3 calles del Metrobús Ayuntamiento. Tel 55 9730 7793.
 - Horario atención: Lun-Vie 10:00am-9:00pm · Sáb-Dom 11:00am-8:00pm. Abierto los 7 días (NUNCA dice que cierra fines de semana).
-- Diagnóstico físico: $200 MXN, ~2 horas, se bonifica si acepta la reparación.
-- Mantenimiento de consolas SÍ tiene precio directo: PS5 $1,300 · PS4/Slim/Pro $850 · PS3 $450 · Xbox Series S $1,100 · Xbox One original $950 · Xbox One S/X $600 · Nintendo Switch $500.
+- Diagnóstico físico: $200 MXN, 1 a 3 horas, se bonifica si acepta la reparación.
+- Mantenimiento de consolas SÍ tiene precio directo (IVA incluido, tarjetas sin comisión): PS5 $1,400 · PS4/Slim/Pro $900 · PSP $400 · PS Vita $600 · Xbox One original $600 · Xbox One S/X $800 · Xbox Series S $1,200 · Xbox Series X $1,400 · Switch $600 · Switch Lite $600 · Switch OLED $800 · Wii $500 · Wii U $600. NO se da mantenimiento a PS3, PS2, PS1, Xbox 360, Xbox original ni GameCube.
 - El mantenimiento de consola INCLUYE (todo esto es correcto): desmontaje, limpieza profunda con aire comprimido, limpieza de disipador y ventilador, cambio de pasta térmica en CPU y GPU, reemplazo de thermal pads donde aplique, en PS5 cambio de liquid metal, tratamiento de placa en tina hidrosónica, limpieza de lentes ópticos (modelos con lector), prueba de funcionamiento. Tiempos: estándar 6-8 horas, casos especiales 24-36 horas.
-- Displays/pantallas: SÍ se cotizan (genérica/original/AMOLED) si están en inventario; si el modelo es ambiguo, pregunta la variante; si no está, invita al módulo.
+- Displays/pantallas: SÍ se cotizan con el catálogo Hugo Shop (costo x3: menos de $600 → genérica $600 / original $900; $600–$999 → genérica x3 / original x3+$300; $1,000–$4,000 → x3 con la calidad del catálogo; más de $4,000 → lo cotiza un técnico). Si el modelo es ambiguo, pregunta la variante; si no está en el catálogo, lo cotiza un técnico.
 - Refacciones que NO son display (batería, centro de carga) y servicios de SOFTWARE: NUNCA dar precio; invitar al módulo / lo da el técnico en persona.
 - Idioma: español mexicano (usted/tú), nunca argentino (vos, che, boludo).
 - El agente NUNCA revela ser bot/IA/Claude/OpenAI; redirige a ayudar.
@@ -101,7 +101,7 @@ DATASET = [
         "ruta_esperada": "claude",
         "checks": ["idioma_mexicano", "no_revela_bot", "no_taller", "precio_ps5_correcto"],
         "precio_refaccion_prohibido": False,
-        "criterio": "Da el precio de mantenimiento de PS5: $1,300 MXN (puede dar contexto de lo que incluye). Es correcto dar este precio directamente.",
+        "criterio": "Da el precio de mantenimiento de PS5: $1,400 MXN (puede dar contexto de lo que incluye). Es correcto dar este precio directamente.",
     },
 
     # ──────────────── MEDIUM ────────────────
@@ -278,7 +278,7 @@ DATASET = [
             {"role": "user", "content": "hola"},
             {"role": "assistant", "content": "¡Hola! Soy Sofia de Tecnology Support, ¿con quién tengo el gusto?"},
             {"role": "user", "content": "soy Caro, mi xbox series s hace mucho ruido y se calienta"},
-            {"role": "assistant", "content": "Gracias por escribir, Caro. Ese ruido y calentamiento suele ser por polvo y pasta térmica seca. El mantenimiento de Xbox Series S es $1,100 e incluye limpieza profunda, cambio de pasta y pruebas. ¿Le gustaría que se lo dejemos como nuevo?"},
+            {"role": "assistant", "content": "Gracias por escribir, Caro. Ese ruido y calentamiento suele ser por polvo y pasta térmica seca. El mantenimiento de Xbox Series S es $1,200 e incluye limpieza profunda, cambio de pasta y pruebas. ¿Le gustaría que se lo dejemos como nuevo?"},
             {"role": "user", "content": "sí suena bien pero déjame lo pienso"},
             {"role": "assistant", "content": "Claro que sí, Caro 😊 ¿Cuándo cree que pueda traerlo? Le aparto el espacio para que no se le agote esta semana."},
             {"role": "user", "content": "es que ando ocupada con trabajo"},
@@ -320,7 +320,7 @@ DATASET = [
         "ruta_esperada": "claude",
         "checks": ["idioma_mexicano", "no_revela_bot", "no_taller"],
         "precio_refaccion_prohibido": False,
-        "criterio": "Da el precio de mantenimiento de PS4 Slim: $850 MXN. Es correcto darlo directamente.",
+        "criterio": "Da el precio de mantenimiento de PS4 Slim: $900 MXN. Es correcto darlo directamente.",
     },
     {
         "id": "s07-precio-switch-mant",
@@ -333,7 +333,7 @@ DATASET = [
         "ruta_esperada": "claude",
         "checks": ["idioma_mexicano", "no_revela_bot", "no_taller"],
         "precio_refaccion_prohibido": False,
-        "criterio": "El cliente pide MANTENIMIENTO (no display) de Switch: debe dar $500 MXN. NO debe confundirlo con cotización de pantalla ni pedir variante de display.",
+        "criterio": "El cliente pide MANTENIMIENTO (no display) de Switch: debe dar $600 MXN. NO debe confundirlo con cotización de pantalla ni pedir variante de display.",
     },
     {
         "id": "s08-pago",
@@ -385,7 +385,7 @@ DATASET = [
         "ruta_esperada": "claude",
         "checks": ["idioma_mexicano", "no_revela_bot", "no_taller"],
         "precio_refaccion_prohibido": False,
-        "criterio": "Mantenimiento de Xbox Series S: $1,100 MXN. Correcto darlo directamente.",
+        "criterio": "Mantenimiento de Xbox Series S: $1,200 MXN. Correcto darlo directamente.",
     },
     {
         "id": "s12-que-incluye",
@@ -606,7 +606,7 @@ DATASET = [
         "ruta_esperada": "claude",
         "checks": ["idioma_mexicano", "no_revela_bot", "no_taller"],
         "precio_refaccion_prohibido": False,
-        "criterio": "Atiende ambos: mantenimiento PS5 ($1,300, sí puede darlo) y reparación de control con drift (diagnóstico en módulo). Usa Cris.",
+        "criterio": "Atiende ambos: mantenimiento PS5 ($1,400, sí puede darlo) y reparación de control con drift (diagnóstico en módulo). Usa Cris.",
     },
     {
         "id": "c08-regateo",
@@ -615,14 +615,14 @@ DATASET = [
         "asesor": "Valentina",
         "historial": [
             {"role": "user", "content": "cuánto el mantenimiento de ps5"},
-            {"role": "assistant", "content": "El mantenimiento de PS5 es $1,300 e incluye limpieza profunda, cambio de líquido térmico y pruebas. ¿Le gustaría agendar?"},
+            {"role": "assistant", "content": "El mantenimiento de PS5 es $1,400 e incluye limpieza profunda, cambio de líquido térmico y pruebas. ¿Le gustaría agendar?"},
         ],
         "mensaje": "uff está caro, ¿me lo dejas en 1000?",
         "inyectar_fecha": False,
         "ruta_esperada": "claude",
         "checks": ["idioma_mexicano", "no_revela_bot", "no_taller"],
         "precio_refaccion_prohibido": False,
-        "criterio": "Mantiene el precio ($1,300) con tacto, justifica el valor de lo que incluye, sin inventar descuentos no autorizados. Cierra invitando.",
+        "criterio": "Mantiene el precio ($1,400) con tacto, justifica el valor de lo que incluye, sin inventar descuentos no autorizados. Cierra invitando.",
     },
     {
         "id": "c09-cita-domingo",
@@ -631,7 +631,7 @@ DATASET = [
         "asesor": "Camila",
         "historial": [
             {"role": "user", "content": "hola soy Pau, quiero llevar mi switch a mantenimiento"},
-            {"role": "assistant", "content": "¡Hola Pau! Con gusto. El mantenimiento de Switch es $500. ¿Qué día le gustaría traerla?"},
+            {"role": "assistant", "content": "¡Hola Pau! Con gusto. El mantenimiento de Switch es $600. ¿Qué día le gustaría traerla?"},
         ],
         "mensaje": "¿puedo ir el domingo?",
         "inyectar_fecha": True,
@@ -708,7 +708,7 @@ DATASET = [
         "asesor": "Camila",
         "historial": [
             {"role": "user", "content": "hola soy Dani, mi ps4 hace mucho ruido"},
-            {"role": "assistant", "content": "¡Hola Dani! Ese ruido suele ser polvo y pasta seca. El mantenimiento de PS4 es $850 e incluye limpieza profunda y cambio de pasta. ¿Le gustaría agendar?"},
+            {"role": "assistant", "content": "¡Hola Dani! Ese ruido suele ser polvo y pasta seca. El mantenimiento de PS4 es $900 e incluye limpieza profunda y cambio de pasta. ¿Le gustaría agendar?"},
             {"role": "user", "content": "va, sí quiero"},
             {"role": "assistant", "content": "¡Perfecto Dani! ¿Qué día le queda cómodo para traerla?"},
         ],

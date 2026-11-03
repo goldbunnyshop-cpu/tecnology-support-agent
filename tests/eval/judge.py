@@ -123,7 +123,7 @@ def regla_menciona_la_comer(t):
 
 
 def regla_precio_ps5_correcto(t):
-    return _ok() if re.search(r"1[.,]?300", t) else _fail("no da el precio correcto de PS5 ($1,300)")
+    return _ok() if re.search(r"1[.,]?400", t) else _fail("no da el precio correcto de PS5 ($1,400)")
 
 
 def regla_respuesta_no_vacia(t):
