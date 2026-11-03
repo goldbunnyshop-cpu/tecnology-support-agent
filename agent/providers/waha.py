@@ -43,6 +43,11 @@ class MensajeEntranteWaha(MensajeEntrante):
     fuente_detalle: str = ""
 
 
+def _es_difusion(chat_id: str) -> bool:
+    c = str(chat_id or "").lower()
+    return c.endswith("@broadcast") or c.endswith("@newsletter")
+
+
 class ProveedorWaha(ProveedorWhatsApp):
 
     def __init__(self):
@@ -141,6 +146,8 @@ class ProveedorWaha(ProveedorWhatsApp):
         from_me = bool(m.get("fromMe"))
         # En mensajes propios el chat es "to"; en entrantes es "from"
         chat = (m.get("to") if from_me else m.get("from")) or ""
+        if _es_difusion(chat) or _es_difusion(m.get("from") or ""):
+            return []
         es_grupo = chat.endswith("@g.us")
 
         if chat.endswith("@lid"):
@@ -208,6 +215,9 @@ class ProveedorWaha(ProveedorWhatsApp):
         await self._post("/api/startTyping", {"session": self.session, "chatId": self._chat_id(telefono)}, timeout=5)
 
     async def enviar_mensaje(self, destino: str, mensaje: str, mentions: list[str] | None = None) -> bool:
+        if _es_difusion(destino):
+            logger.error(f"[WAHA] BLOQUEADO envio a {destino} (estado/canal)")
+            return False
         if not self.base:
             logger.warning("[WAHA] WAHA_URL no configurado — mensaje no enviado")
             return False
@@ -243,6 +253,9 @@ class ProveedorWaha(ProveedorWhatsApp):
         return True
 
     async def _enviar_archivo(self, path: str, destino: str, data: bytes, mime: str, filename: str, caption: str) -> bool:
+        if _es_difusion(destino):
+            logger.error(f"[WAHA] BLOQUEADO envio a {destino} (estado/canal)")
+            return False
         payload = {
             "session": self.session,
             "chatId": self._chat_id(destino),
