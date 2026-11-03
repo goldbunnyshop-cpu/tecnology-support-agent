@@ -982,13 +982,19 @@ _NOMBRE_IPHONE = {"GENERICA": "Calidad genérica", "ORIGINAL": "Calidad original
 def _formatear_iphone(modelo_txt: str, precios: dict[str, int]) -> str:
     clave = _clave_consulta_iphone(modelo_txt)
     bloques = [f"Para iPhone {modelo_txt} tenemos estas opciones:"]
-    for c in ("GENERICA", "ORIGINAL", "PREMIUM"):
-        if c in precios:
-            bloques.append(
-                f"{_ICONO_IPHONE[c]} {_NOMBRE_IPHONE[c]}: ${precios[c]:,} MXN\n"
-                f"{_descripcion_calidad_iphone(c, clave)}"
-            )
-    mensaje1 = "\n\n".join(bloques)
+    if clave in _IPHONE_LCD:
+        # XR, 11, SE, 8 y anteriores: solo genérica y original con su precio, sin descripciones
+        lineas = [f"{_ICONO_IPHONE[c]} {_NOMBRE_IPHONE[c]}: ${precios[c]:,} MXN"
+                  for c in ("GENERICA", "ORIGINAL") if c in precios]
+        mensaje1 = bloques[0] + "\n\n" + "\n".join(lineas)
+    else:
+        for c in ("GENERICA", "ORIGINAL", "PREMIUM"):
+            if c in precios:
+                bloques.append(
+                    f"{_ICONO_IPHONE[c]} {_NOMBRE_IPHONE[c]}: ${precios[c]:,} MXN\n"
+                    f"{_descripcion_calidad_iphone(c, clave)}"
+                )
+        mensaje1 = "\n\n".join(bloques)
     mensaje2 = "\n".join(_VALOR_SERVICIO_IPHONE)
     return (
         "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "

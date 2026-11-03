@@ -208,6 +208,21 @@ Ejemplos:
 **Lista manual de iPhone (3 nov, reemplaza todo lo anterior para iPhone):** Christian capturó a mano los precios al cliente de 42 modelos en `knowledge/precios_iphone.csv` (columnas `modelo,generica,original,premium,nota`; vacío = no se ofrece esa calidad). Es la **única fuente de precios de display de iPhone**: `pricing_fallback` la consulta primero (`cotizar_iphone_manual`) y ya no se aplican x3, piso ni escalera a iPhone. Si el modelo no está en la lista → técnico. Si el cliente dice solo "SE" → pregunta cuál SE. "iPhone SE 2022" funciona aunque el detector de modelo quite el "SE". Para cambiar un precio basta editar el CSV y subirlo (se recarga solo al cambiar el archivo). Ojo: `knowledge/*` está en `.gitignore`, así que se sube con `git add -f`.
 Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y el premium del 16 Plus ($3,750) quedó debajo del del 16 ($3,900).
 
+**Cotización de iPhone en 2 mensajes (3 nov, madrugada):** toda cotización de pantalla de iPhone se manda en dos mensajes de WhatsApp, con 2 s entre ellos:
+1. **Precios con pros y contras de cada calidad, juntos para comparar.**
+   - Genérica: "funciona bien para uso diario, pero…". En OLED (12 en adelante, X, XS, 11 Pro) dice "menos brillo, colores menos vivos y puede gastar más batería"; en LCD (XR, 11, SE, 8, 7, 6) solo dice "colores menos vivos".
+   - Original: "colores, brillo y respuesta táctil como la de fábrica".
+   - Premium: "lo más cercano a la de fábrica y no muestra el aviso de pieza desconocida".
+   - El aviso de "pieza desconocida" se menciona solo del iPhone 11 en adelante.
+2. **Valor del servicio.** Somos especialistas en Apple y lo atiende personal certificado. La pantalla es la pieza más cara después de la tarjeta madre. Incluye limpieza interna profesional, limpieza de bocinas, micrófonos, conectores y puerto de carga, garantía de 90 días y cambio el mismo día. Cierra con "¿Cuál opción te interesa?".
+- **Nunca mencionar Face ID.** En un equipo mojado el cliente reclamó el Face ID después de cambiar la pantalla y lo tuvo que pagar el taller.
+- **Mecánica:** el texto lleva el marcador `[[SIGUIENTE]]` (`agent/providers/base.py`: `partir_mensaje` / `unir_mensaje`).
+  - WAHA y Whapi lo parten en varios envíos. Messenger e Instagram lo mandan en un solo mensaje.
+  - El historial lo guarda sin el marcador.
+  - El cargo a domicilio va en el mensaje 1, junto a los precios.
+- **Archivos:** `agent/pricing.py` (`_formatear_iphone`, `_VALOR_SERVICIO_IPHONE`, `_IPHONE_LCD`), `agent/providers/*.py`, `agent/main.py` (`_para_historial`), `agent/filtro_domicilio.py`.
+- **Pruebas:** `tests/test_precio_display_x3.py`.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

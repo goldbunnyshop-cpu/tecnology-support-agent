@@ -171,10 +171,11 @@ def test_iphone_dos_mensajes_sin_face_id():
 
 
 def test_iphone_lcd_y_modelos_sin_aviso():
-    t = pricing._formatear_iphone("11", {"GENERICA": 1100})
-    assert "colores menos vivos" in t and "batería" not in t and "pieza desconocida" in t
-    t = pricing._formatear_iphone("SE 2022", {"GENERICA": 700, "ORIGINAL": 1000})
-    assert "pieza desconocida" not in t
+    for modelo in ("11", "XR", "SE 2022", "8 Plus"):
+        t = pricing._formatear_iphone(modelo, {"GENERICA": 1100, "ORIGINAL": 1700, "PREMIUM": 2500})
+        m1 = t.split("[[SIGUIENTE]]")[0]
+        assert "Calidad genérica: $1,100 MXN\n🔸 Calidad original: $1,700 MXN" in m1
+        assert "premium" not in m1.lower() and "pieza desconocida" not in m1 and "colores" not in m1
 
 
 async def _no_dormir(*_):
