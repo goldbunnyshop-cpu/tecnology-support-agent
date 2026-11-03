@@ -137,7 +137,13 @@ El evaluador (`tests/eval/dataset.py`, `tests/eval/judge.py`) tenía una lista v
 | $1,000 a $4,000 | x3 exacto con la calidad tal cual del catálogo |
 | más de $4,000 | no se cotiza: lo cotiza un técnico |
 
-Etiquetas: C/M = con marco, S/M = sin marco, ORIG/AA/COF = calidad original, INCELL = calidad genérica, OLED (solo iPhone) = calidad premium; se quitan CARTAN, BOUTIQUE y la etiqueta de proveedor "(MOVIL IC)". iPhone X11–X17 se muestran como 11–17 (X, XR, XS y XS MAX no cambian).
+Etiquetas: C/M = con marco, S/M = sin marco, ORIG/AA/COF = calidad original, INCELL = calidad genérica, se quitan CARTAN, BOUTIQUE y la etiqueta de proveedor "(MOVIL IC)". iPhone X11–X17 se muestran como 11–17 (X, XR, XS y XS MAX no cambian).
+
+**iPhone (regla del 2 nov):** una línea por calidad, tomando el producto **más caro** de cada una, con x3 y el mismo piso:
+- INCELL → **Calidad genérica**: x3, mínimo $600.
+- FHD / ORIG / COF / AAA → **Calidad original (autoprogramable)**: x3 < $600 → $900; $600–$999 → x3 + $300; $1,000 o más → x3.
+- OLED / AMOLED → **Calidad premium (OLED)**: igual que original.
+- En iPhone **no** se manda al técnico por pasar de $4,000; se cotiza el x3.
 Si Hugo no tiene el modelo → mensaje de técnico (no se inventa precio). Baterías y tapas siguen con su flujo (Google Sheets).
 Pruebas: `tests/test_precio_display_x3.py`.
 
@@ -149,15 +155,16 @@ Ejemplos (catálogo actual del repo):
 | Samsung A54 | Con marco $1,132 | Genérica $849 / Original $1,149 |
 | Samsung S24 FE | Original $2,240 · Con marco $2,628 | HG HARD OLED sin marco $1,680 · con marco $1,971 |
 | Motorola Edge 30 Neo | Original $4,324 | OLED sin marco $3,243 |
-| iPhone XR | Original $952 | $600/$900 · $819/$1,119 |
-| iPhone 14 | Genérica $1,272 · Original $3,251 | 6 opciones de $954 a $3,096 + 1 que cotiza el técnico |
+| iPhone XR | Original $952 | Genérica $609 · Original $1,119 |
+| iPhone 14 | Genérica $1,272 · Original $3,251 | Genérica $1,011 · Original $3,096 · Premium $4,380 |
+| iPhone 15 Pro Max | Genérica $1,872 · Original $4,627 | Genérica $1,404 · Original $5,055 · Premium $3,744 |
 
 ---
 
 ## 5. Pendientes
 
 1. **Actualizar `knowledge/hugo_shop.csv`** con el catálogo más reciente: el que está en el repo es de julio (ej. Alcatel 5030 1SE cuesta $185 en el CSV y $169 en la lista de septiembre).
-2. Decidir si en displays con muchas opciones (iPhone 14: 7 renglones) se muestran todas o solo las más baratas por calidad.
+2. iPhone: el producto ORIG más caro suele ser el renglón "(Diagnóstico)" del catálogo (ej. X15PRO MAX $1,685 → $5,055), por eso a veces "original" sale más caro que "premium". Confirmar si esos renglones cuentan. Otras marcas siguen mostrando un renglón por producto.
 3. Matching: "Samsung A32 4G" y "Redmi Note 13 4G" vuelven a preguntar la variante aunque el cliente ya la dijo.
 4. Evaluador: el caso `m03-identidad-bot` espera que el bot nunca admita ser asistente virtual; el prompt dice que sí lo admita si se lo preguntan. Falta decidir y alinear.
 5. WAHA: probar envío de fotos y PDF (`nota:`) en Core; agregar alerta si la sesión se cae; decidir si se queda WAHA, se regresa a Whapi o se migra a la API oficial de Meta (desde el 1 oct 2026 Meta cobra los mensajes de servicio después de 1,000 gratis al mes; las conversaciones que vienen de anuncios Click-to-WhatsApp son gratis hasta 7 días).

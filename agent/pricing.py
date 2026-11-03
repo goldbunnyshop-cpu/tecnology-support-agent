@@ -684,9 +684,73 @@ def modelo_para_cliente(marca: str, modelo: str) -> str:
     return m
 
 
+def calidad_iphone(calidad: str) -> str:
+    """iPhone: INCELL → GENERICA; OLED/AMOLED → PREMIUM; FHD/ORIG/COF/AAA/resto → ORIGINAL (autoprogramable)."""
+    c = (calidad or "").upper()
+    if "INCELL" in c:
+        return "GENERICA"
+    if "OLED" in c:  # incluye AMOLED
+        return "PREMIUM"
+    return "ORIGINAL"
+
+
+_ETIQUETA_IPHONE = {
+    "GENERICA": "Calidad genérica",
+    "ORIGINAL": "Calidad original (autoprogramable)",
+    "PREMIUM": "Calidad premium (OLED)",
+}
+
+
+def precio_x3_por_calidad(x3: int, categoria: str) -> int:
+    """Piso y +$300 aplicados a la calidad: genérica = max(x3, $600);
+    original/premium: x3 < $600 → $900, $600–$999 → x3 + $300, $1,000 o más → x3. Sin tope."""
+    if categoria == "GENERICA":
+        return max(x3, PISO_GENERICO)
+    if x3 < PISO_GENERICO:
+        return PISO_ORIGINAL
+    if x3 < LIMITE_SUMA_ORIGINAL:
+        return x3 + EXTRA_ORIGINAL
+    return x3
+
+
+def formatear_cotizacion_iphone(marca: str, modelo: str, productos: list[dict]) -> str:
+    """iPhone (nov-2026): una línea por calidad, tomando el producto MÁS CARO de cada una.
+    Sin transferencia a técnico por precio alto."""
+    mas_caro: dict[str, float] = {}
+    for p in productos:
+        costo = p.get("PRECIO_USD")
+        if not costo:
+            continue
+        cat = calidad_iphone(p.get("CALIDAD", ""))
+        mas_caro[cat] = max(mas_caro.get(cat, 0), costo)
+    if not mas_caro:
+        return _mensaje_no_disponible(marca, modelo)
+
+    lineas = []
+    for cat in ("GENERICA", "ORIGINAL", "PREMIUM"):
+        if cat in mas_caro:
+            precio = precio_x3_por_calidad(int(round(mas_caro[cat] * MULT_DISPLAY)), cat)
+            lineas.append(f"* {_ETIQUETA_IPHONE[cat]}: ${precio:,} MXN")
+
+    cuerpo = "\n".join(
+        [f"Para iPhone {modelo_para_cliente(marca, modelo)} tenemos estas opciones:\n"]
+        + lineas
+        + ["", "Cada display incluye: diagnostico, garantia 90 dias y cambio el mismo dia.",
+           "Cual opcion te interesa?"]
+    )
+    return (
+        "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
+        "de calidad tal como aparecen, sin agregar otras ni marcas de proveedor):\n\n"
+        f"{cuerpo}"
+    )
+
+
 def formatear_cotizacion_hugo(marca: str, modelo: str, productos: list[dict]) -> str:
-    """Cotización de display con la regla x3 vigente, un renglón por producto del catálogo."""
+    """Cotización de display con la regla x3 vigente, un renglón por producto del catálogo.
+    iPhone usa su propio formato por calidad (ver formatear_cotizacion_iphone)."""
     es_iphone = _marca_canonica(marca) == "IPHONE"
+    if es_iphone:
+        return formatear_cotizacion_iphone(marca, modelo, productos)
     piso = False
     lineas: list[str] = []
     vistos: set = set()
