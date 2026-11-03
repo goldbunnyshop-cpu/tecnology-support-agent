@@ -139,32 +139,78 @@ El evaluador (`tests/eval/dataset.py`, `tests/eval/judge.py`) tenía una lista v
 
 Etiquetas: C/M = con marco, S/M = sin marco, ORIG/AA/COF = calidad original, INCELL = calidad genérica, se quitan CARTAN, BOUTIQUE y la etiqueta de proveedor "(MOVIL IC)". iPhone X11–X17 se muestran como 11–17 (X, XR, XS y XS MAX no cambian).
 
-**iPhone (regla del 2 nov):** una línea por calidad, tomando el producto **más caro** de cada una, con x3 y el mismo piso:
-- INCELL → **Calidad genérica**: x3, mínimo $600.
-- FHD / ORIG / COF / AAA → **Calidad original (autoprogramable)**: x3 < $600 → $900; $600–$999 → x3 + $300; $1,000 o más → x3.
-- OLED / AMOLED → **Calidad premium (OLED)**: igual que original.
+**iPhone (reglas del 2–3 nov):** 3 calidades, una línea por calidad, con "Calidad" siempre al inicio:
+- **Calidad genérica:** INCELL, FHD (LCD) y renglones sin calidad (solo "S/M").
+- **Calidad original:** OLED (HARD/SOFT), ORIG, COF, AAA. Al cliente nunca se le dice "autoprogramable".
+- **Calidad premium:** solo displays de diagnóstico, con la aclaración "no muestra el mensaje de 'pieza desconocida' en el menú del iPhone". Nunca se dice "diagnóstico".
+- Por calidad se toma el producto **más caro** y se aplica x3 con el piso: genérica mínimo $600; original/premium: x3 < $600 → $900, $600–$999 → x3 + $300, $1,000 o más → x3. Si solo hay una calidad y queda en piso, se ofrecen Genérica $600 y Original $900.
+- Interno: la premium siempre es la más cara; si la original cuesta más que la de diagnóstico, se intercambian los precios.
+- **Escalera:** un modelo nunca cuesta menos que el anterior de su misma línea (13 → 14, 13 Pro → 14 Pro, 13 Pro Max → 14 Pro Max) ni que la variante menor de su generación (Pro Max ≥ Pro ≥ normal; Plus ≥ normal). Si sale más barato: **nuevo = anterior + (anterior − nuevo)**. Ej.: 13 genérica $1,173 y 14 genérica $975 → 14 = $1,173 + $198 = **$1,371**. Se calcula sobre todo el catálogo (`tabla_iphone()`) y se recalcula solo cuando cambia el CSV.
 - En iPhone **no** se manda al técnico por pasar de $4,000; se cotiza el x3.
+
+Precios iPhone con la lista del 23 oct:
+
+| iPhone | Calidad genérica | Calidad original | Calidad premium |
+|---|---|---|---|
+| 6 | $600 | $900 | — |
+| 6S PLUS | $600 | $900 | — |
+| 8 | $600 | $900 | — |
+| SE 2020 | $600 | $900 | — |
+| X | $600 | $1,446 | — |
+| XR | $819 | — | — |
+| XS MAX | $921 | — | — |
+| 11 PRO | $756 | $1,503 | — |
+| 11 PRO MAX | $930 | — | — |
+| 12 | $810 | $1,809 | — |
+| 12 PRO | $810 | $1,809 | — |
+| 12 PRO MAX | $1,014 | $2,682 | — |
+| 13 | $1,173 | $1,809 | $2,541 |
+| 13 PRO | $1,305 | — | $2,847 |
+| 13 PRO MAX | $1,503 | $2,724 | $2,988 |
+| 14 | $1,371 | — | — |
+| 14 PRO | $1,392 | $2,880 | $3,540 |
+| 14 PRO MAX | $1,596 | $3,540 | — |
+| 15 | $1,437 | — | $4,734 |
+| 15 PLUS | $1,776 | — | — |
+| 15 PRO | $1,500 | $3,540 | $4,734 |
+| 15 PRO MAX | $1,887 | $3,576 | — |
+| 16 | $1,500 | $3,426 | $4,734 |
+| 16 PRO | $2,007 | — | $6,150 |
+| 16 PRO MAX | $2,088 | — | — |
+| 17 | $2,172 | $4,101 | $6,150 |
+| 17 PRO | — | — | $6,150 |
+| 17 PRO MAX | — | $5,244 | — |
+
 Si Hugo no tiene el modelo → mensaje de técnico (no se inventa precio). Baterías y tapas siguen con su flujo (Google Sheets).
-Pruebas: `tests/test_precio_display_x3.py`.
+Pruebas: `tests/test_precio_display_x3.py` (19 casos).
 
-Ejemplos (catálogo actual del repo):
+**Catálogo del 23 oct 2026 (cargado el 3 nov):** `knowledge/hugo_shop.csv` se regeneró de `HUGO_SHOP_LISTA_2_Disponibles_23.OCT.26.pdf` (675 productos; Huawei NOVA Y70 viene sin precio). Los 675 precios se cruzaron contra el PDF sin diferencias. Ajustes del lector para este formato:
+- Realme viene dentro de la sección OPPO ("REALME- C35", "REALME7 5G/…"): se registra también como marca REALME.
+- Se quita el prefijo de marca repetido en la descripción ("XIAOMI-MI12T" → "MI12T").
+- iPhone: el catálogo antepone X al modelo (X11 = iPhone 11, X13 MINI = iPhone 13 mini); el cliente escribe "iPhone 13" y se busca como X13. X, XR, XS y XS MAX son modelos reales.
+- iPhone: "JK X14" (JK = marca del panel) y "2 X14PRO" (dígito suelto) se leen como X14 / X14PRO; "8G" y "6G" = iPhone 8 y 6; se quita "- 120HZ" del nombre.
+- iPhone: "(Diagnóstico)" o "-DIAGNÓSTICO" se quita del nombre y se marca como calidad premium (X13, X13PRO, X13PRO MAX, X14PRO, X16PRO, X17, X17PRO).
 
-| Modelo | Antes | Ahora |
+Ejemplos:
+
+| Modelo | Antes (código de julio) | Ahora (regla x3 + lista 23 oct) |
 |---|---|---|
-| Alcatel 5024 | Original $832 | Genérica $624 / Original $924 |
-| Samsung A54 | Con marco $1,132 | Genérica $849 / Original $1,149 |
-| Samsung S24 FE | Original $2,240 · Con marco $2,628 | HG HARD OLED sin marco $1,680 · con marco $1,971 |
-| Motorola Edge 30 Neo | Original $4,324 | OLED sin marco $3,243 |
-| iPhone XR | Original $952 | Genérica $609 · Original $1,119 |
-| iPhone 14 | Genérica $1,272 · Original $3,251 | Genérica $1,011 · Original $3,096 · Premium $4,380 |
-| iPhone 15 Pro Max | Genérica $1,872 · Original $4,627 | Genérica $1,404 · Original $5,055 · Premium $3,744 |
+| Alcatel 5024 | Calidad Original: $832 | Calidad genérica: $624 / Calidad original: $924 |
+| Samsung A54 | Con Marco: $1,132 | Calidad genérica: $849 / Calidad original: $1,149 · Calidad original OLED con marco: $1,812 |
+| Samsung S24 FE | Calidad Original: $2,240 · Con Marco: $2,628 | Calidad original HARD OLED con marco: $1,866 |
+| Motorola Edge 30 Neo | Calidad Original: $4,324 | Calidad original SOFT OLED sin marco: $2,487 |
+| Oppo A17 | técnico | Calidad genérica: $600 / Calidad original: $900 · Calidad genérica: $675 / Calidad original: $975 |
+| iPhone XR | Calidad Original: $952 | Calidad genérica: $609 · Calidad original: $1,119 |
+| iPhone 13 | Calidad Genérica: $1,176 · Calidad Original: $3,034 | Calidad genérica: $1,173 · Calidad original: $1,809 · Calidad premium: $2,541 |
+| iPhone 14 | Calidad Genérica: $1,272 · Calidad Original: $3,251 | Calidad original: $1,275 |
+| iPhone 15 Pro Max | Calidad Genérica: $1,872 · Calidad Original: $4,627 | Calidad genérica: $1,596 · Calidad original: $3,504 |
 
 ---
 
 ## 5. Pendientes
 
-1. **Actualizar `knowledge/hugo_shop.csv`** con el catálogo más reciente: el que está en el repo es de julio (ej. Alcatel 5030 1SE cuesta $185 en el CSV y $169 en la lista de septiembre).
-2. iPhone: el producto ORIG más caro suele ser el renglón "(Diagnóstico)" del catálogo (ej. X15PRO MAX $1,685 → $5,055), por eso a veces "original" sale más caro que "premium". Confirmar si esos renglones cuentan. Otras marcas siguen mostrando un renglón por producto.
+1. ~~Actualizar el catálogo~~ — **hecho 3 nov**: `knowledge/hugo_shop.csv` se regeneró de `HUGO_SHOP_LISTA_2_Disponibles_23.OCT.26.pdf` (675 productos; 1 sin precio: Huawei NOVA Y70).
+2. La lista del 23 oct no trae: iPhone 11 normal, 12 mini, 13 mini, 14 Plus, 16 Plus, 8 Plus ni 7 (el bot pregunta la versión o pasa al técnico). Faltan calidades en varios modelos (ej. 14 sin original, 17 Pro solo premium); se pueden completar con otro proveedor.
 3. Matching: "Samsung A32 4G" y "Redmi Note 13 4G" vuelven a preguntar la variante aunque el cliente ya la dijo.
 4. Evaluador: el caso `m03-identidad-bot` espera que el bot nunca admita ser asistente virtual; el prompt dice que sí lo admita si se lo preguntan. Falta decidir y alinear.
 5. WAHA: probar envío de fotos y PDF (`nota:`) en Core; agregar alerta si la sesión se cae; decidir si se queda WAHA, se regresa a Whapi o se migra a la API oficial de Meta (desde el 1 oct 2026 Meta cobra los mensajes de servicio después de 1,000 gratis al mes; las conversaciones que vienen de anuncios Click-to-WhatsApp son gratis hasta 7 días).

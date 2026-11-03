@@ -179,7 +179,23 @@ def cargar_csv_hugo() -> list[dict]:
             if calidad.startswith('$') or calidad.lower().startswith('cuauh') or len(calidad) > 100:
                 calidad = ''
 
-            datos.append({
+            # Lista oct-2026: algunas descripciones repiten la marca como prefijo
+            # ("XIAOMI-MI12T", "REALME- C35"). Se quita para que el modelo haga match.
+            descripcion = re.sub(r'^(?:XIAOMI|SAMSUNG|HUAWEI|MOTO(?:ROLA)?)\s*-\s*', '', descripcion, flags=re.I).strip()
+            # iPhone: "JK X14" (JK = marca del panel) y "2 X14PRO" (dígito suelto) → "X14", "X14PRO"
+            if (marca_actual or '') == 'IPHONE':
+                descripcion = re.sub(r'^(?:JK\s+|\d\s+)(?=X)', '', descripcion, flags=re.I).strip()
+                # "(Diagnóstico)" / "-DIAGNÓSTICO" = calidad premium: se marca en CALIDAD y se
+                # quita del nombre para que el modelo haga match (X17(MOVIL IC)-DIAGNÓSTICO → X17(MOVIL IC))
+                if 'DIAGNOSTICO' in _quitar_acentos(descripcion).upper():
+                    descripcion = re.sub(r'-?\s*\(?\s*diagn[oó]stico\s*\)?', ' ', descripcion, flags=re.I)
+                    if 'DIAGN' not in _quitar_acentos(calidad).upper():
+                        calidad = f"{calidad} (Diagnóstico)".strip()
+                descripcion = re.sub(r'-?\s*120\s*HZ', ' ', descripcion, flags=re.I)   # "X14PRO (MOVIL IC)- 120HZ"
+                descripcion = re.sub(r'\b(\d)G\b', r'\1', descripcion)                   # "8G/SE 2020" → "8/SE 2020"
+                descripcion = re.sub(r'\s+', ' ', descripcion).strip(' -')
+
+            fila = {
                 'MARCA': marca_actual or '',
                 'CODIGO': codigo,
                 'DESCRIPCION': descripcion,
@@ -187,7 +203,14 @@ def cargar_csv_hugo() -> list[dict]:
                 'COLOR': color or 'Sin especificar',
                 'PRECIO_USD': precio_usd,
                 'PRECIO_1': precio_1,
-            })
+            }
+            datos.append(fila)
+
+            # Realme viene dentro de la sección OPPO ("REALME- C35", "REALME7 5G/..."):
+            # se agrega también como marca REALME para que "realme c35" lo encuentre.
+            m_realme = re.match(r'^REALME\s*-?\s*', descripcion, flags=re.I)
+            if (marca_actual or '') == 'OPPO' and m_realme:
+                datos.append({**fila, 'MARCA': 'REALME', 'DESCRIPCION': descripcion[m_realme.end():].strip()})
 
         logger.info(f"[PRICING] Cargados {len(datos)} productos de Hugo Shop")
         return datos
@@ -673,7 +696,11 @@ def etiqueta_calidad_cliente(calidad: str, es_iphone: bool) -> str:
         if trozo and not (trozo in salida and trozo.startswith("calidad ")):
             salida.append(trozo)
     texto = " ".join(salida).strip()
-    return (texto[:1].upper() + texto[1:]) if texto else "Calidad original"
+    if not texto:
+        return "Calidad original"
+    if not texto.lower().startswith("calidad"):
+        texto = "calidad " + texto
+    return texto[:1].upper() + texto[1:]
 
 
 def modelo_para_cliente(marca: str, modelo: str) -> str:
@@ -684,20 +711,33 @@ def modelo_para_cliente(marca: str, modelo: str) -> str:
     return m
 
 
-def calidad_iphone(calidad: str) -> str:
-    """iPhone: INCELL → GENERICA; OLED/AMOLED → PREMIUM; FHD/ORIG/COF/AAA/resto → ORIGINAL (autoprogramable)."""
+def calidad_iphone(calidad: str, descripcion: str = "") -> str | None:
+    """iPhone (3 calidades):
+    - renglón "(Diagnóstico)"            → PREMIUM (no muestra "pieza desconocida")
+    - INCELL                             → GENERICA
+    - OLED (HARD/SOFT) y ORIG/COF/AAA    → ORIGINAL (autoprogramable)
+    - sin calidad (solo "S/M")            → GENERICA
+    - FHD sin OLED (pantalla LCD)        → GENERICA"""
+    texto = _quitar_acentos(f"{descripcion or ''} {calidad or ''}".upper())
+    if "DIAGN" in texto:
+        return "PREMIUM"
     c = (calidad or "").upper()
     if "INCELL" in c:
         return "GENERICA"
-    if "OLED" in c:  # incluye AMOLED
-        return "PREMIUM"
-    return "ORIGINAL"
+    if "OLED" in c:
+        return "ORIGINAL"
+    if "FHD" in c:      # FHD sin OLED = pantalla LCD → siempre genérica
+        return "GENERICA"
+    if re.search(r"\b(?:ORIG|COF|AAA|AA)\b", c):
+        return "ORIGINAL"
+    return "GENERICA"   # sin calidad en el catálogo (ej. "S/M") → genérica
 
 
+# Al cliente NUNCA se le dice "autoprogramable" ni "diagnóstico".
 _ETIQUETA_IPHONE = {
     "GENERICA": "Calidad genérica",
-    "ORIGINAL": "Calidad original (autoprogramable)",
-    "PREMIUM": "Calidad premium (OLED)",
+    "ORIGINAL": "Calidad original",
+    "PREMIUM": "Calidad premium (no muestra el mensaje de \"pieza desconocida\" en el menú del iPhone)",
 }
 
 
@@ -713,23 +753,121 @@ def precio_x3_por_calidad(x3: int, categoria: str) -> int:
     return x3
 
 
-def formatear_cotizacion_iphone(marca: str, modelo: str, productos: list[dict]) -> str:
-    """iPhone (nov-2026): una línea por calidad, tomando el producto MÁS CARO de cada una.
-    Sin transferencia a técnico por precio alto."""
+def precios_iphone_base(productos: list[dict]) -> dict[str, int]:
+    """Precio por calidad de UN modelo de iPhone, antes de la escalera entre modelos."""
     mas_caro: dict[str, float] = {}
     for p in productos:
         costo = p.get("PRECIO_USD")
         if not costo:
             continue
-        cat = calidad_iphone(p.get("CALIDAD", ""))
+        cat = calidad_iphone(p.get("CALIDAD", ""), p.get("DESCRIPCION", ""))
+        if cat is None:
+            continue
         mas_caro[cat] = max(mas_caro.get(cat, 0), costo)
     if not mas_caro:
+        return {}
+
+    # Piso como las demás marcas: si la genérica queda en piso (x3 < $600) y el catálogo
+    # no trae calidad original, también se ofrece Original $900.
+    if "GENERICA" in mas_caro and "ORIGINAL" not in mas_caro \
+            and int(round(mas_caro["GENERICA"] * MULT_DISPLAY)) < PISO_GENERICO:
+        mas_caro["ORIGINAL"] = 0  # precio_x3_por_calidad(0, ORIGINAL) → $900
+    # …y al revés: si solo hay original y queda en piso, también se ofrece Genérica $600.
+    if "ORIGINAL" in mas_caro and "GENERICA" not in mas_caro and mas_caro["ORIGINAL"] \
+            and int(round(mas_caro["ORIGINAL"] * MULT_DISPLAY)) < PISO_GENERICO:
+        mas_caro["GENERICA"] = 0  # precio_x3_por_calidad(0, GENERICA) → $600
+
+    precios = {cat: precio_x3_por_calidad(int(round(c * MULT_DISPLAY)), cat) for cat, c in mas_caro.items()}
+    # Interno: la calidad premium siempre es la más cara. Si la original del catálogo
+    # cuesta más que la de diagnóstico, se intercambian los precios (el cliente no lo ve).
+    if "ORIGINAL" in precios and "PREMIUM" in precios and precios["ORIGINAL"] > precios["PREMIUM"]:
+        precios["ORIGINAL"], precios["PREMIUM"] = precios["PREMIUM"], precios["ORIGINAL"]
+    return precios
+
+
+# ── Escalera de precios iPhone (nov-2026) ──────────────────────────────────────
+# Un modelo nunca cuesta menos que el anterior en la misma calidad:
+#   - misma línea, generación anterior (13 → 14, 13 Pro → 14 Pro, 13 Pro Max → 14 Pro Max)
+#   - misma generación: Pro Max ≥ Pro ≥ normal, Plus ≥ normal
+# Si sale más barato: nuevo = anterior + (anterior − nuevo). Ej.: 13 $1,173, 14 $975 → 14 = $1,371.
+_SUFIJO_RANGO = {"": 0, "PLUS": 1, "PRO": 1, "PROMAX": 2}
+_cache_escalera: dict = {"mtime": None, "tabla": {}}
+
+
+def clave_modelo_iphone(modelo: str) -> str:
+    """'X14PRO MAX' / '14 pro max' → '14PROMAX'."""
+    m = re.sub(r"\s+", "", (modelo or "").upper())
+    return re.sub(r"^X(?=\d)", "", m)
+
+
+def _ajustar(anterior: int, actual: int) -> int:
+    return anterior + (anterior - actual) if actual < anterior else actual
+
+
+def aplicar_escalera_iphone(tabla: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+    """Recibe {clave_modelo: {CALIDAD: precio}} y devuelve la tabla con la escalera aplicada."""
+    t = {k: dict(v) for k, v in tabla.items()}
+    modelos = []
+    for k in t:
+        m = re.match(r"^(\d+)(PLUS|PROMAX|PRO|)$", k)
+        if m:
+            modelos.append((int(m.group(1)), m.group(2), k))
+    modelos.sort()
+    for _ in range(10):  # repetir hasta que no cambie nada
+        cambio = False
+        for gen, suf, k in modelos:
+            for cat in ("GENERICA", "ORIGINAL", "PREMIUM"):
+                if cat not in t[k]:
+                    continue
+                # misma línea, generación anterior más reciente que tenga esa calidad
+                previos = [kk for g, sf, kk in modelos if sf == suf and g < gen and cat in t[kk]]
+                # misma generación, variante menor (normal < Plus/Pro < Pro Max)
+                menores = [kk for g, sf, kk in modelos
+                           if g == gen and _SUFIJO_RANGO[sf] < _SUFIJO_RANGO[suf] and cat in t[kk]
+                           and not (suf == "PRO" and sf == "PLUS")]
+                refs = ([previos[-1]] if previos else []) + menores
+                for ref in refs:
+                    nuevo = _ajustar(t[ref][cat], t[k][cat])
+                    if nuevo != t[k][cat]:
+                        t[k][cat] = nuevo
+                        cambio = True
+        if not cambio:
+            break
+    return t
+
+
+def tabla_iphone() -> dict[str, dict[str, int]]:
+    """Precios de todos los iPhone del catálogo con la escalera aplicada (cache por fecha del CSV)."""
+    try:
+        mtime = os.path.getmtime(RUTA_CSV_HUGO)
+    except OSError:
+        return {}
+    if _cache_escalera["mtime"] == mtime:
+        return _cache_escalera["tabla"]
+    grupos: dict[str, list[dict]] = defaultdict(list)
+    for p in cargar_csv_hugo():
+        if p.get("MARCA") != "IPHONE":
+            continue
+        for base, var in normalizar_modelo_descripcion(p["DESCRIPCION"], "IPHONE"):
+            if base:
+                grupos[clave_modelo_iphone(_formatear_modelo(base, var))].append(p)
+    base_tabla = {k: precios_iphone_base(v) for k, v in grupos.items()}
+    tabla = aplicar_escalera_iphone({k: v for k, v in base_tabla.items() if v})
+    _cache_escalera.update(mtime=mtime, tabla=tabla)
+    return tabla
+
+
+def formatear_cotizacion_iphone(marca: str, modelo: str, productos: list[dict]) -> str:
+    """iPhone (nov-2026): una línea por calidad (el producto MÁS CARO de cada una), con
+    piso, premium siempre la más cara y escalera entre modelos. Sin transferencia por precio alto."""
+    precios = tabla_iphone().get(clave_modelo_iphone(modelo)) or precios_iphone_base(productos)
+    if not precios:
         return _mensaje_no_disponible(marca, modelo)
 
     lineas = []
     for cat in ("GENERICA", "ORIGINAL", "PREMIUM"):
-        if cat in mas_caro:
-            precio = precio_x3_por_calidad(int(round(mas_caro[cat] * MULT_DISPLAY)), cat)
+        if cat in precios:
+            precio = precios[cat]
             lineas.append(f"* {_ETIQUETA_IPHONE[cat]}: ${precio:,} MXN")
 
     cuerpo = "\n".join(
