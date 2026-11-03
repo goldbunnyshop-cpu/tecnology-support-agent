@@ -930,18 +930,70 @@ def cotizar_iphone_manual(modelo: str) -> str | None:
     return _mensaje_no_disponible("iPhone", modelo_para_cliente("iphone", modelo))
 
 
+# ── Cotización de display iPhone en 2 mensajes (pedido de Christian, 3 nov 2026) ──
+# Mensaje 1: precios con pros y contras de cada calidad (juntos, para comparar).
+# Mensaje 2: valor del servicio y lo que incluye. NUNCA mencionar Face ID.
+from agent.providers.base import SEPARADOR_MENSAJES
+
+# Modelos cuya pantalla de fábrica es LCD: la genérica casi no pierde brillo ni batería.
+_IPHONE_LCD = {"XR", "11", "SE", "SE2020", "SE2022", "8", "8PLUS", "7", "7PLUS", "6", "6S", "6PLUS", "6SPLUS"}
+
+_VALOR_SERVICIO_IPHONE = [
+    "Somos especialistas en equipos Apple y tu iPhone lo atiende personal certificado.",
+    "La pantalla es la pieza más cara del iPhone después de la tarjeta madre, por eso la instalamos "
+    "con herramienta de precisión en estación antiestática y la probamos completa antes de entregártela.",
+    "",
+    "Tu servicio incluye sin costo extra:",
+    "* Limpieza interna profesional del equipo",
+    "* Limpieza de bocinas, micrófonos, conectores y puerto de carga",
+    "* Garantía de 90 días",
+    "* Cambio el mismo día",
+    "",
+    "¿Cuál opción te interesa?",
+]
+
+
+def _avisa_pieza_desconocida(clave: str) -> bool:
+    """El aviso de "pieza desconocida" existe del iPhone 11 en adelante (no en SE, X, XR, XS ni 8)."""
+    m = re.match(r"(\d+)", clave or "")
+    return bool(m) and int(m.group(1)) >= 11
+
+
+def _descripcion_calidad_iphone(calidad: str, clave: str) -> str:
+    aviso = _avisa_pieza_desconocida(clave)
+    if calidad == "GENERICA":
+        if clave in _IPHONE_LCD:
+            contra = "colores menos vivos que la original"
+        else:
+            contra = "menos brillo y colores menos vivos que la original, y puede gastar más batería"
+        txt = f"Funciona bien para uso diario, pero tiene {contra}."
+        return txt + (' Aparece el aviso de "pieza desconocida" en el menú del iPhone.' if aviso else "")
+    if calidad == "ORIGINAL":
+        txt = "Colores, brillo y respuesta táctil como la de fábrica."
+        return txt + (' Aparece el aviso de "pieza desconocida" en el menú del iPhone.' if aviso else "")
+    return ('Lo más cercano a la pantalla de fábrica y no muestra el aviso de "pieza desconocida".'
+            if aviso else "Lo más cercano a la pantalla de fábrica.")
+
+
+_ICONO_IPHONE = {"GENERICA": "🔹", "ORIGINAL": "🔸", "PREMIUM": "⭐"}
+_NOMBRE_IPHONE = {"GENERICA": "Calidad genérica", "ORIGINAL": "Calidad original", "PREMIUM": "Calidad premium"}
+
+
 def _formatear_iphone(modelo_txt: str, precios: dict[str, int]) -> str:
-    lineas = [f"* {_ETIQUETA_IPHONE[c]}: ${precios[c]:,} MXN" for c in ("GENERICA", "ORIGINAL", "PREMIUM") if c in precios]
-    cuerpo = "\n".join(
-        [f"Para iPhone {modelo_txt} tenemos estas opciones:\n"]
-        + lineas
-        + ["", "Cada display incluye: diagnostico, garantia 90 dias y cambio el mismo dia.",
-           "Cual opcion te interesa?"]
-    )
+    clave = _clave_consulta_iphone(modelo_txt)
+    bloques = [f"Para iPhone {modelo_txt} tenemos estas opciones:"]
+    for c in ("GENERICA", "ORIGINAL", "PREMIUM"):
+        if c in precios:
+            bloques.append(
+                f"{_ICONO_IPHONE[c]} {_NOMBRE_IPHONE[c]}: ${precios[c]:,} MXN\n"
+                f"{_descripcion_calidad_iphone(c, clave)}"
+            )
+    mensaje1 = "\n\n".join(bloques)
+    mensaje2 = "\n".join(_VALOR_SERVICIO_IPHONE)
     return (
         "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
         "de calidad tal como aparecen, sin agregar otras ni marcas de proveedor):\n\n"
-        f"{cuerpo}"
+        f"{mensaje1}\n{SEPARADOR_MENSAJES}\n{mensaje2}"
     )
 
 
@@ -951,24 +1003,7 @@ def formatear_cotizacion_iphone(marca: str, modelo: str, productos: list[dict]) 
     precios = tabla_iphone().get(clave_modelo_iphone(modelo)) or precios_iphone_base(productos)
     if not precios:
         return _mensaje_no_disponible(marca, modelo)
-
-    lineas = []
-    for cat in ("GENERICA", "ORIGINAL", "PREMIUM"):
-        if cat in precios:
-            precio = precios[cat]
-            lineas.append(f"* {_ETIQUETA_IPHONE[cat]}: ${precio:,} MXN")
-
-    cuerpo = "\n".join(
-        [f"Para iPhone {modelo_para_cliente(marca, modelo)} tenemos estas opciones:\n"]
-        + lineas
-        + ["", "Cada display incluye: diagnostico, garantia 90 dias y cambio el mismo dia.",
-           "Cual opcion te interesa?"]
-    )
-    return (
-        "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
-        "de calidad tal como aparecen, sin agregar otras ni marcas de proveedor):\n\n"
-        f"{cuerpo}"
-    )
+    return _formatear_iphone(modelo_para_cliente(marca, modelo), precios)
 
 
 def formatear_cotizacion_hugo(marca: str, modelo: str, productos: list[dict]) -> str:

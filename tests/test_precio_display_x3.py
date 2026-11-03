@@ -34,7 +34,7 @@ def test_rango_600_1000_suma_300():
 
 def test_rango_1000_4000_directo_con_calidad():
     t = formatear_cotizacion_hugo("motorola", "EDGE 30 NEO", [_p(1081, "OLED S/M")])  # x3 = 3243
-    assert "* Calidad OLED sin marco: $3,243 MXN" in t
+    assert "Calidad OLED sin marco: $3,243 MXN" in t
 
 
 def test_mayor_4000_transfiere_otras_marcas():
@@ -54,11 +54,11 @@ def test_iphone_tres_calidades_el_mas_caro():
         _p(875, "DD-SOFT OLED S/M"),                                             # original (OLED): 875 → 2,625
         _p(1032, "ORIG", "X14-(Diagnóstico) (Diagnóstico)"),                     # premium: 1032 → 3,096
     ])
-    assert "* Calidad genérica: $1,011 MXN" in t
-    assert "* Calidad original: $2,625 MXN" in t
-    assert "* Calidad premium" in t and "pieza desconocida" in t and "$3,096 MXN" in t
+    assert "Calidad genérica: $1,011 MXN" in t
+    assert "Calidad original: $2,625 MXN" in t
+    assert "Calidad premium" in t and "pieza desconocida" in t and "$3,096 MXN" in t
     assert "autoprogramable" not in t.lower() and "Diagn" not in t and "OLED" not in t
-    assert t.count("\n* ") == 3
+    assert t.count(" MXN") == 3
 
 
 def test_iphone_mayor_4000_se_cotiza():
@@ -106,9 +106,9 @@ def test_iphone_diagnostico_en_calidad_es_premium():
 
 def test_iphone_fhd_es_generica():
     t = formatear_cotizacion_hugo("iphone", "14", [_p(325, "FHD S/M")])          # $975
-    assert "* Calidad genérica: $975 MXN" in t and "original" not in t.lower().split("cada display")[0].split("opciones")[1]
+    assert "Calidad genérica: $975 MXN" in t and "Calidad original" not in t
     t = formatear_cotizacion_hugo("iphone", "12", [_p(270, "HG FHD S/M(BOUTIQUE)"), _p(603, "AA HARD OLED FHD COF")])
-    assert "* Calidad genérica: $810 MXN" in t and "* Calidad original: $1,809 MXN" in t
+    assert "Calidad genérica: $810 MXN" in t and "Calidad original: $1,809 MXN" in t
 
 
 def test_iphone_premium_siempre_la_mas_cara():
@@ -116,7 +116,7 @@ def test_iphone_premium_siempre_la_mas_cara():
         _p(908, "DD-SOFT OLED S/M (Diagnóstico)", "X13PRO MAX"),   # 2,724
         _p(996, "HG SOFT OLED(ORIG BOUTIQUE)"),                     # 2,988
     ])
-    assert "* Calidad original: $2,724 MXN" in t and "$2,988 MXN" in t.split("Calidad premium")[1]
+    assert "Calidad original: $2,724 MXN" in t and "$2,988 MXN" in t.split("Calidad premium")[1]
 
 
 def test_todas_las_etiquetas_empiezan_con_calidad():
@@ -129,7 +129,7 @@ def test_todas_las_etiquetas_empiezan_con_calidad():
 
 def test_iphone_sin_calidad_es_generica():
     t = formatear_cotizacion_hugo("iphone", "16 PRO", [_p(669, "S/M")])   # 2,007
-    assert "* Calidad genérica: $2,007 MXN" in t
+    assert "Calidad genérica: $2,007 MXN" in t
 
 
 def test_escalera_misma_linea():
@@ -157,3 +157,48 @@ def test_lista_manual_iphone(tmp_path, monkeypatch):
     assert "SE 2020" in pricing.cotizar_iphone_manual("se") and "SE 2022" in pricing.cotizar_iphone_manual("se")
     assert "$700 MXN" in pricing.cotizar_iphone_manual("2022")
     assert "técnico" in pricing.cotizar_iphone_manual("20")
+
+
+def test_iphone_dos_mensajes_sin_face_id():
+    from agent.providers.base import partir_mensaje
+    t = pricing._formatear_iphone("13", {"GENERICA": 1300, "ORIGINAL": 2000, "PREMIUM": 3300})
+    m1, m2 = partir_mensaje(pricing._limpiar_si_hace_falta(t) if hasattr(pricing, "_limpiar_si_hace_falta") else t.split("\n\n", 1)[1])
+    assert "$1,300 MXN" in m1 and "$3,300 MXN" in m1 and "MXN" not in m2
+    assert "puede gastar más batería" in m1 and m1.count("pieza desconocida") == 3
+    assert "especialistas en equipos Apple" in m2 and "Limpieza interna" in m2
+    assert "bocinas, micrófonos, conectores y puerto de carga" in m2 and "después de la tarjeta madre" in m2
+    assert "face id" not in t.lower()
+
+
+def test_iphone_lcd_y_modelos_sin_aviso():
+    t = pricing._formatear_iphone("11", {"GENERICA": 1100})
+    assert "colores menos vivos" in t and "batería" not in t and "pieza desconocida" in t
+    t = pricing._formatear_iphone("SE 2022", {"GENERICA": 700, "ORIGINAL": 1000})
+    assert "pieza desconocida" not in t
+
+
+async def _no_dormir(*_):
+    return None
+
+
+def test_waha_parte_en_dos_envios(monkeypatch):
+    import asyncio
+    from agent.providers import waha
+    enviados = []
+    p = waha.ProveedorWaha()
+    p.base = "http://x"
+    async def falso_post(path, payload, timeout=20):
+        enviados.append(payload["text"])
+        class R: status_code = 201; text = ""; json = staticmethod(lambda: {})
+        return R()
+    monkeypatch.setattr(p, "_post", falso_post)
+    monkeypatch.setattr(waha.asyncio, "sleep", _no_dormir)
+    assert asyncio.run(p.enviar_mensaje("5512345678", "uno\n[[SIGUIENTE]]\ndos"))
+    assert len(enviados) == 2 and enviados[0].startswith("uno") and enviados[1].startswith("dos")
+
+
+def test_domicilio_va_con_los_precios():
+    from agent.filtro_domicilio import agregar_cargo_domicilio
+    t = agregar_cargo_domicilio("🔹 Calidad genérica: $1,300 MXN\n[[SIGUIENTE]]\nTu servicio incluye...")
+    precios, valor = t.split("[[SIGUIENTE]]")
+    assert "domicilio" in precios.lower() and "domicilio" not in valor.lower()

@@ -10,6 +10,7 @@ import httpx
 from fastapi import Request
 
 from agent.providers.base import MensajeEntrante, ProveedorWhatsApp
+from agent.providers.base import unir_mensaje
 
 logger = logging.getLogger("agentkit")
 
@@ -85,6 +86,7 @@ class ProveedorMessenger(ProveedorWhatsApp):
         """
         destino puede ser "fb_PSID" (prefijado) o el PSID directo.
         """
+        mensaje = unir_mensaje(mensaje)
         if not self.page_access_token:
             logger.warning("[MESSENGER] META_PAGE_ACCESS_TOKEN no configurado")
             return False

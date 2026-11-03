@@ -79,6 +79,7 @@ from agent.google_calendar import (
 )
 
 import httpx
+from agent.providers.base import unir_mensaje
 from agent.vision import (
     descargar_media,
     descargar_media_por_id,
@@ -491,6 +492,7 @@ def _para_historial(respuesta: str) -> str:
       Entrada:  "📱 *iPhone 15 Plus*\n✅ Calidad Genérica: $2,800 MXN\n✅ Original: $3,500 MXN\n..."
       Salida:   "[Cotización enviada: iPhone 15 Plus — $2,800–$3,500 MXN]"
     """
+    respuesta = unir_mensaje(respuesta)
     if len(respuesta) <= 200:
         return respuesta  # Respuesta corta → guardar completa
     if not _RE_PRECIO_HIST.search(respuesta):

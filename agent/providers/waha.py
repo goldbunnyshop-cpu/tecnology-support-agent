@@ -14,7 +14,8 @@ import httpx
 from dataclasses import dataclass
 from urllib.parse import urlparse
 from fastapi import Request
-from agent.providers.base import ProveedorWhatsApp, MensajeEntrante
+import asyncio
+from agent.providers.base import ProveedorWhatsApp, MensajeEntrante, partir_mensaje, PAUSA_ENTRE_MENSAJES
 # Reusamos el registro de ecos de whapi.py: main.py importa es_eco_del_bot desde ahí.
 from agent.providers.whapi import registrar_envio_bot
 
@@ -225,6 +226,14 @@ class ProveedorWaha(ProveedorWhatsApp):
         await self._post("/api/startTyping", {"session": self.session, "chatId": self._chat_id(telefono)}, timeout=5)
 
     async def enviar_mensaje(self, destino: str, mensaje: str, mentions: list[str] | None = None) -> bool:
+        partes = partir_mensaje(mensaje)
+        if len(partes) > 1:
+            ok = True
+            for i, parte in enumerate(partes):
+                if i:
+                    await asyncio.sleep(PAUSA_ENTRE_MENSAJES)
+                ok = await self.enviar_mensaje(destino, parte, mentions) and ok
+            return ok
         if _es_difusion(destino):
             logger.error(f"[WAHA] BLOQUEADO envio a {destino} (estado/canal)")
             return False

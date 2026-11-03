@@ -286,6 +286,10 @@ def agregar_cargo_domicilio(respuesta: str) -> str:
         return respuesta
     if "\n" not in d:
         d = f"🏠 A domicilio: {d}"
+    from agent.providers.base import SEPARADOR_MENSAJES
+    if SEPARADOR_MENSAJES in respuesta:  # cotización en 2 mensajes: el desglose va junto a los precios
+        precios, resto = respuesta.split(SEPARADOR_MENSAJES, 1)
+        return f"{precios.rstrip()}\n\n{d}\n{SEPARADOR_MENSAJES}{resto}"
     return f"{respuesta.rstrip()}\n\n{d}"
 
 

@@ -5,6 +5,22 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from fastapi import Request
 
+# Una respuesta puede mandarse en varios mensajes de WhatsApp: el texto se separa con este
+# marcador (ej. cotización de iPhone: 1) precios, 2) valor del servicio). Cada proveedor lo parte.
+SEPARADOR_MENSAJES = "[[SIGUIENTE]]"
+PAUSA_ENTRE_MENSAJES = 2  # segundos
+
+
+def partir_mensaje(texto) -> list[str]:
+    if not isinstance(texto, str) or SEPARADOR_MENSAJES not in texto:
+        return [texto]
+    return [p.strip() for p in texto.split(SEPARADOR_MENSAJES) if p.strip()]
+
+
+def unir_mensaje(texto: str) -> str:
+    """Versión de una sola pieza (historial, logs, Messenger)."""
+    return "\n\n".join(partir_mensaje(texto)) if isinstance(texto, str) else texto
+
 
 @dataclass
 class MensajeEntrante:

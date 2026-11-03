@@ -7,7 +7,8 @@ import logging
 import httpx
 from dataclasses import dataclass
 from fastapi import Request
-from agent.providers.base import ProveedorWhatsApp, MensajeEntrante
+import asyncio
+from agent.providers.base import ProveedorWhatsApp, MensajeEntrante, partir_mensaje, PAUSA_ENTRE_MENSAJES
 
 logger = logging.getLogger("agentkit")
 
@@ -212,6 +213,14 @@ class ProveedorWhapi(ProveedorWhatsApp):
 
     async def enviar_mensaje(self, destino: str, mensaje: str) -> bool:
         """Envía a un número o a un grupo (group_id con @g.us)."""
+        partes = partir_mensaje(mensaje)
+        if len(partes) > 1:
+            ok = True
+            for i, parte in enumerate(partes):
+                if i:
+                    await asyncio.sleep(PAUSA_ENTRE_MENSAJES)
+                ok = await self.enviar_mensaje(destino, parte) and ok
+            return ok
         if not self.token:
             logger.warning("WHAPI_TOKEN no configurado")
             return False

@@ -8,6 +8,7 @@ import httpx
 import json
 from fastapi import Request
 from agent.providers.base import ProveedorWhatsApp, MensajeEntrante
+from agent.providers.base import unir_mensaje
 
 logger = logging.getLogger("agentkit")
 
@@ -124,6 +125,7 @@ class ProveedorMetaInbox(ProveedorWhatsApp):
         Returns:
             True si fue exitoso
         """
+        mensaje = unir_mensaje(mensaje)
         if not self.access_token:
             logger.warning("META_ACCESS_TOKEN no configurado — mensaje no enviado")
             return False
