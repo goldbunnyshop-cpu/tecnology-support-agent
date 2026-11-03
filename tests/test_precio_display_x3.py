@@ -143,3 +143,17 @@ def test_escalera_dentro_de_generacion():
     assert t["15PRO"]["ORIGINAL"] == 3200       # Pro ≥ normal: 3,000 + 200
     assert t["15PROMAX"]["ORIGINAL"] == 3300    # Pro Max ≥ Pro: 3,200 + 100
 
+
+
+def test_lista_manual_iphone(tmp_path, monkeypatch):
+    csvp = tmp_path / "precios_iphone.csv"
+    csvp.write_text("modelo,generica,original,premium,nota\n13 mini,1250,1850,,\n14 Pro Max,1800,2800,3850,\nSE 2020,600,900,,\nSE 2022,700,1000,,\n", encoding="utf-8")
+    monkeypatch.setattr(pricing, "RUTA_PRECIOS_IPHONE", str(csvp))
+    pricing._cache_manual["mtime"] = None
+    t = pricing.cotizar_iphone_manual("13 mini")
+    assert "Calidad genérica: $1,250 MXN" in t and "Calidad original: $1,850 MXN" in t and "premium" not in t
+    t = pricing.cotizar_iphone_manual("iphone 14 pro max")
+    assert "$3,850 MXN" in t and "pieza desconocida" in t
+    assert "SE 2020" in pricing.cotizar_iphone_manual("se") and "SE 2022" in pricing.cotizar_iphone_manual("se")
+    assert "$700 MXN" in pricing.cotizar_iphone_manual("2022")
+    assert "técnico" in pricing.cotizar_iphone_manual("20")

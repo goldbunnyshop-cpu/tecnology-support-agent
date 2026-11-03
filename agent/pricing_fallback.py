@@ -496,7 +496,14 @@ async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
     imobile (Google Sheets, ×1.5) y fixoem quedaron obsoletos para displays.
     Si Hugo no tiene el modelo → mensaje de transferencia a técnico (no se inventa precio).
     """
-    from agent.pricing import _resolver_match_hugo, formatear_cotizacion_hugo
+    from agent.pricing import _resolver_match_hugo, formatear_cotizacion_hugo, _marca_canonica, cotizar_iphone_manual
+
+    # iPhone: la lista manual de Christian (knowledge/precios_iphone.csv) manda sobre todo lo demás
+    if _marca_canonica(marca) == "IPHONE":
+        manual = cotizar_iphone_manual(modelo)
+        if manual:
+            logger.info(f"[PRICING] iPhone {modelo} → lista manual")
+            return manual
 
     hugo = _resolver_match_hugo(marca, modelo)
 

@@ -205,12 +205,17 @@ Ejemplos:
 | iPhone 14 | Calidad Genérica: $1,272 · Calidad Original: $3,251 | Calidad original: $1,275 |
 | iPhone 15 Pro Max | Calidad Genérica: $1,872 · Calidad Original: $4,627 | Calidad genérica: $1,596 · Calidad original: $3,504 |
 
+**Lista manual de iPhone (3 nov, reemplaza todo lo anterior para iPhone):** Christian capturó a mano los precios al cliente de 42 modelos en `knowledge/precios_iphone.csv` (columnas `modelo,generica,original,premium,nota`; vacío = no se ofrece esa calidad). Es la **única fuente de precios de display de iPhone**: `pricing_fallback` la consulta primero (`cotizar_iphone_manual`) y ya no se aplican x3, piso ni escalera a iPhone. Si el modelo no está en la lista → técnico. Si el cliente dice solo "SE" → pregunta cuál SE. "iPhone SE 2022" funciona aunque el detector de modelo quite el "SE". Para cambiar un precio basta editar el CSV y subirlo (se recarga solo al cambiar el archivo). Ojo: `knowledge/*` está en `.gitignore`, así que se sube con `git add -f`.
+Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y el premium del 16 Plus ($3,750) quedó debajo del del 16 ($3,900).
+
+Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
+
 ---
 
 ## 5. Pendientes
 
 1. ~~Actualizar el catálogo~~ — **hecho 3 nov**: `knowledge/hugo_shop.csv` se regeneró de `HUGO_SHOP_LISTA_2_Disponibles_23.OCT.26.pdf` (675 productos; 1 sin precio: Huawei NOVA Y70).
-2. La lista del 23 oct no trae: iPhone 11 normal, 12 mini, 13 mini, 14 Plus, 16 Plus, 8 Plus ni 7 (el bot pregunta la versión o pasa al técnico). Faltan calidades en varios modelos (ej. 14 sin original, 17 Pro solo premium); se pueden completar con otro proveedor.
+2. (Ya no aplica a iPhone: ahora manda la lista manual.) La lista del 23 oct no trae: iPhone 11 normal, 12 mini, 13 mini, 14 Plus, 16 Plus, 8 Plus ni 7 (el bot pregunta la versión o pasa al técnico). Faltan calidades en varios modelos (ej. 14 sin original, 17 Pro solo premium); se pueden completar con otro proveedor.
 3. Matching: "Samsung A32 4G" y "Redmi Note 13 4G" vuelven a preguntar la variante aunque el cliente ya la dijo.
 4. Evaluador: el caso `m03-identidad-bot` espera que el bot nunca admita ser asistente virtual; el prompt dice que sí lo admita si se lo preguntan. Falta decidir y alinear.
 5. WAHA: probar envío de fotos y PDF (`nota:`) en Core; agregar alerta si la sesión se cae; decidir si se queda WAHA, se regresa a Whapi o se migra a la API oficial de Meta (desde el 1 oct 2026 Meta cobra los mensajes de servicio después de 1,000 gratis al mes; las conversaciones que vienen de anuncios Click-to-WhatsApp son gratis hasta 7 días).

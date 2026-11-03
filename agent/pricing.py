@@ -857,6 +857,94 @@ def tabla_iphone() -> dict[str, dict[str, int]]:
     return tabla
 
 
+# ── Precios manuales de iPhone (nov-2026) ──────────────────────────────────────
+# knowledge/precios_iphone.csv lo llena Christian a mano (lista editable). Cuando existe,
+# son los ÚNICOS precios de iPhone: reemplazan el cálculo x3 sobre Hugo Shop.
+# Casilla vacía = esa calidad no se ofrece. Modelo que no está en el archivo → técnico.
+RUTA_PRECIOS_IPHONE = "knowledge/precios_iphone.csv"
+_cache_manual: dict = {"mtime": None, "tabla": {}}
+
+
+def precios_iphone_manuales() -> dict[str, dict]:
+    """{clave_modelo: {"modelo": "13 Pro", "GENERICA": 1500, ...}} desde el CSV manual."""
+    try:
+        mtime = os.path.getmtime(RUTA_PRECIOS_IPHONE)
+    except OSError:
+        return {}
+    if _cache_manual["mtime"] == mtime:
+        return _cache_manual["tabla"]
+    tabla: dict[str, dict] = {}
+    try:
+        with open(RUTA_PRECIOS_IPHONE, encoding="utf-8") as f:
+            for fila in csv.DictReader(f):
+                modelo = (fila.get("modelo") or "").strip()
+                if not modelo:
+                    continue
+                d = {"modelo": modelo}
+                for col, cat in (("generica", "GENERICA"), ("original", "ORIGINAL"), ("premium", "PREMIUM")):
+                    v = re.sub(r"[^\d]", "", fila.get(col) or "")
+                    if v and int(v) > 0:
+                        d[cat] = int(v)
+                tabla[clave_modelo_iphone(modelo)] = d
+    except Exception as e:
+        logger.error(f"[PRICING] No se pudo leer {RUTA_PRECIOS_IPHONE}: {e}")
+        return {}
+    _cache_manual.update(mtime=mtime, tabla=tabla)
+    logger.info(f"[PRICING] Precios manuales iPhone: {len(tabla)} modelos")
+    return tabla
+
+
+def _clave_consulta_iphone(modelo: str) -> str:
+    m = re.sub(r"\b(?:apple|iphone|i\s*phone)\b", " ", (modelo or "").lower())
+    m = re.sub(r"\b(\d{1,2})\s*e\b", r"\1e", m)          # "16 e" → "16e"
+    m = re.sub(r"\bpro\s*max\b", "promax", m)
+    clave = clave_modelo_iphone(m)
+    if re.fullmatch(r"20(16|20|22)", clave):   # el detector a veces quita "SE": "2022" → "SE2022"
+        clave = "SE" + clave
+    return clave
+
+
+def cotizar_iphone_manual(modelo: str) -> str | None:
+    """Cotiza con la lista manual. None si no hay lista (se usa el cálculo automático)."""
+    tabla = precios_iphone_manuales()
+    if not tabla:
+        return None
+    clave = _clave_consulta_iphone(modelo)
+    if not clave:
+        return None
+    if clave in tabla:
+        d = tabla[clave]
+        precios = {k: v for k, v in d.items() if k in ("GENERICA", "ORIGINAL", "PREMIUM")}
+        if not precios:
+            return _mensaje_no_disponible("iPhone", d["modelo"])
+        return _formatear_iphone(d["modelo"], precios)
+    # "SE" → SE 2020 / SE 2022; "13" sin más ya es exacto. Prefijo con varias opciones → preguntar
+    opciones = [d["modelo"] for k, d in tabla.items() if k.startswith(clave) and k != clave]
+    if clave.isalpha() and opciones:
+        lista = ", ".join(f"iPhone {o}" for o in opciones)
+        return (
+            "INFORMACION PARA EL CLIENTE (transmitir esta pregunta tal cual; "
+            "NO ofrecer precios todavia hasta que el cliente confirme la variante exacta):\n\n"
+            f"Para cotizarte el precio correcto, ¿cuál de estos modelos tienes: {lista}?"
+        )
+    return _mensaje_no_disponible("iPhone", modelo_para_cliente("iphone", modelo))
+
+
+def _formatear_iphone(modelo_txt: str, precios: dict[str, int]) -> str:
+    lineas = [f"* {_ETIQUETA_IPHONE[c]}: ${precios[c]:,} MXN" for c in ("GENERICA", "ORIGINAL", "PREMIUM") if c in precios]
+    cuerpo = "\n".join(
+        [f"Para iPhone {modelo_txt} tenemos estas opciones:\n"]
+        + lineas
+        + ["", "Cada display incluye: diagnostico, garantia 90 dias y cambio el mismo dia.",
+           "Cual opcion te interesa?"]
+    )
+    return (
+        "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
+        "de calidad tal como aparecen, sin agregar otras ni marcas de proveedor):\n\n"
+        f"{cuerpo}"
+    )
+
+
 def formatear_cotizacion_iphone(marca: str, modelo: str, productos: list[dict]) -> str:
     """iPhone (nov-2026): una línea por calidad (el producto MÁS CARO de cada una), con
     piso, premium siempre la más cara y escalera entre modelos. Sin transferencia por precio alto."""
