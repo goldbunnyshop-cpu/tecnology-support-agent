@@ -244,6 +244,23 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - **Prueba:** `tests/test_cita_duplicada.py`.
 - **Pendiente:** borrar a mano en Google Calendar los eventos duplicados que ya existen (ej. Raúl, jueves 5 nov 10:30, hay 2).
 
+**4 nov: seguimiento respeta el plazo que da el cliente.** Antes el calendario era fijo (2 h, 24 h, 72 h, 7 días): si el miércoles el cliente decía "el viernes les confirmo", el bot le volvía a escribir 2 horas después.
+- **Detección (`agent/espera_cliente.py`):**
+  - Reconoce cuándo el cliente pospone ("confirmo", "aviso", "paso", "lo llevo", "cuando me paguen"…) y el plazo que da:
+    - horas ("en 2 horas", "en la tarde")
+    - "mañana" y "pasado mañana"
+    - día de la semana ("el viernes", "el viernes en la tarde")
+    - "el 20 de noviembre"
+    - "la próxima semana", "fin de semana"
+    - "en 2 semanas"
+    - "el mes que entra", "fin de mes", "quincena"
+  - Si pospone sin fecha ("lo platico y les aviso"), espera 2 días.
+  - Con día dado retoma a las 12:00, o a las 17:00 si dijo "en la tarde".
+- **Guardado (`leads.py`):** columnas nuevas `seguimiento_pausado_hasta` y `espera_texto` (se crean solas al arrancar). No se envía seguimiento antes de esa fecha. Al llegar el día se escribe ese mismo día, sin esperar además el intervalo normal.
+- **Mensaje de seguimiento:** recuerda "como quedamos, te escribo hoy…".
+- **Prompt:** al recibir un plazo, el bot lo acepta corto ("Perfecto, le escribo el viernes 😊") y no insiste.
+- **Pruebas:** `tests/test_espera_cliente.py`.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

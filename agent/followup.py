@@ -85,6 +85,8 @@ async def generar_mensaje_seguimiento(
     historial: list[dict],
     numero_seguimiento: int,
     asesor: str = "Valeria",
+    espera_texto: str = "",
+    espera_fecha: str = "",
 ) -> tuple[str, str]:
     """
     Genera un mensaje de seguimiento personalizado.
@@ -122,6 +124,13 @@ async def generar_mensaje_seguimiento(
         if (satisfecho and reseña_enviada) else ""
     )
 
+    ctx_espera = (
+        f"\nCONTEXTO IMPORTANTE: El cliente dijo \"{espera_texto}\". Hoy ({espera_fecha}) es el día que él propuso. "
+        "Escríbele recordando con amabilidad que quedó de confirmar hoy, sin presionar "
+        "(ej. \"Hola [nombre], como quedamos, te escribo hoy para ver si te animas a traer tu [equipo] 😊\")."
+        if espera_texto else ""
+    )
+
     prompt = f"""Eres {asesor}, asesor de Tecnology Support, un taller de reparación de electrónicos en CDMX.
 
 Un cliente dejó de responder. Lee el historial y produce la respuesta EN ESTE FORMATO EXACTO:
@@ -134,7 +143,7 @@ Criterios de prioridad:
 - urgente: preguntó precio, dijo que iba a ir, o mostró clara intención de reparación
 - medio: conversación activa sobre un dispositivo específico
 - bajo: solo preguntas generales sin dispositivo ni precio mencionado
-{ctx_presupuesto}{ctx_resena}
+{ctx_presupuesto}{ctx_resena}{ctx_espera}
 
 HISTORIAL:
 {fragmento}
@@ -225,7 +234,14 @@ async def ejecutar_seguimientos():
 
             historial = await obtener_historial(lead.telefono, limite=30)
             asesor = lead.asesor_asignado or "Valeria"
-            mensaje, prioridad = await generar_mensaje_seguimiento(historial, lead.seguimientos_enviados, asesor)
+            espera_texto, espera_fecha = "", ""
+            if getattr(lead, "seguimiento_pausado_hasta", None) and lead.espera_texto:
+                from agent.espera_cliente import describir_espera
+                espera_texto = lead.espera_texto
+                espera_fecha = describir_espera(lead.seguimiento_pausado_hasta.replace(tzinfo=timezone.utc))
+            mensaje, prioridad = await generar_mensaje_seguimiento(
+                historial, lead.seguimientos_enviados, asesor, espera_texto, espera_fecha
+            )
             enviado = await proveedor.enviar_mensaje(lead.telefono, mensaje)
             if enviado:
                 await guardar_mensaje(lead.telefono, "assistant", mensaje)

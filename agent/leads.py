@@ -33,6 +33,9 @@ class Lead(Base):
     retoma_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     retoma_desde: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     presupuesto_enviado_en: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    # El cliente dijo cuándo responde ("el viernes les confirmo") → no escribirle antes (UTC naive)
+    seguimiento_pausado_hasta: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    espera_texto: Mapped[str] = mapped_column(String(300), default="", nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -51,6 +54,8 @@ async def _migrar_columnas():
         ("seguimiento_enviado_en",   tipo_fecha),
         ("seguimiento_realizado",    bool_false),
         ("prioridad",               "VARCHAR(20) DEFAULT 'medio'"),
+        ("seguimiento_pausado_hasta", tipo_fecha),
+        ("espera_texto",            "VARCHAR(300) DEFAULT ''"),
     ]:
         # Una transacción POR columna: en Postgres un ALTER que falla (columna ya
         # existe) aborta toda la transacción; aislándolos, los demás siguen.
@@ -119,6 +124,18 @@ def _tiene_intencion_servicio(texto: str) -> bool:
     return any(kw in t for kw in _KEYWORDS_INTENCION_SERVICIO)
 
 
+def _detectar_espera_utc(mensaje_texto: str) -> datetime | None:
+    """Plazo que propuso el cliente, en UTC naive (como el resto de la tabla leads)."""
+    try:
+        from agent.espera_cliente import detectar_espera
+        from datetime import timezone as _tz
+        hasta = detectar_espera(mensaje_texto or "")
+        return hasta.astimezone(_tz.utc).replace(tzinfo=None) if hasta else None
+    except Exception as e:
+        logger.warning(f"[LEAD] No se pudo interpretar plazo del cliente: {e}")
+        return None
+
+
 async def crear_o_actualizar_lead(
     telefono: str,
     fuente: str = "desconocido",
@@ -132,11 +149,20 @@ async def crear_o_actualizar_lead(
     - Si contiene intención de servicio → resetear (nueva consulta genuina)
     - Si es respuesta de cortesía ("gracias", "ok") → NO resetear (evita loop infinito)
     """
+    espera = _detectar_espera_utc(mensaje_texto)
     async with async_session() as session:
         result = await session.execute(select(Lead).where(Lead.telefono == telefono))
         lead = result.scalar_one_or_none()
         if lead:
             lead.ultimo_mensaje = datetime.utcnow()
+            if espera:
+                lead.seguimiento_pausado_hasta = espera
+                lead.espera_texto = (mensaje_texto or "")[:300]
+                logger.info(f"[LEAD] {telefono} — cliente pidió esperar: seguimiento pausado hasta {espera:%Y-%m-%d %H:%M} UTC")
+            elif _tiene_intencion_servicio(mensaje_texto):
+                # Nueva consulta: ya no aplica la espera anterior
+                lead.seguimiento_pausado_hasta = None
+                lead.espera_texto = ""
             if lead.estado in ("en_seguimiento", "perdido", "noshow"):
                 lead.estado = "activo"
                 # CRÍTICO: solo reiniciar secuencia si hay nueva intención de servicio.
@@ -160,6 +186,8 @@ async def crear_o_actualizar_lead(
                 fuente=fuente,
                 fuente_detalle=fuente_detalle,
                 asesor_asignado=asesor_asignado,
+                seguimiento_pausado_hasta=espera,
+                espera_texto=(mensaje_texto or "")[:300] if espera else "",
             )
             session.add(lead)
         await session.commit()
@@ -253,7 +281,14 @@ async def obtener_leads_para_seguimiento() -> list[Lead]:
         if ref is None:
             continue
 
-        if ahora - ref >= intervalo:
+        toca = ref + intervalo
+        pausa = getattr(lead, "seguimiento_pausado_hasta", None)
+        if pausa and pausa > ahora:
+            continue   # el cliente dijo cuándo responde: esperar a esa fecha
+        if pausa and pausa > ref:
+            # La espera ya venció: escribirle ese día (no esperar además el intervalo normal)
+            toca = min(toca, pausa)
+        if ahora >= toca:
             candidatos.append(lead)
 
     return candidatos
@@ -312,6 +347,10 @@ async def registrar_seguimiento_enviado(telefono: str, prioridad: str = "medio")
         if lead:
             lead.seguimientos_enviados += 1
             lead.seguimiento_enviado_en = datetime.utcnow()
+            if lead.seguimiento_pausado_hasta and lead.seguimiento_pausado_hasta <= datetime.utcnow():
+                # La espera que pidió el cliente ya se cumplió con este mensaje
+                lead.seguimiento_pausado_hasta = None
+                lead.espera_texto = ""
             lead.prioridad              = prioridad
             if lead.seguimientos_enviados >= MAX_SEGUIMIENTOS:
                 # Secuencia completa: marcar como terminado
