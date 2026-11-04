@@ -171,11 +171,11 @@ def test_iphone_dos_mensajes_sin_face_id():
 
 
 def test_iphone_lcd_y_modelos_sin_aviso():
-    for modelo in ("11", "XR", "SE 2022", "8 Plus"):
-        t = pricing._formatear_iphone(modelo, {"GENERICA": 1100, "ORIGINAL": 1700, "PREMIUM": 2500})
-        m1 = t.split("[[SIGUIENTE]]")[0]
-        assert "Calidad genérica: $1,100 MXN\n🔸 Calidad original: $1,700 MXN" in m1
-        assert "premium" not in m1.lower() and "pieza desconocida" not in m1 and "colores" not in m1
+    t = pricing._formatear_iphone("11", {"GENERICA": 1100, "ORIGINAL": 1700})
+    assert "colores menos vivos" in t and "batería" not in t and "pieza desconocida" in t
+    assert "Colores, brillo y respuesta táctil como la de fábrica" in t
+    t = pricing._formatear_iphone("SE 2022", {"GENERICA": 700, "ORIGINAL": 1000})
+    assert "colores menos vivos" in t and "pieza desconocida" not in t
 
 
 async def _no_dormir(*_):
@@ -203,3 +203,33 @@ def test_domicilio_va_con_los_precios():
     t = agregar_cargo_domicilio("🔹 Calidad genérica: $1,300 MXN\n[[SIGUIENTE]]\nTu servicio incluye...")
     precios, valor = t.split("[[SIGUIENTE]]")
     assert "domicilio" in precios.lower() and "domicilio" not in valor.lower()
+
+
+def test_parser_modelo_iphone():
+    c = pricing._clave_consulta_iphone
+    casos = {
+        "15 pro máx": "15PROMAX", "15pro max": "15PROMAX", "iphone 12 pro cambio": "12PRO",
+        "Es un iPhone XS y se le rompió la pantalla": "XS", "xs max": "XSMAX", "xr": "XR",
+        "se 2022": "SE2022", "2022": "SE2022", "se": "SE", "se me cayo el iphone": "",
+        "12 se rompio": "12", "16 e": "16E", "6s plus": "6SPLUS", "8+": "8PLUS", "17 air": "17AIR",
+        "iphone 10": "X", "tengo 2 iphone 11, cuanto": "11", "13 mini": "13MINI",
+    }
+    for texto, esperado in casos.items():
+        assert c(texto) == esperado, (texto, c(texto))
+
+
+def test_iphone_nunca_usa_hugo(tmp_path, monkeypatch):
+    import asyncio
+    csvp = tmp_path / "precios_iphone.csv"
+    csvp.write_text("modelo,generica,original,premium,nota\n15 Pro Max,2100,3300,4800,\n", encoding="utf-8")
+    monkeypatch.setattr(pricing, "RUTA_PRECIOS_IPHONE", str(csvp))
+    pricing._cache_manual["mtime"] = None
+    assert pricing._resolver_match_hugo("iphone", "15 pro max")["tipo"] == "no_disponible"
+    t = asyncio.run(pricing.obtener_cotizacion_display("iphone", "15 pro máx"))
+    assert "$2,100 MXN" in t and "$4,800 MXN" in t
+    # modelo fuera de la lista → técnico, no Hugo
+    assert "MXN" not in asyncio.run(pricing.obtener_cotizacion_display("iphone", "13"))
+    # sin lista → técnico, no Hugo
+    monkeypatch.setattr(pricing, "RUTA_PRECIOS_IPHONE", str(tmp_path / "no_existe.csv"))
+    pricing._cache_manual["mtime"] = None
+    assert "MXN" not in pricing.cotizar_iphone_manual("15 pro max")

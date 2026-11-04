@@ -198,6 +198,10 @@ def _extraer_marca_modelo(mensaje: str) -> tuple[str | None, str | None]:
                 # Caso: "tengo un moto E32, ¿cuánto cuesta?" → tokens resto:
                 # ["e32,", "cuánto", "cuesta"] → queremos solo ["e32"].
                 # La coma pegada a "e32," rompe todos los regex de matching.
+                if ALIAS_MARCAS.get(alias) == "IPHONE":
+                    # iPhone: parser propio (acepta XS, XR, SE 2022, "15 pro máx" y quita palabras de más)
+                    from agent.pricing import modelo_iphone_de_texto
+                    return marca, modelo_iphone_de_texto(txt)
                 modelo = _extraer_modelo_de_tokens(resto)
                 # Solo aceptar el modelo si parece un modelo real (tiene dígito);
                 # de lo contrario marca conocida pero sin modelo → se pedirá el modelo.

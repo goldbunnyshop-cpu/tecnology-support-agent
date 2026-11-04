@@ -894,24 +894,85 @@ def precios_iphone_manuales() -> dict[str, dict]:
     return tabla
 
 
+def _sin_acentos(t: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFD", t or "") if unicodedata.category(c) != "Mn")
+
+
 def _clave_consulta_iphone(modelo: str) -> str:
-    m = re.sub(r"\b(?:apple|iphone|i\s*phone)\b", " ", (modelo or "").lower())
-    m = re.sub(r"\b(\d{1,2})\s*e\b", r"\1e", m)          # "16 e" → "16e"
-    m = re.sub(r"\bpro\s*max\b", "promax", m)
-    clave = clave_modelo_iphone(m)
-    if re.fullmatch(r"20(16|20|22)", clave):   # el detector a veces quita "SE": "2022" → "SE2022"
-        clave = "SE" + clave
-    return clave
+    """Texto libre del cliente → clave de la lista manual. Ignora palabras de más.
+    '15 pro máx' → 15PROMAX · 'iphone 12 pro cambio' → 12PRO · 'xs max' → XSMAX ·
+    'se 2022' / '2022' → SE2022 · 'se' → SE · '16 e' → 16E · '6s plus' → 6SPLUS."""
+    t = _sin_acentos((modelo or "").lower())
+    t = re.sub(r"\b(?:apple|iphone|i\s*phone|ifone|aifon)\b", " ", t)
+    t = re.sub(r"[^a-z0-9+ ]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t:
+        return ""
+    t = re.sub(r"(\d)(pro|plus|max|mini|air)", r"\1 \2", t)      # "15pro max" → "15 pro max"
+    t = re.sub(r"\b10\b", "x", t) if not re.search(r"\b(1[1-9]|[4-9])\b", t) else t   # "iphone 10" = X
+    # SE con año o generación ("se 2022", "se 3ra gen", o solo "2022" cuando el detector quitó "SE")
+    if re.search(r"\bse\b", t) or re.fullmatch(r"20(16|20|22)", t):
+        if re.search(r"2022|\b3\s*(ra|era|a)?\s*gen", t):
+            return "SE2022"
+        if re.search(r"2020|\b2\s*(da|nd|a)?\s*gen", t):
+            return "SE2020"
+        if "2016" in t:
+            return "SE2016"
+    # X / XR / XS / XS MAX
+    if re.search(r"\bx\s*s\s*max\b|\bxsmax\b", t):
+        return "XSMAX"
+    if re.search(r"\bx\s*s\b", t):
+        return "XS"
+    if re.search(r"\bx\s*r\b", t):
+        return "XR"
+    # Número + variante
+    m = next((x for x in re.finditer(r"\b(\d{1,2})\s*(s|e)?\b", t) if 4 <= int(x.group(1)) <= 20), None)
+    if m:
+        num, letra, resto = m.group(1), (m.group(2) or "").upper(), t[m.end():]
+        if re.search(r"\bpro\s*max\b|\bpromax\b|\bmax\b", resto):
+            suf = "PROMAX"
+        elif re.search(r"\bpro\b", resto):
+            suf = "PRO"
+        elif re.search(r"\bplus\b|\+", resto):
+            suf = "PLUS"
+        elif re.search(r"\bmini\b", resto):
+            suf = "MINI"
+        elif re.search(r"\bair\b", resto):
+            suf = "AIR"
+        else:
+            suf = ""
+        return f"{num}{letra}{suf}"
+    if re.search(r"\bx\b", t):
+        return "X"
+    m = re.search(r"\bse\b\s*(\w+)?", t)
+    if m and (m.group(1) or "") not in _PALABRAS_NO_SE:
+        return "SE"
+    return ""
+
+
+_PALABRAS_NO_SE = {"me", "te", "le", "les", "lo", "la", "los", "las", "nos", "rompio", "cayo", "quebro",
+                   "estrello", "mojo", "apago", "murio", "dano", "descompuso", "calienta", "traba", "reinicia",
+                   "puede", "ve", "ven", "oye", "escucha", "carga", "prende", "apaga", "bloqueo", "hace", "queda"}
+
+
+def modelo_iphone_de_texto(texto: str) -> str | None:
+    """Para brain.py: modelo de iPhone legible ('15 Pro Max', 'XS', 'SE 2022') o None."""
+    clave = _clave_consulta_iphone(texto)
+    if not clave:
+        return None
+    d = precios_iphone_manuales().get(clave)
+    return d["modelo"] if d else clave
 
 
 def cotizar_iphone_manual(modelo: str) -> str | None:
     """Cotiza con la lista manual. None si no hay lista (se usa el cálculo automático)."""
     tabla = precios_iphone_manuales()
     if not tabla:
-        return None
+        logger.error(f"[PRICING] Lista manual de iPhone vacía o no encontrada ({RUTA_PRECIOS_IPHONE}) → técnico")
+        return _mensaje_no_disponible("iPhone", modelo_para_cliente("iphone", modelo))
     clave = _clave_consulta_iphone(modelo)
     if not clave:
-        return None
+        return None   # no dijo modelo: el flujo normal pregunta cuál es
     if clave in tabla:
         d = tabla[clave]
         precios = {k: v for k, v in d.items() if k in ("GENERICA", "ORIGINAL", "PREMIUM")}
@@ -920,7 +981,7 @@ def cotizar_iphone_manual(modelo: str) -> str | None:
         return _formatear_iphone(d["modelo"], precios)
     # "SE" → SE 2020 / SE 2022; "13" sin más ya es exacto. Prefijo con varias opciones → preguntar
     opciones = [d["modelo"] for k, d in tabla.items() if k.startswith(clave) and k != clave]
-    if clave.isalpha() and opciones:
+    if clave in ("SE", "X") and opciones:
         lista = ", ".join(f"iPhone {o}" for o in opciones)
         return (
             "INFORMACION PARA EL CLIENTE (transmitir esta pregunta tal cual; "
@@ -982,19 +1043,13 @@ _NOMBRE_IPHONE = {"GENERICA": "Calidad genérica", "ORIGINAL": "Calidad original
 def _formatear_iphone(modelo_txt: str, precios: dict[str, int]) -> str:
     clave = _clave_consulta_iphone(modelo_txt)
     bloques = [f"Para iPhone {modelo_txt} tenemos estas opciones:"]
-    if clave in _IPHONE_LCD:
-        # XR, 11, SE, 8 y anteriores: solo genérica y original con su precio, sin descripciones
-        lineas = [f"{_ICONO_IPHONE[c]} {_NOMBRE_IPHONE[c]}: ${precios[c]:,} MXN"
-                  for c in ("GENERICA", "ORIGINAL") if c in precios]
-        mensaje1 = bloques[0] + "\n\n" + "\n".join(lineas)
-    else:
-        for c in ("GENERICA", "ORIGINAL", "PREMIUM"):
-            if c in precios:
-                bloques.append(
-                    f"{_ICONO_IPHONE[c]} {_NOMBRE_IPHONE[c]}: ${precios[c]:,} MXN\n"
-                    f"{_descripcion_calidad_iphone(c, clave)}"
-                )
-        mensaje1 = "\n\n".join(bloques)
+    for c in ("GENERICA", "ORIGINAL", "PREMIUM"):
+        if c in precios:
+            bloques.append(
+                f"{_ICONO_IPHONE[c]} {_NOMBRE_IPHONE[c]}: ${precios[c]:,} MXN\n"
+                f"{_descripcion_calidad_iphone(c, clave)}"
+            )
+    mensaje1 = "\n\n".join(bloques)
     mensaje2 = "\n".join(_VALOR_SERVICIO_IPHONE)
     return (
         "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
@@ -1159,6 +1214,8 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
     if not marca_csv:
         logger.warning(f"[PRICING] Marca no reconocida: {marca}")
         return {"tipo": "no_disponible"}
+    if marca_csv == "IPHONE":   # iPhone se cotiza SOLO con la lista manual
+        return {"tipo": "no_disponible"}
 
     productos = cargar_csv_hugo()
     productos_marca = [p for p in productos if p.get('MARCA') == marca_csv]
@@ -1245,7 +1302,9 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
 
 
 async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
-    """Punto de entrada usado por brain.py / tools.py. Cotiza SOLO con Hugo Shop."""
+    """Punto de entrada usado por brain.py / tools.py. iPhone: lista manual. Resto: Hugo Shop."""
+    if _marca_canonica(marca) == "IPHONE":
+        return cotizar_iphone_manual(modelo) or _mensaje_no_disponible("iPhone", modelo)
     res = _resolver_match_hugo(marca, modelo)
     if res["tipo"] == "variante":
         return res["respuesta"]
@@ -1298,7 +1357,7 @@ async def buscar_modelo_sin_marca(modelo: str) -> str:
 
     for p in productos:
         marca = p.get('MARCA', '')
-        if not marca:
+        if not marca or marca == 'IPHONE':   # iPhone: lista manual (abajo)
             continue
         pares = normalizar_modelo_descripcion(p['DESCRIPCION'], marca)
         for base, variante in pares:
@@ -1308,6 +1367,9 @@ async def buscar_modelo_sin_marca(modelo: str) -> str:
             if tokens and tokens[0] == base_lower:
                 matches_por_marca[marca].append((p, [variante]))
                 break
+
+    if tokens and _clave_consulta_iphone(" ".join(tokens)) in precios_iphone_manuales():
+        matches_por_marca['IPHONE'].append(({}, [None]))
 
     if not matches_por_marca:
         logger.warning(f"[PRICING] Sin productos para '{modelo}' sin marca")
