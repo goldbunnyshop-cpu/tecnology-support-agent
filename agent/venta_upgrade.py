@@ -68,5 +68,15 @@ def mensaje_grupo_upgrade(telefono: str, texto: str, historial: list[dict] | Non
         lineas.append(f"🔧 También cotiza: {servicio} (no perder este servicio)")
     if asesor:
         lineas.append(f"👨‍💼 Asesor: {asesor}")
-    lineas.append("➡️ Cotizar pieza + instalación (al tipo de cambio de hoy) y mandarle el precio YA: el bot le dijo que en instantes se lo damos y está cerrando la cita.")
+    try:
+        from agent.horario import fuera_de_horario, texto_retoma
+        fuera = fuera_de_horario()
+    except Exception:
+        fuera = False
+    if fuera:
+        lineas.append(f"🌙 Llegó fuera de horario: al cliente se le dijo que le cotizamos {texto_retoma()}. "
+                      "Mandarle el precio en cuanto abra el equipo.")
+    else:
+        lineas.append("➡️ Cotizar pieza + instalación (al tipo de cambio de hoy) y mandarle el precio YA: "
+                      "el bot le dijo que en instantes se lo damos y está cerrando la cita.")
     return "\n".join(lineas)

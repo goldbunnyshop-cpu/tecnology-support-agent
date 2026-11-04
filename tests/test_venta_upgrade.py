@@ -25,3 +25,16 @@ def test_aviso_no_pierde_el_servicio_original():
 def test_prompt_prohibe_mandar_a_otra_tienda():
     txt = open("config/prompts.yaml", encoding="utf-8").read()
     assert "NUNCA sugieras comprarlo en Mercado Libre, Amazon" in txt
+
+
+def test_de_madrugada_no_promete_instantes():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from agent.horario import ajustar_promesas
+    mx = ZoneInfo("America/Mexico_City")
+    t = "El precio es variable por el tipo de cambio; en unos instantes le cotizamos. ¿Qué día le queda bien traerla?"
+    madrugada = ajustar_promesas(t, datetime(2026, 11, 4, 3, 0, tzinfo=mx))
+    assert "instantes" not in madrugada and "10:30" in madrugada
+    assert ajustar_promesas(t, datetime(2026, 11, 4, 13, 0, tzinfo=mx)) == t
+    assert ajustar_promesas("En instantes le enviamos el precio.",
+                            datetime(2026, 11, 7, 2, 0, tzinfo=mx)).startswith("Le enviamos hoy a partir de las 11:30")

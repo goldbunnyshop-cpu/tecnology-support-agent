@@ -79,10 +79,16 @@ def ajustar_promesas(texto: str, ahora: datetime | None = None) -> str:
         (r"y en breve le confirmamos\.?", f"y le confirmamos {r} ({_FUERA.lower()})."),
         (r"Le regresamos el mensaje con la información en breve\.?",
          f"{_FUERA}; le regresamos el mensaje con la información {r}."),
+        # Cotizaciones que da el técnico (ej. ampliación de memoria): de madrugada no hay "instantes"
+        (r"[Ee]n (unos )?instantes le cotizamos", f"le enviamos la cotización {r}"),
+        (r"[Ee]n (unos )?(instantes|minutos) le (enviamos|mandamos|damos|confirmamos)",
+         rf"le \3 {r}"),
     ]
     out = texto
     for patron, nuevo in reglas:
-        out = re.sub(patron, nuevo, out)
+        # Respetar mayúscula si la frase original iniciaba oración ("En instantes…" → "Le enviamos…")
+        out = re.sub(patron, lambda m, n=nuevo: (lambda x: x[:1].upper() + x[1:] if m.group(0)[:1].isupper() else x)(
+            m.expand(n)), out)
     return out
 
 

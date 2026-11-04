@@ -274,6 +274,9 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
   - texto del cliente;
   - servicio que también cotiza.
 - **Precio y cita (ajuste de Christian):** no se da cifra; el bot dice que el precio es variable por el tipo de cambio y que en instantes le cotizamos. El enfoque es confirmar la cita (pide día y hora en el mismo mensaje).
+- **Fuera de horario (ej. madrugada):** el bot no promete "en instantes". Dice que el equipo técnico le manda la cotización cuando retoma (L–V desde 10:30, S–D desde 11:30).
+  - Doble candado: regla en el prompt + `horario.ajustar_promesas` cambia "en unos instantes le cotizamos" por "le enviamos la cotización hoy a partir de las 10:30".
+  - El aviso al grupo marca 🌙 "llegó fuera de horario".
 - **Comportamiento:** el bot NO se pausa. Máximo un aviso por cliente al día (`main._avisar_upgrade`).
 - **Pruebas:** `tests/test_venta_upgrade.py`.
 
