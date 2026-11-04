@@ -261,6 +261,21 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - **Prompt:** al recibir un plazo, el bot lo acepta corto ("Perfecto, le escribo el viernes 😊") y no insiste.
 - **Pruebas:** `tests/test_espera_cliente.py`.
 
+**4 nov: venta de mejoras (ampliar memoria/SSD/RAM).**
+- **Problema:** un cliente que cotizaba mantenimiento de PS5 pidió ampliar la memoria. El bot le dijo que solo reparábamos y le sugirió comprar en Mercado Libre o Amazon.
+- **Prompt (sección "Venta e instalación de mejoras"):**
+  - Sí vendemos e instalamos SSD M.2 para PS5, SSD para PS4, Xbox, laptop y PC, RAM y accesorios.
+  - Nunca mandar al cliente a otra tienda.
+  - Pregunta capacidad, sin inventar precio de la pieza.
+  - Ofrece hacerlo en la misma visita del servicio original (no perder el mantenimiento).
+- **`agent/venta_upgrade.py`:** detecta la solicitud y arma el aviso al grupo "🛒 VENTA: AMPLIACIÓN / MEJORA":
+  - teléfono con wa.me;
+  - equipo;
+  - texto del cliente;
+  - servicio que también cotiza.
+- **Comportamiento:** el bot NO se pausa. Máximo un aviso por cliente al día (`main._avisar_upgrade`).
+- **Pruebas:** `tests/test_venta_upgrade.py`.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

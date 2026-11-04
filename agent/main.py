@@ -233,6 +233,19 @@ def parsear_tag_agendar(texto: str) -> Optional[dict]:
     return datos
 
 
+async def _avisar_upgrade(telefono: str, texto: str, historial: list[dict], asesor: str) -> None:
+    """Avisa al grupo interno de una venta de mejora. Máximo un aviso por cliente al día."""
+    from agent.venta_upgrade import mensaje_grupo_upgrade
+    from agent.memory import cita_notificada_ya_enviada, registrar_cita_notificada
+    from agent.appointment_notifications import _enviar_grupo
+    clave = f"upgrade:{telefono}:{datetime.now(ZONA_CDMX):%Y-%m-%d}"
+    if await cita_notificada_ya_enviada(clave, "upgrade"):
+        return
+    await registrar_cita_notificada(clave, "upgrade", telefono, False, False)
+    ok = await _enviar_grupo(mensaje_grupo_upgrade(telefono, texto, historial, asesor))
+    logger.info(f"[UPGRADE] Aviso de venta de mejora al grupo — {telefono} — {'✅' if ok else '❌'}")
+
+
 class _CitaYaExiste(Exception):
     """El [[AGENDAR]] corresponde a una cita que ya está guardada."""
 
@@ -1310,6 +1323,14 @@ async def _procesar_lote_mensajes(mensajes):
                         else:
                             logger.error(f"[DOMICILIO] Aviso al grupo falló — {msg.telefono} NO se pausó")
                     continue
+
+                # ── Venta de mejoras (ampliar memoria/SSD/RAM): avisar al grupo, sin pausar al bot ──
+                try:
+                    from agent.venta_upgrade import es_solicitud_upgrade, mensaje_grupo_upgrade
+                    if es_solicitud_upgrade(msg.texto):
+                        asyncio.create_task(_avisar_upgrade(msg.telefono, msg.texto, historial, asesor))
+                except Exception as e:
+                    logger.error(f"[UPGRADE] Error detectando solicitud de mejora: {e}")
 
                 await proveedor.enviar_typing(msg.telefono)
                 respuesta = await generar_respuesta(
