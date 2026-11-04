@@ -273,6 +273,7 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
   - equipo;
   - texto del cliente;
   - servicio que también cotiza.
+- **Precio y cita (ajuste de Christian):** no se da cifra; el bot dice que el precio es variable por el tipo de cambio y que en instantes le cotizamos. El enfoque es confirmar la cita (pide día y hora en el mismo mensaje).
 - **Comportamiento:** el bot NO se pausa. Máximo un aviso por cliente al día (`main._avisar_upgrade`).
 - **Pruebas:** `tests/test_venta_upgrade.py`.
 

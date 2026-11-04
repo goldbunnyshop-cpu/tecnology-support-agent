@@ -68,5 +68,5 @@ def mensaje_grupo_upgrade(telefono: str, texto: str, historial: list[dict] | Non
         lineas.append(f"🔧 También cotiza: {servicio} (no perder este servicio)")
     if asesor:
         lineas.append(f"👨‍💼 Asesor: {asesor}")
-    lineas.append("➡️ Cotizar pieza + instalación y darle seguimiento.")
+    lineas.append("➡️ Cotizar pieza + instalación (al tipo de cambio de hoy) y mandarle el precio YA: el bot le dijo que en instantes se lo damos y está cerrando la cita.")
     return "\n".join(lineas)
