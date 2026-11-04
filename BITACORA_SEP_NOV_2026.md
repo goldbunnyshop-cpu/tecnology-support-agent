@@ -223,6 +223,20 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - **Archivos:** `agent/pricing.py` (`_formatear_iphone`, `_VALOR_SERVICIO_IPHONE`, `_IPHONE_LCD`), `agent/providers/*.py`, `agent/main.py` (`_para_historial`), `agent/filtro_domicilio.py`.
 - **Pruebas:** `tests/test_precio_display_x3.py`.
 
+**Fix 4 nov: iPhone solo con lista manual.**
+- **Logs de producción:**
+  - "Iphone 15 pro máx" con acento no encontraba el modelo y mandaba al técnico.
+  - "iPhone XS" y "XR" no se detectaban como modelo.
+  - "12 pro cambio" no se reconocía.
+  - En producción quedó la versión sin explicación breve para los LCD.
+- **Ahora:**
+  - Hugo Shop queda bloqueado para iPhone por todos los caminos (`_resolver_match_hugo`, `obtener_cotizacion_display`, búsqueda sin marca).
+  - El único origen es `knowledge/precios_iphone.csv`; si el modelo no está en la lista, se manda al técnico.
+  - Nuevo parser `_clave_consulta_iphone` / `modelo_iphone_de_texto`:
+    - quita acentos y palabras de más;
+    - reconoce X, XR, XS, XS Max, SE 2020/2022 ("se me cayó" no cuenta como SE), "15pro max", "8+", "16 e" y "iphone 10" = X.
+  - `brain._extraer_marca_modelo` usa ese parser cuando la marca es iPhone.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---
