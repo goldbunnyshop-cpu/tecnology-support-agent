@@ -2,6 +2,7 @@
 # Email via Resend API (HTTP) + mensaje al grupo "Taller Interno TS"
 # NOTA: Railway bloquea conexiones SMTP salientes — por eso usamos Resend API (HTTP).
 
+import re
 import asyncio
 import json
 import logging
@@ -225,8 +226,16 @@ async def notificar_nueva_cita(
     # no la repetimos. Registrar AQUÍ (antes de enviar) — y no al final —
     # evita que el scheduler de 10 min reenvíe la misma cita al grupo mientras
     # este envío sigue en curso.
+    from agent.memory import cita_notificada_ya_enviada, registrar_cita_notificada
+    _tel10 = "".join(ch for ch in str(telefono or "") if ch.isdigit())[-10:]
+    _slot = re.sub(r"[^a-z0-9]", "", f"{fecha_texto}{hora_texto}".lower())
+    clave_slot = f"slot:{_tel10}:{_slot}" if _tel10 and _slot else ""
+    if clave_slot:
+        if await cita_notificada_ya_enviada(clave_slot, "inmediata"):
+            logger.warning(f"[CITAS NOTIF] ⚠️ Ya se avisó al grupo de la cita {clave_slot} — se omite (evento duplicado)")
+            return
+        await registrar_cita_notificada(clave_slot, "inmediata", telefono, False, False)
     if evento_id:
-        from agent.memory import cita_notificada_ya_enviada, registrar_cita_notificada
         if await cita_notificada_ya_enviada(evento_id, "inmediata"):
             logger.warning(
                 f"[CITAS NOTIF] ⚠️ Notificación 'inmediata' ya registrada para "

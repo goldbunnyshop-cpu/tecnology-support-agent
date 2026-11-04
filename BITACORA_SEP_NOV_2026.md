@@ -237,6 +237,13 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
     - reconoce X, XR, XS, XS Max, SE 2020/2022 ("se me cayó" no cuenta como SE), "15pro max", "8+", "16 e" y "iphone 10" = X.
   - `brain._extraer_marca_modelo` usa ese parser cuando la marca es iPhone.
 
+**Fix 4 nov: cita repetida en el grupo interno.**
+- **Logs, caso Raúl, PS4, 3 nov:** Claude volvió a mandar `[[AGENDAR]]` un minuto después de confirmar. Se creó un segundo evento en Google Calendar con otro id. El aviso al grupo deduplicaba por id del evento, así que lo volvió a mandar.
+- **Ahora, antes de agendar:** si ya hay una cita de ese teléfono en ±2 h (`cita_detector.existe_cita_cercana`), no se crea otro evento ni se vuelve a avisar.
+- **Ahora, en `notificar_nueva_cita`:** también se deduplica por teléfono + día + hora (`slot:<tel10>:<fecha><hora>`), aunque el evento tenga otro id.
+- **Prueba:** `tests/test_cita_duplicada.py`.
+- **Pendiente:** borrar a mano en Google Calendar los eventos duplicados que ya existen (ej. Raúl, jueves 5 nov 10:30, hay 2).
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

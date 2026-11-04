@@ -52,7 +52,7 @@ from agent.leads import (
 from agent.followup import iniciar_scheduler
 from agent.reports import generar_reporte_excel
 from agent.import_chats import importar_todos_los_chats
-from agent.cita_detector import guardar_cita_automatica
+from agent.cita_detector import guardar_cita_automatica, existe_cita_cercana
 from agent.commands import procesar_comando_grupo
 from agent.commands_control import (
     procesar_comando_control,
@@ -231,6 +231,10 @@ def parsear_tag_agendar(texto: str) -> Optional[dict]:
     if not all(k in datos for k in ["nombre", "dispositivo", "problema", "fecha", "hora"]):
         return None
     return datos
+
+
+class _CitaYaExiste(Exception):
+    """El [[AGENDAR]] corresponde a una cita que ya está guardada."""
 
 
 def quitar_tags(texto: str) -> str:
@@ -1335,6 +1339,11 @@ async def _procesar_lote_mensajes(mensajes):
                         fh = datetime.strptime(
                             f"{tag['fecha']} {tag['hora']}", "%Y-%m-%d %H:%M"
                         ).replace(tzinfo=ZONA_CDMX)
+                        if await existe_cita_cercana(msg.telefono, fh):
+                            # Claude repitió el tag (ej. el cliente dijo "gracias"): la cita ya existe.
+                            # No crear otro evento en Calendar ni otra notificación al grupo.
+                            logger.warning(f"[CALENDAR] [[AGENDAR]] repetido para {msg.telefono} {fh:%d/%m %H:%M} — cita ya existe, se omite")
+                            raise _CitaYaExiste()
                         resultado = await agendar_cita(
                             nombre=tag["nombre"],
                             telefono=msg.telefono,
@@ -1432,6 +1441,8 @@ async def _procesar_lote_mensajes(mensajes):
                                         telefono=msg.telefono,
                                     )
                                 )
+                    except _CitaYaExiste:
+                        respuesta = quitar_tags(respuesta)
                     except Exception as e:
                         logger.error(f"[CALENDAR] Error procesando tag AGENDAR: {e}")
                         import traceback

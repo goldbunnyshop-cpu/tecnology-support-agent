@@ -402,3 +402,22 @@ async def procesar_mensaje_para_cita(
             "guardada": False,
             "mensaje_respuesta": "❌ Hubo un error guardando tu cita. Por favor intenta de nuevo o contacta a soporte."
         }
+
+
+async def existe_cita_cercana(telefono: str, fecha_hora: datetime, horas: int = 2) -> bool:
+    """True si ya hay una cita guardada para este teléfono en ±`horas` de fecha_hora.
+    Evita que un [[AGENDAR]] repetido por Claude cree otro evento y otra notificación al grupo."""
+    if not telefono or not fecha_hora:
+        return False
+    try:
+        from agent.memory import async_session
+        from sqlalchemy import text
+        fh = fecha_hora.replace(tzinfo=None)
+        async with async_session() as session:
+            r = await session.execute(text(
+                "SELECT id FROM citas WHERE telefono = :tel AND fecha_hora >= :ini AND fecha_hora <= :fin LIMIT 1"
+            ), {"tel": telefono, "ini": fh - timedelta(hours=horas), "fin": fh + timedelta(hours=horas)})
+            return r.scalar() is not None
+    except Exception as e:
+        logger.warning(f"[CITA_DETECTOR] No se pudo revisar cita existente: {e}")
+        return False
