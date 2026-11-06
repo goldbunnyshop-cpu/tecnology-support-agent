@@ -280,6 +280,20 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - **Comportamiento:** el bot NO se pausa. Máximo un aviso por cliente al día (`main._avisar_upgrade`).
 - **Pruebas:** `tests/test_venta_upgrade.py`.
 
+**6 nov: verificación completa del catálogo Hugo Shop (lista del 23 oct).**
+- **Script de verificación:** compara cada modelo del catálogo (sin iPhone) con la regla x3 calculada aparte.
+  - Antes: 767 de 947 modelos correctos, y en 136 el bot preguntaba variante.
+  - Después: 869 correctos y 16 preguntas.
+  - Lo que queda son nombres raros del catálogo ("REALME- C35", "A54-") o modelos donde el bot incluye además pantallas compatibles.
+- **Bug 4G/5G:** el query del cliente quitaba "4G/5G", pero el catálogo no. Pasaba esto:
+  - "Samsung A15" no mostraba el OLED "A15 4G/5G" ($1,845).
+  - "Moto G50 4G" preguntaba "¿4G o 5G?" en loop.
+  - "OPPO A78 4G" no mostraba el OLED ($2,334).
+  - **Ahora:** la red se separa del nombre en los dos lados (`_chunks_con_red`). Si el cliente dice la red, se filtran las pantallas marcadas solo para la otra (`_filtrar_por_red`). "RENO7 4G(5G)" cuenta las dos.
+- **Modelos pegados:** "NOTE10PRO" = "NOTE10 PRO". Las variantes se comparan sin espacios.
+- **Etiquetas:** se quitan prefijos de proveedor ("HG", "TLED", "AA-"), y "AA INCELL" ya no se etiqueta como original.
+- **Pruebas:** `tests/test_hugo_catalogo.py`.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

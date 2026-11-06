@@ -323,25 +323,81 @@ def normalizar_modelo_descripcion(descripcion: str, marca_header: str) -> list[t
     d = re.sub(r'\b[cs]/m\b', ' ', d)                       # C/M, S/M (con/sin marco)
     d = re.sub(r'^\s*w/f\b', ' ', d)                         # prefijo W/F
     # Quitar parentesis (notas como "(MOVIL IC)", "(BOUTIQUE)", etc.) y restos sin abrir: "BOUTIQUE)"
+    d = re.sub(r'\(\s*([45]g)\s*\)', r' \1 ', d)   # "RENO7 4G(5G)": la red entre paréntesis sí cuenta
     d = re.sub(r'\([^)]*\)', ' ', d)
     d = re.sub(r'[^\s/]*\)', ' ', d)
     d = re.sub(r'\bboutique\b', ' ', d)
-    chunks = []
-    for c in d.split('/'):
-        # Prefijos de proveedor/calidad al inicio: WF, WF-B, WF-G…, AA, HG
-        c = re.sub(r'^\s*(?:wf(?:-[a-z]+)?|aa|hg)\s+', '', c)
-        c = re.sub(r'\s+', ' ', c).strip()
-        if c:
-            chunks.append(c)
-
     pares: list[tuple[str | None, str | None]] = []
     vistos: set[tuple[str | None, str | None]] = set()
-    for chunk in chunks:
+    for chunk, _redes in _chunks_con_red(d):
         par = _parsear_chunk_descripcion(chunk, marca_header)
         if par and par not in vistos:
             pares.append(par)
             vistos.add(par)
     return pares
+
+
+_RE_RED = re.compile(r'\b([45]g|lte)\b')
+
+
+def _chunks_con_red(d: str) -> list[tuple[str, frozenset]]:
+    """Parte la descripción (ya limpia) por '/' y separa la conectividad (4G/5G) de cada modelo.
+    El cliente y el catálogo escriben "4G/5G" a veces y a veces no; la red NO forma parte del
+    nombre del modelo (así matchea igual que el query del cliente), pero se guarda para filtrar
+    cuando el cliente sí la dice. Un trozo que es solo "5G" ("A15 4G/5G") se suma al anterior."""
+    salida: list[list] = []
+    for c in d.split('/'):
+        # Prefijos de proveedor/calidad al inicio: WF, WF-B, WF-G…, AA, HG
+        c = re.sub(r'^\s*(?:wf(?:-[a-z]+)?|aa|hg)\s+', '', c)
+        redes = set(_RE_RED.findall(c))
+        c = _RE_RED.sub(' ', c)
+        c = re.sub(r'\s+', ' ', c).strip()
+        if c:
+            salida.append([c, set(redes)])
+        elif redes and salida:
+            salida[-1][1] |= redes
+    return [(c, frozenset(r)) for c, r in salida]
+
+
+def redes_por_modelo(descripcion: str, marca_header: str) -> dict:
+    """{(base, variante): {'4g','5g'}} — conectividad que el catálogo indica para cada modelo."""
+    if not descripcion:
+        return {}
+    d = descripcion.lower()
+    d = re.sub(r'\b[cs]/m\b', ' ', d)
+    d = re.sub(r'^\s*w/f\b', ' ', d)
+    d = re.sub(r'\(\s*([45]g)\s*\)', r' \1 ', d)   # "RENO7 4G(5G)": la red entre paréntesis sí cuenta
+    d = re.sub(r'\([^)]*\)', ' ', d)
+    d = re.sub(r'[^\s/]*\)', ' ', d)
+    d = re.sub(r'\bboutique\b', ' ', d)
+    out: dict = {}
+    for chunk, redes in _chunks_con_red(d):
+        par = _parsear_chunk_descripcion(chunk, marca_header)
+        if par:
+            out[par] = out.get(par, frozenset()) | redes
+    return out
+
+
+def red_de_query(modelo_str: str) -> str | None:
+    """'a15 4g' → '4g'. None si el cliente no dijo la red."""
+    m = _RE_RED.search((modelo_str or "").lower())
+    return m.group(1) if m and m.group(1) != "lte" else None
+
+
+def _filtrar_por_red(productos: list[dict], marca_csv: str, base_q: str, red_q: str | None) -> list[dict]:
+    """Si el cliente dijo 4G/5G, quitar las pantallas que el catálogo marca SOLO para la otra red.
+    Las que no indican red (o indican la del cliente) se quedan. Si el filtro deja vacío, no filtra."""
+    if not red_q:
+        return productos
+    filtrados = []
+    for p in productos:
+        redes = set()
+        for (b, _v), r in redes_por_modelo(p.get('DESCRIPCION', ''), marca_csv).items():
+            if b and b.lower() == base_q.lower():
+                redes |= set(r)
+        if not redes or red_q in redes:
+            filtrados.append(p)
+    return filtrados or productos
 
 
 def _parsear_chunk_descripcion(chunk: str, marca_header: str) -> tuple[str | None, str | None] | None:
@@ -684,6 +740,11 @@ def etiqueta_calidad_cliente(calidad: str, es_iphone: bool) -> str:
     """Traduce la columna CALIDAD del catálogo al texto que ve el cliente."""
     t = _RE_TAG_PROVEEDOR.sub(" ", (calidad or "").upper())
     t = t.replace("C/M", " con marco ").replace("S/M", " sin marco ")
+    t = re.sub(r"\b(?:HG|TLED)\b", " ", t)        # prefijos de proveedor ("HG AMOLED", "TLED INCELL")
+    t = re.sub(r"(?<![A-Z0-9])-+|-+(?![A-Z0-9])", " ", t)   # guiones sueltos ("AA-SOFT OLED")
+    t = re.sub(r"\bAA-", "AA ", t)
+    if re.search(r"\bINCELL\b", t):               # "AA INCELL" es genérica, no original
+        t = re.sub(r"\b(?:ORIG|AA|COF)\b", " ", t)
     if es_iphone:
         t = re.sub(r"\bOLED\b", " calidad premium ", t)
     t = re.sub(r"\b(?:ORIG|AA|COF)\b", " calidad original ", t)
@@ -1254,20 +1315,22 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
         # Primero alias exacto de todo el string
         var_q_lower = ALIAS_VARIANTES.get(var_q_raw, var_q_raw)
         # Luego quitar acentos (fusión→fusion, é→e, etc.)
-        var_q_norm = _quitar_acentos(var_q_lower)
+        # Sin espacios: el catálogo alterna "NOTE10PRO" y "NOTE10 PRO" ("13pro" = "13 pro")
+        var_q_norm = _quitar_acentos(var_q_lower).replace(' ', '')
         exactos = [
             p for p, vs in matches
-            if any(_quitar_acentos((v or '').lower()) == var_q_norm for v in vs)
+            if any(_quitar_acentos((v or '').lower()).replace(' ', '') == var_q_norm for v in vs)
         ]
         if exactos:
             modelo_completo = _formatear_modelo(base_q, var_q)
+            exactos = _filtrar_por_red(exactos, marca_csv, base_q, red_de_query(modelo))
             logger.info(f"[PRICING] Hugo match exacto: {marca} {modelo_completo} ({len(exactos)} productos)")
             return {"tipo": "ok", "modelo": modelo_completo, "productos": exactos}
         # Sin exact: si la variante del cliente es prefijo de variantes mas completas
         # (ej "50" prefija "50 fusion", "50 neo", "50 ultra") filtramos a esas.
         variantes_filtradas = sorted({
             v.lower() for _, vs in matches for v in vs
-            if v and _quitar_acentos(v.lower()).startswith(var_q_norm)
+            if v and _quitar_acentos(v.lower()).replace(' ', '').startswith(var_q_norm)
         })
         if variantes_filtradas:
             logger.info(f"[PRICING] Variante '{var_q}' parcial para {marca} {base_q}. Filtradas: {variantes_filtradas}")
@@ -1279,6 +1342,7 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
     # Si solo existe el base puro (sin variantes) -> cotizar directo todos los productos
     if variantes_csv == ['__base__']:
         productos_base = [p for p, vs in matches if any(v is None for v in vs)]
+        productos_base = _filtrar_por_red(productos_base, marca_csv, base_q, red_de_query(modelo))
         logger.info(f"[PRICING] Hugo base sin variantes: {marca} {base_q}")
         return {"tipo": "ok", "modelo": base_q, "productos": productos_base}
 
@@ -1288,6 +1352,7 @@ def _resolver_match_hugo(marca: str, modelo: str) -> dict:
     # Antes: pedía variante en loop infinito (primera pregunta → cliente dice "A50" → misma pregunta).
     if '__base__' in variantes_csv:
         productos_base = [p for p, vs in matches if any(v is None for v in vs)]
+        productos_base = _filtrar_por_red(productos_base, marca_csv, base_q, red_de_query(modelo))
         if productos_base:
             otras = [v for v in variantes_csv if v != '__base__']
             logger.info(
