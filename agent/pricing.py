@@ -1128,14 +1128,35 @@ def formatear_cotizacion_iphone(marca: str, modelo: str, productos: list[dict]) 
     return _formatear_iphone(modelo_para_cliente(marca, modelo), precios)
 
 
+# Descripción breve de cada calidad (todas las marcas; iPhone tiene la suya en _descripcion_calidad_iphone)
+_DESC_CALIDAD_DISPLAY = {
+    "GENERICA": "Funciona bien para uso diario, pero tiene menos brillo y colores menos vivos que la original.",
+    "ORIGINAL": "Colores, brillo y respuesta táctil como la de fábrica.",
+    "OLED": "Pantalla OLED: colores intensos y negros profundos, la más parecida a la de fábrica.",
+}
+_ICONO_DISPLAY = {"GENERICA": "🔹", "ORIGINAL": "🔸", "OLED": "⭐"}
+
+
+def _categoria_etiqueta(etiqueta: str) -> str:
+    e = etiqueta.lower()
+    if "genérica" in e:
+        return "GENERICA"
+    if "original" in e:
+        return "ORIGINAL"
+    if "oled" in e:
+        return "OLED"
+    return "ORIGINAL"
+
+
 def formatear_cotizacion_hugo(marca: str, modelo: str, productos: list[dict]) -> str:
     """Cotización de display con la regla x3 vigente, un renglón por producto del catálogo.
+    Cada calidad lleva una descripción breve (la primera vez que aparece).
     iPhone usa su propio formato por calidad (ver formatear_cotizacion_iphone)."""
     es_iphone = _marca_canonica(marca) == "IPHONE"
     if es_iphone:
         return formatear_cotizacion_iphone(marca, modelo, productos)
     piso = False
-    lineas: list[str] = []
+    opciones: list[tuple[str, str, int]] = []   # (categoria, etiqueta, precio)
     vistos: set = set()
     hay_transferencia = False
 
@@ -1151,18 +1172,37 @@ def formatear_cotizacion_hugo(marca: str, modelo: str, productos: list[dict]) ->
             hay_transferencia = True
             continue
         if x3 < LIMITE_SUMA_ORIGINAL:
-            clave = ("par", x3)
-            linea = f"* Calidad genérica: ${x3:,} MXN / Calidad original: ${x3 + EXTRA_ORIGINAL:,} MXN"
+            nuevas = [("GENERICA", "Calidad genérica", x3), ("ORIGINAL", "Calidad original", x3 + EXTRA_ORIGINAL)]
         else:
             etiqueta = etiqueta_calidad_cliente(p.get("CALIDAD", ""), es_iphone)
-            clave = (etiqueta, x3)
-            linea = f"* {etiqueta}: ${x3:,} MXN"
-        if clave not in vistos:
-            vistos.add(clave)
-            lineas.append(linea)
+            nuevas = [(_categoria_etiqueta(etiqueta), etiqueta, x3)]
+        for op in nuevas:
+            if (op[1], op[2]) not in vistos:
+                vistos.add((op[1], op[2]))
+                opciones.append(op)
 
     if piso:
-        lineas.insert(0, f"* Calidad genérica: ${PISO_GENERICO:,} MXN / Calidad original: ${PISO_ORIGINAL:,} MXN")
+        opciones[:0] = [("GENERICA", "Calidad genérica", PISO_GENERICO),
+                        ("ORIGINAL", "Calidad original", PISO_ORIGINAL)]
+
+    # Misma etiqueta con varios precios (distinto proveedor) → se queda la más cara (regla de Christian)
+    por_etiqueta: dict[str, tuple[str, str, int]] = {}
+    for op in opciones:
+        if op[1] not in por_etiqueta or op[2] > por_etiqueta[op[1]][2]:
+            por_etiqueta[op[1]] = op
+    opciones = list(por_etiqueta.values())
+
+    # Orden: genéricas, originales, OLED; dentro de cada una, de menor a mayor precio
+    orden = {"GENERICA": 0, "ORIGINAL": 1, "OLED": 2}
+    opciones.sort(key=lambda o: (orden[o[0]], o[2]))
+    lineas: list[str] = []
+    descritas: set = set()
+    for cat, etiqueta, precio in opciones:
+        bloque = f"{_ICONO_DISPLAY[cat]} {etiqueta}: ${precio:,} MXN"
+        if cat not in descritas:
+            descritas.add(cat)
+            bloque += f"\n{_DESC_CALIDAD_DISPLAY[cat]}"
+        lineas.append(bloque)
 
     if not lineas:
         # Todo el catálogo de este modelo pasa de $4,000 (o no hay precio): lo cotiza un técnico
@@ -1170,14 +1210,13 @@ def formatear_cotizacion_hugo(marca: str, modelo: str, productos: list[dict]) ->
         return _mensaje_no_disponible(marca, modelo)
 
     if hay_transferencia:
-        lineas.append("* Opción de mayor calidad: se la cotiza un técnico")
+        lineas.append("➕ Opción de mayor calidad: se la cotiza un técnico")
 
     modelo_txt = modelo_para_cliente(marca, modelo)
-    cuerpo = "\n".join(
-        [f"Para {marca} {modelo_txt} tenemos estas opciones:\n"]
+    cuerpo = "\n\n".join(
+        [f"Para {marca} {modelo_txt} tenemos estas opciones:"]
         + lineas
-        + ["", "Cada display incluye: diagnostico, garantia 90 dias y cambio el mismo dia.",
-           "Cual opcion te interesa?"]
+        + ["Cada display incluye: diagnóstico, garantía de 90 días y cambio el mismo día.\n¿Cuál opción te interesa?"]
     )
     return (
         "INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "

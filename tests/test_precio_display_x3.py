@@ -24,12 +24,12 @@ def _p(costo, calidad="ORIG S/M", desc="X"):
 
 def test_piso_menor_600():
     t = formatear_cotizacion_hugo("samsung", "A15", [_p(150)])  # x3 = 450
-    assert "Calidad genérica: $600 MXN / Calidad original: $900 MXN" in t
+    assert "Calidad genérica: $600 MXN" in t and "Calidad original: $900 MXN" in t
 
 
 def test_rango_600_1000_suma_300():
     t = formatear_cotizacion_hugo("alcatel", "5024", [_p(208)])  # x3 = 624
-    assert "Calidad genérica: $624 MXN / Calidad original: $924 MXN" in t
+    assert "Calidad genérica: $624 MXN" in t and "Calidad original: $924 MXN" in t
 
 
 def test_rango_1000_4000_directo_con_calidad():
@@ -44,7 +44,7 @@ def test_mayor_4000_transfiere_otras_marcas():
 
 def test_mezcla_con_opcion_tecnico():
     t = formatear_cotizacion_hugo("samsung", "S24", [_p(318, "INCELL S/M"), _p(1460, "OLED S/M")])
-    assert "$954 MXN / Calidad original: $1,254 MXN" in t
+    assert "Calidad genérica: $954 MXN" in t and "Calidad original: $1,254 MXN" in t
     assert "se la cotiza un técnico" in t and "$4,380" not in t
 
 

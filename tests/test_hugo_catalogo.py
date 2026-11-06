@@ -16,6 +16,7 @@ def test_red_4g_5g_no_esconde_opciones():
     for q in ("a15", "a15 4g"):
         precios, _ = _precios("samsung", q)
         assert {600, 900, 1845} <= precios, (q, precios)
+    # OPPO A78 4G: el OLED ($778 × 3 = $2,334) no salía
     # Moto G50: el cliente dijo "4g" y el bot le volvía a preguntar 4G o 5G (loop)
     precios, t = _precios("moto", "g50 4g")
     assert precios == {600, 900} and "versiones" not in t
@@ -29,7 +30,7 @@ def test_red_4g_5g_no_esconde_opciones():
 def test_modelo_pegado_en_catalogo():
     # Catálogo: "REDMI NOTE10PRO" (pegado) y "REDMI NOTE10 PRO" → mismas opciones
     precios, _ = _precios("xiaomi", "redmi note 10 pro")
-    assert {600, 900, 702, 1002, 1680} <= precios
+    assert {702, 1002, 1680} <= precios   # misma calidad con 2 precios → el más caro
 
 
 def test_regla_x3():
@@ -44,3 +45,13 @@ def test_etiquetas_sin_marcas_de_proveedor():
     assert P.etiqueta_calidad_cliente("HG AMOLED C/M", False) == "Calidad AMOLED con marco"
     assert P.etiqueta_calidad_cliente("AA-SOFT OLED C/M", False) == "Calidad original SOFT OLED con marco"
     assert "original" not in P.etiqueta_calidad_cliente("AA TLED INCELL S/M BOUTIQUE", False)
+
+
+def test_descripcion_breve_por_calidad_todas_las_marcas():
+    _, t = _precios("samsung", "a15")
+    assert "🔹 Calidad genérica: $600 MXN\nFunciona bien para uso diario" in t
+    assert "🔸 Calidad original: $900 MXN\nColores, brillo y respuesta táctil como la de fábrica." in t
+    assert "⭐ Calidad OLED con marco: $1,845 MXN\nPantalla OLED" in t
+    # La descripción va una sola vez por calidad y no se repiten etiquetas idénticas
+    _, t = _precios("motorola", "edge 40 neo")
+    assert t.count("Pantalla OLED:") == 1 and t.count("Calidad AMOLED con marco") == 1 and "$2,334 MXN" in t

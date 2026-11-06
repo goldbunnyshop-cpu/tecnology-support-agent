@@ -258,7 +258,7 @@ def _precios_en_texto(texto: str) -> list[tuple[str, int]]:
             monto = int(mt.group(1).replace(",", ""))
             if monto < 50 or monto == CARGO_DOMICILIO and "domicilio" in linea.lower():
                 continue
-            etiqueta = re.sub(r"^[\s*•\-✅📱🔧]+", "", linea[:mt.start()]).strip(" :=-—")
+            etiqueta = re.sub(r"^[\s*•\-✅📱🔧🔹🔸⭐➕]+", "", linea[:mt.start()]).strip(" :=-—")
             out.append((etiqueta[:60], monto))
     return out
 

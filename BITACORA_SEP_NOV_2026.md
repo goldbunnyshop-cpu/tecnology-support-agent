@@ -294,6 +294,14 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - **Etiquetas:** se quitan prefijos de proveedor ("HG", "TLED", "AA-"), y "AA INCELL" ya no se etiqueta como original.
 - **Pruebas:** `tests/test_hugo_catalogo.py`.
 
+**6 nov: descripción breve por calidad en TODAS las cotizaciones de display** (`formatear_cotizacion_hugo`).
+- 🔹 Genérica: "Funciona bien para uso diario, pero tiene menos brillo y colores menos vivos que la original."
+- 🔸 Original: "Colores, brillo y respuesta táctil como la de fábrica."
+- ⭐ OLED/AMOLED: "Pantalla OLED: colores intensos y negros profundos, la más parecida a la de fábrica."
+- La descripción va una vez por calidad. El orden es genérica → original → OLED, de menor a mayor precio.
+- Si dos renglones quedan con la misma etiqueta y distinto precio, se muestra el más caro (regla de Christian). Así no aparecen dos líneas idénticas.
+- La opción "con marco" no se describe (pedido de Christian).
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---
