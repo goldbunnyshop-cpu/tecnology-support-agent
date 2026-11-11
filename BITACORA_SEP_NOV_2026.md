@@ -302,6 +302,21 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - Si dos renglones quedan con la misma etiqueta y distinto precio, se muestra el más caro (regla de Christian). Así no aparecen dos líneas idénticas.
 - La opción "con marco" no se describe (pedido de Christian).
 
+**11 nov: 3 errores críticos reportados por Christian.** Los logs de Railway no se pudieron leer porque Chrome no estaba conectado; las causas se reprodujeron en código.
+1. **El bot confirmó que un equipo estaba listo sin estarlo** (5639659669) y **ofreció domicilio a "¿ya está lista mi tableta?"** (5510032479).
+   - **Causa:** esas preguntas iban a Claude, que no conoce el estatus real e inventaba.
+   - **Ahora:** `agent/estatus_equipo.py` detecta preguntas de estatus ("¿ya está listo?", "¿ya puedo pasar por…?", "¿cómo va mi…?") y las separa de preguntas antes de dejar el equipo ("¿cuánto tarda si lo llevo?").
+   - El bot contesta un mensaje fijo ("Déjeme confirmar con el técnico…"). Fuera de horario dice cuándo le avisan.
+   - Avisa al grupo "🔔 CLIENTE PREGUNTA POR SU EQUIPO", máximo uno cada 2 h. Nunca pasa por Claude.
+   - Regla nueva en el prompt.
+2. **Precio inventado de $1,500 por el touch de un iPad.**
+   - **Causa:** no hay lista de precios de tablets. iPad no es una marca reconocida, así que la consulta caía a Claude.
+   - **Ahora:** cualquier pieza o precio de tablet o iPad (en el mensaje o en la conversación reciente) se manda al técnico (`brain._es_conversacion_de_tablet`). Si después pregunta por un celular, se cotiza normal.
+3. **"¿Y los cristales de la cámara?" respondido con precios de display.**
+   - **Causa:** el patrón solo aceptaba "cristal" en singular y requería una palabra de precio.
+   - **Ahora:** "cristal(es)/vidrio(s)/mica(s)/lente(s) de la cámara" siempre se manda al técnico.
+- **Pruebas:** `tests/test_fixes_11nov.py`.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

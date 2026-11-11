@@ -233,6 +233,20 @@ def parsear_tag_agendar(texto: str) -> Optional[dict]:
     return datos
 
 
+async def _avisar_estatus(telefono: str, texto: str) -> None:
+    """Aviso al grupo: el cliente pregunta si su equipo ya está listo. Máx. uno cada 2 horas."""
+    from agent.estatus_equipo import mensaje_grupo_estatus
+    from agent.memory import cita_notificada_ya_enviada, registrar_cita_notificada
+    from agent.appointment_notifications import _enviar_grupo
+    ahora = datetime.now(ZONA_CDMX)
+    clave = f"estatus:{telefono}:{ahora:%Y-%m-%d}:{ahora.hour // 2}"
+    if await cita_notificada_ya_enviada(clave, "estatus"):
+        return
+    await registrar_cita_notificada(clave, "estatus", telefono, False, False)
+    ok = await _enviar_grupo(mensaje_grupo_estatus(telefono, texto))
+    logger.info(f"[ESTATUS] Aviso al grupo — {telefono} — {'✅' if ok else '❌'}")
+
+
 async def _avisar_upgrade(telefono: str, texto: str, historial: list[dict], asesor: str) -> None:
     """Avisa al grupo interno de una venta de mejora. Máximo un aviso por cliente al día."""
     from agent.venta_upgrade import mensaje_grupo_upgrade
@@ -1333,9 +1347,16 @@ async def _procesar_lote_mensajes(mensajes):
                     logger.error(f"[UPGRADE] Error detectando solicitud de mejora: {e}")
 
                 await proveedor.enviar_typing(msg.telefono)
-                respuesta = await generar_respuesta(
-                    msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
-                )
+                # ── ¿Ya está listo mi equipo? El bot NO conoce el estatus real: nunca a Claude ──
+                from agent.estatus_equipo import es_pregunta_estatus, respuesta_estatus
+                if es_pregunta_estatus(msg.texto):
+                    logger.info(f"[ESTATUS] {msg.telefono} pregunta por su equipo → respuesta fija + aviso al grupo")
+                    asyncio.create_task(_avisar_estatus(msg.telefono, msg.texto))
+                    respuesta = respuesta_estatus()
+                else:
+                    respuesta = await generar_respuesta(
+                        msg.texto, historial, asesor=asesor, contexto_cliente=contexto_cliente
+                    )
 
                 # ── Filtro anti-leak: eliminar marcadores internos del sistema ──
                 # Si Claude reproduce "══ DISPONIBILIDAD REAL ══ ..." en la respuesta

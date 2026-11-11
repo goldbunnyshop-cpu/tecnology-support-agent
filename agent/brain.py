@@ -60,7 +60,20 @@ _PATRON_DISPLAY_CONFIRMAR = re.compile(
 
 # Cristal/vidrio de CÁMARA: no es display → siempre técnico
 _PATRON_CRISTAL_CAMARA = re.compile(
-    r"\b(cristal|vidrio)\s+(?:de\s+)?(?:la\s+)?c[aá]mara\b",
+    r"\b(?:cristal(?:es)?|vidrios?|micas?|lentes?)\s+(?:de\s+)?(?:la\s+|las\s+|los\s+|su\s+)?c[aá]maras?\b",
+    re.I,
+)
+
+# Tablets / iPad: NO hay lista de precios → toda pieza de tablet la cotiza el técnico.
+# Caso real (nov 2026): el bot inventó $1,500 por el touch de un iPad.
+_PATRON_TABLET = re.compile(
+    r"\b(ipads?|tablets?|tabletas?|galaxy\s+tab|tab\s?[asp]\d*|lenovo\s+tab|matepad|"
+    r"redmi\s+pad|xiaomi\s+pad|kindle|e-?readers?)\b",
+    re.I,
+)
+_PATRON_PIEZA_O_PRECIO = re.compile(
+    r"\b(precio|costo|cu[aá]nto|cotiz\w*|presupuesto|cambio|cambiar|display|pantalla|touch|t[aá]ctil|"
+    r"cristal\w*|vidrio\w*|mica|c[aá]maras?|bater[ií]a|centro\s+de\s+carga|puerto)\b",
     re.I,
 )
 
@@ -73,7 +86,7 @@ _PATRON_REFACCION_TECNICO = re.compile(
     r"puerto|conector|centro\s+de\s+carga|cargador|"
     r"bocina|altavoz|aud[ií]fono|auricular|speaker|"
     r"micr[oó]fono|"
-    r"c[aá]mara|lente(?!\s+gorilla)|vidrio\s+c[aá]mara|"
+    r"c[aá]maras?|lentes?(?!\s+gorilla)|vidrio\s+c[aá]mara|"
     r"bot[oó]n|boton|vibrador|antena|flex|"
     r"SIM|ranura|charger"
     r")\b",
@@ -487,7 +500,8 @@ def _nombre_pieza_tecnico(mensaje: str) -> str:
     if re.search(r"\b(puerto|conector|centro\s+de\s+carga|cargador|charger)\b", m): return "puerto de carga"
     if re.search(r"\b(bocina|altavoz|speaker|aud[ií]fono|auricular)\b", m): return "bocina"
     if re.search(r"\b(micr[oó]fono)\b", m): return "micrófono"
-    if re.search(r"\b(c[aá]mara|lente|cristal\s+c[aá]mara|vidrio\s+c[aá]mara)\b", m): return "cámara"
+    if _PATRON_CRISTAL_CAMARA.search(m): return "cristal de cámara"
+    if re.search(r"\b(c[aá]maras?|lentes?)\b", m): return "cámara"
     if re.search(r"\b(bot[oó]n|boton)\b", m): return "botón"
     return "refacción"
 
@@ -563,8 +577,40 @@ async def _resolver_pricing_desde_texto(mensaje: str, marca_ctx: str | None = No
         return None
 
 
+def _es_conversacion_de_tablet(mensaje: str, historial: list[dict]) -> bool:
+    if _PATRON_TABLET.search(mensaje or ""):
+        return True
+    marca, _ = _extraer_marca_modelo(mensaje)
+    if marca:   # ahora pregunta por un celular ("¿y la pantalla de mi iPhone 13?")
+        return False
+    recientes = " ".join(h.get("content", "") for h in historial[-6:] if h.get("role") == "user")
+    return bool(_PATRON_TABLET.search(recientes))
+
+
 async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[dict]) -> str | None:
     m = (mensaje or "").lower()
+
+    # ── Cristal/vidrio/lente de cámara: nunca es display → técnico, aunque no diga "precio" ──
+    # Caso real (nov 2026): "¿y los cristales de la cámara?" → el bot respondió con precios de display.
+    if _PATRON_CRISTAL_CAMARA.search(m):
+        logger.info("[PRICING] Cristal de cámara → técnico")
+        return (
+            f"Para la cotización del *cristal de cámara* necesito confirmarte el precio exacto con el técnico. "
+            f"{_MENSAJE_TECNICO_30MIN}"
+        )
+
+    # ── Tablets / iPad: no hay precios en el sistema → técnico (nunca inventar ni usar precios de celular) ──
+    if _es_conversacion_de_tablet(mensaje, historial) and _PATRON_PIEZA_O_PRECIO.search(m):
+        pieza = _nombre_pieza_tecnico(mensaje)
+        if pieza == "refacción":
+            pieza = "pantalla/touch de tu tableta"
+        elif "tableta" not in pieza:
+            pieza = f"{pieza} de tu tableta"
+        logger.info(f"[PRICING] Tablet → '{pieza}' al técnico (sin lista de precios)")
+        return (
+            f"Para la cotización de *{pieza}* necesito confirmarte el precio exacto con el técnico. "
+            f"{_MENSAJE_TECNICO_30MIN}"
+        )
 
     # ── Guardia: intervención manual del dueño → no contradecir con pricing ─────
     # Si el último mensaje del asistente (dentro de los últimos 5) fue una
