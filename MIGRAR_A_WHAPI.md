@@ -91,6 +91,15 @@ No hace falta cambiar código: `agent/providers/__init__.py` elige el proveedor 
 
 ---
 
+## Después de migrar (pendiente que pidió Christian)
+- **Configurar el MCP de Whapi en la laptop** (https://support.whapi.cloud/help-desk/ai-tools/mcp-model-context-protocol).
+  - Le permite a Claude Desktop o Claude Code mandar mensajes, consultar o poner etiquetas ("Cliente con nota de servicio") y revisar el canal sin abrir el panel.
+  - Requiere Node 18 o más nuevo y el token del canal.
+  - Usar la versión reducida `whapi-mcp-optimal`.
+  - Siempre pedir confirmación antes de enviar mensajes a clientes.
+- **Verificador de números** (panel → Herramientas → Verificar números): antes de una campaña masiva, filtrar la lista y quitar los números que no tienen WhatsApp.
+- **Precio actual:** 279 MXN al mes o 1,788 MXN al año. Antes de pagar, preguntar a soporte si el plan en pesos tiene las mismas funciones que el Developer Premium.
+
 ## Contexto
 - Fecha de esta guía: 3 nov 2026. Desde el 2 nov el bot corre en WAHA porque Whapi se suspendió por falta de pago.
 - Detalle de la migración a WAHA y de todos los cambios: `BITACORA_SEP_NOV_2026.md`.
