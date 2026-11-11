@@ -163,6 +163,14 @@ async def crear_o_actualizar_lead(
                 # Nueva consulta: ya no aplica la espera anterior
                 lead.seguimiento_pausado_hasta = None
                 lead.espera_texto = ""
+            try:
+                from agent.estatus_equipo import equipo_en_taller, es_pregunta_estatus
+                if equipo_en_taller(mensaje_texto) or es_pregunta_estatus(mensaje_texto):
+                    if lead.estado != "en_taller":
+                        logger.info(f"[LEAD] {telefono} — equipo en el taller: sin seguimientos de venta")
+                    lead.estado = "en_taller"
+            except Exception as e:
+                logger.warning(f"[LEAD] No se pudo evaluar 'equipo en taller': {e}")
             if lead.estado in ("en_seguimiento", "perdido", "noshow"):
                 lead.estado = "activo"
                 # CRÍTICO: solo reiniciar secuencia si hay nueva intención de servicio.
@@ -260,6 +268,7 @@ async def obtener_leads_para_seguimiento() -> list[Lead]:
                 Lead.estado != "perdido",
                 Lead.estado != "convertido",
                 Lead.estado != "noshow",   # noshow: tuvo cita pero no vino — excluir del auto-scheduler
+                Lead.estado != "en_taller",   # ya dejó su equipo: el técnico le avisa, no se le vende
             )
         )
         todos = result.scalars().all()
@@ -535,3 +544,13 @@ async def obtener_resumen_leads() -> dict:
             fuente = getattr(lead, "fuente", "desconocido") or "desconocido"
             resumen["por_fuente"][fuente] = resumen["por_fuente"].get(fuente, 0) + 1
         return resumen
+
+
+async def lead_en_taller(telefono: str) -> bool:
+    """True si el cliente ya dejó su equipo (estado 'en_taller')."""
+    try:
+        async with async_session() as session:
+            r = await session.execute(select(Lead.estado).where(Lead.telefono == telefono))
+            return r.scalar() == "en_taller"
+    except Exception:
+        return False

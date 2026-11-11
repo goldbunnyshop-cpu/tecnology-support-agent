@@ -1197,6 +1197,16 @@ async def _procesar_lote_mensajes(mensajes):
                 if contexto_cliente:
                     partes_ctx.append(contexto_cliente)
                 partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
+                try:
+                    from agent.leads import lead_en_taller
+                    if await lead_en_taller(msg.telefono):
+                        partes_ctx.append(
+                            "⚠️ EQUIPO EN TALLER: este cliente ya dejó su equipo con nosotros. NO conoces su avance. "
+                            "NUNCA confirmes que está listo, ni días u horas de entrega, ni que ya puede pasar por él; "
+                            "di que el técnico le avisa en cuanto esté listo. No le ofrezcas servicio a domicilio ni le vendas otra vez el mismo servicio."
+                        )
+                except Exception as e:
+                    logger.warning(f"[LEAD] No se pudo revisar 'en taller': {e}")
 
                 # ── Detectar intervención manual reciente del dueño ────────────────────
                 # Si el dueño envió un mensaje manual (guardado con prefijo [DUEÑO]),
@@ -1308,7 +1318,8 @@ async def _procesar_lote_mensajes(mensajes):
 
                 # ── Servicio a domicilio: texto fijo, sin precios; al ubicar al cliente se
                 #    transfiere a un responsable (aviso al grupo + pausa del bot en este chat) ──
-                _dec_dom = evaluar_domicilio(msg.texto, historial)
+                from agent.estatus_equipo import es_pregunta_estatus as _es_estatus
+                _dec_dom = None if _es_estatus(msg.texto) else evaluar_domicilio(msg.texto, historial)
                 if _dec_dom:
                     await guardar_mensaje(msg.telefono, "user", msg.texto)
                     await guardar_mensaje(msg.telefono, "assistant", _dec_dom.texto)

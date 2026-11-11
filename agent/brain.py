@@ -599,6 +599,18 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
             f"{_MENSAJE_TECNICO_30MIN}"
         )
 
+    # ── El cliente preguntó por el cristal de cámara y ahora solo manda el modelo ──
+    # Caso real (nov 2026): "¿arreglan el cristal de las cámaras?" → "¿qué modelo?" →
+    # "iPhone 15 Pro Max y iPhone 13" → el bot mandó la cotización de DISPLAY.
+    if not _PATRON_DISPLAY_DIRECTO.search(m):
+        _previos = [h.get("content", "") for h in historial[-4:] if h.get("role") == "user"][-2:]
+        if any(_PATRON_CRISTAL_CAMARA.search((x or "").lower()) for x in _previos):
+            logger.info("[PRICING] Modelo tras pregunta de cristal de cámara → técnico (no display)")
+            return (
+                f"Para la cotización del *cristal de cámara* necesito confirmarte el precio exacto con el técnico. "
+                f"{_MENSAJE_TECNICO_30MIN}"
+            )
+
     # ── Tablets / iPad: no hay precios en el sistema → técnico (nunca inventar ni usar precios de celular) ──
     if _es_conversacion_de_tablet(mensaje, historial) and _PATRON_PIEZA_O_PRECIO.search(m):
         pieza = _nombre_pieza_tecnico(mensaje)

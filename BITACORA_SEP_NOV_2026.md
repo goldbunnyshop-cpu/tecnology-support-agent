@@ -317,6 +317,19 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
    - **Ahora:** "cristal(es)/vidrio(s)/mica(s)/lente(s) de la cámara" siempre se manda al técnico.
 - **Pruebas:** `tests/test_fixes_11nov.py`.
 
+**11 nov (después, con los logs de Railway):**
+- **5510032479 (Daniel, iPad):**
+  - "¿Ya puedo pasar a recoger mi tablet?" lo tomó el filtro de domicilio, porque "puedo… recoger" contaba como si el negocio fuera a recoger. Pidió código postal y pausó el chat.
+    - **Arreglo:** "puedo/podemos" ya no activa domicilio, y una pregunta de estatus gana sobre el domicilio.
+  - "¿Arreglan el cristal de las cámaras?" → el bot preguntó el modelo → el cliente contestó "iPhone 15 Pro Max y 13" → el bot mandó la cotización de display.
+    - **Arreglo:** si en los últimos mensajes se pidió el cristal de cámara y el cliente solo manda el modelo, se manda al técnico.
+- **5639659669 (Isaac, Infinix):** ya había dejado el equipo, pero le llegaron seguimientos de venta ("Seg 1/4 y 2/4, urgente"), y el bot le confirmó "pasas el miércoles, abrimos 10:00".
+  - **Arreglo:** estado nuevo de lead, `en_taller`. Se activa cuando el cliente dice "ya la dejé", "quedaron en avisarme", "me dijeron que en 2 días", "ya fui", "espero la reparación" o pregunta por el estatus.
+  - Sin seguimientos de venta.
+  - A Claude se le indica "EQUIPO EN TALLER: no confirmes entrega, días ni horas".
+- **Visto en logs:** WAHA devolvió `500 – server returned error 403` al enviar un seguimiento a 5215559989937. Puede ser un número que bloqueó al negocio. Vigilar si se repite con otros números.
+- **Pruebas:** `tests/test_fixes_11nov.py` (casos reales).
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

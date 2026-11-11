@@ -36,3 +36,39 @@ def test_cristales_de_camara_no_son_display():
                 "tambien el vidrio de la camara cuanto"):
         r = _r(msg, h)
         assert "cámara" in r and "técnico" in r and "MXN" not in r, (msg, r)
+
+
+def test_casos_reales_logs():
+    from agent.estatus_equipo import equipo_en_taller
+    from agent.filtro_domicilio import es_consulta_domicilio
+    # 5510032479: "¿ya puedo pasar a recoger mi tablet?" → estatus, NO domicilio
+    t = "Buena tarde. Quisiera saber si ya puedo pasar a recoger mi tablet"
+    assert es_pregunta_estatus(t) and not es_consulta_domicilio(t)
+    assert es_consulta_domicilio("¿pueden pasar a recoger mi tablet a mi casa?")
+    # Equipo ya en el taller → sin seguimientos de venta
+    for t in ("Hola, si. De hecho, quedaron en avisarme cuando estará lista",
+              "Me refiero a que el día de ayer dejé una tablet a reparar",
+              "Hola daniels, no ya que me dijeron que dentro de 2 días vaya",
+              "Ya fui gracias", "Por el momento sólo espero la reparación de mi tablet"):
+        assert equipo_en_taller(t), t
+    assert not equipo_en_taller("cuanto cuesta la pantalla del iphone 13")
+    # Cristal de cámara → "¿qué modelo?" → "iPhone 15 Pro Max y iPhone 13" → técnico, no display
+    h = [{"role": "user", "content": "Una pregunta: también arreglan el cristal de las cámaras del iphone?"},
+         {"role": "assistant", "content": "Sí, claro. ¿Me dice qué modelo?"}]
+    r = _r("Es iPhone 15 pro Max y iPhone 13", h)
+    assert "cristal de cámara" in r and "MXN" not in r, r
+
+
+def test_en_taller_sin_seguimientos():
+    import random
+    from agent import leads
+    from agent.memory import inicializar_db
+    tel = f"52155{random.randint(10**7, 10**8 - 1)}"
+
+    async def correr():
+        await inicializar_db()
+        await leads.crear_o_actualizar_lead(tel, mensaje_texto="cuanto cuesta el touch de mi ipad")
+        await leads.crear_o_actualizar_lead(tel, mensaje_texto="ayer dejé una tablet a reparar, quedaron en avisarme")
+        assert await leads.lead_en_taller(tel)
+        assert tel not in [l.telefono for l in await leads.obtener_leads_para_seguimiento()]
+    asyncio.run(correr())

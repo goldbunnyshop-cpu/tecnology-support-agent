@@ -74,3 +74,22 @@ def mensaje_grupo_estatus(telefono: str, texto: str) -> str:
         f"💬 \"{(texto or '').strip()[:200]}\"",
         "➡️ Revisar el estatus real y contestarle. El bot NO le confirmó nada.",
     ])
+
+
+# El cliente ya dejó su equipo ("ya la dejé", "quedaron en avisarme", "me dijeron que en 2 días").
+# Casos reales (nov 2026): a esos clientes les llegaban seguimientos de venta ("¿pudiste venir?",
+# "quería dar seguimiento…") y el bot llegó a confirmar días de entrega.
+_EN_TALLER = re.compile(
+    r"\b(ya\s+(lo|la|los|las)\s+(deje|dejamos|lleve|llevamos|entregue)|"
+    r"(deje|dejamos|lleve|entregue)\s+(mi|una|un|el|la|los|las)\s+\w+(\s+\w+)?\s+(a\s+reparar|para\s+reparar|en\s+reparacion|con\s+ustedes|ahi|alla)|"
+    r"(deje|dejamos)\s+(mi|una|un|el|la)\s+\w+(\s+\w+)?\s+(ayer|hoy|el\s+\w+)|"
+    r"quedaron\s+(en\s+)?(de\s+)?avisar\w*|me\s+(van\s+a\s+)?avisa\w*\s+cuando|"
+    r"me\s+dijeron\s+que\s+(en|dentro\s+de|vaya|regrese|pase|venga)|"
+    r"ya\s+fui\b|espero\s+(la|el)\s+(reparacion|equipo|diagnostico)|"
+    r"(esta|sigue)\s+en\s+reparacion|cuando\s+este\s+list[oa])"
+)
+
+
+def equipo_en_taller(texto: str) -> bool:
+    """True si el cliente dice que su equipo ya está con nosotros (no es venta: es entrega pendiente)."""
+    return bool(_EN_TALLER.search(_norm(texto)))

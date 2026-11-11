@@ -83,7 +83,8 @@ def _norm(s: str) -> str:
 # Solo cuenta si el que va/recoge es el NEGOCIO ("¿vienen a mi casa?", "¿pueden recogerlo?").
 # Frases del cliente sobre sí mismo ("paso a recoger mi equipo", "tengo que ir a mi casa") NO activan.
 _LUGAR = r"(?:mi |la |su )?(?:casa|domicilio|oficina|trabajo|negocio)"
-_PUEDEN = r"\b(?:pued\w+|podri\w+|pudier\w+|se puede)\b (?:\w+ ){0,2}"
+# "puedo/podemos" es el CLIENTE ("¿ya puedo pasar a recoger mi tablet?" → no es domicilio)
+_PUEDEN = r"\b(?!puedo\b|podemos\b|podre\b)(?:pued\w+|podri\w+|pudier\w+|se puede)\b (?:\w+ ){0,2}"
 _PATRONES = [
     r"\ba domicilio\b",
     r"\bservicio (?:a|en) (?:domicilio|casa|mi casa|la casa|oficina|mi oficina)\b",
