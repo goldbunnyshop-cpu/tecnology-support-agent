@@ -330,6 +330,16 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - **Visto en logs:** WAHA devolvió `500 – server returned error 403` al enviar un seguimiento a 5215559989937. Puede ser un número que bloqueó al negocio. Vigilar si se repite con otros números.
 - **Pruebas:** `tests/test_fixes_11nov.py` (casos reales).
 
+**11 nov: etiqueta de WhatsApp Business "Cliente con nota de servicio"** (`agent/etiquetas.py`).
+- Christian marca así a los clientes que ya visitaron el taller. Con la etiqueta:
+  - no reciben seguimientos de venta ni retomas;
+  - el lead pasa a `en_taller`;
+  - Claude recibe el aviso "EQUIPO EN TALLER" (no confirmar entrega ni días).
+- Se lee de la API del proveedor (WAHA GOWS: `/api/default/labels` y `/labels/{id}/chats`; Whapi: `/labels` y `/labels/{id}`), con cache de 10 min.
+- Si la API falla, no se bloquea a nadie: el bot funciona como antes y queda un `[ETIQUETAS]` en el log.
+- Nombre configurable: `ETIQUETA_NOTA_SERVICIO`. Por defecto "cliente con nota de servicio"; no importan mayúsculas ni acentos.
+- **Pendiente:** confirmar en los logs que lee la etiqueta (línea `[ETIQUETAS] '…': N clientes`). La documentación de WAHA no dice si las etiquetas están en Core (gratis) o solo en Plus.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

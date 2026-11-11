@@ -222,6 +222,13 @@ async def ejecutar_seguimientos():
                 logger.info(f"[SEGUIMIENTO] Omitido — {lead.telefono} está STOPPED")
                 continue
 
+            # Etiqueta de WhatsApp Business "Cliente con nota de servicio" → ya visitó el taller
+            from agent.etiquetas import tiene_nota_servicio
+            if await tiene_nota_servicio(lead.telefono):
+                logger.info(f"[SEGUIMIENTO] Omitido — {lead.telefono} tiene etiqueta 'nota de servicio'")
+                await _marcar_en_taller(lead.telefono)
+                continue
+
             # No interrumpir al cliente si tiene una cita futura confirmada
             from agent.leads import tiene_cita_pendiente
             cita_futura = await tiene_cita_pendiente(lead.telefono)
@@ -257,6 +264,19 @@ async def ejecutar_seguimientos():
             logger.error(f"Error procesando seguimiento para {lead.telefono}: {e}\n{traceback.format_exc()}")
 
 
+async def _marcar_en_taller(telefono: str) -> None:
+    """Deja el lead en 'en_taller' para que no vuelva a entrar a la cola de ventas."""
+    try:
+        from sqlalchemy import update as sq_update
+        from agent.memory import async_session
+        from agent.leads import Lead
+        async with async_session() as session:
+            await session.execute(sq_update(Lead).where(Lead.telefono == telefono).values(estado="en_taller"))
+            await session.commit()
+    except Exception as e:
+        logger.warning(f"[SEGUIMIENTO] No se pudo marcar en_taller {telefono}: {e}")
+
+
 async def ejecutar_retomas():
     """
     Revisa retomas nocturnas pendientes y las envía si el cliente no respondió.
@@ -280,6 +300,12 @@ async def ejecutar_retomas():
             from agent.memory import numero_esta_stopped
             if await numero_esta_stopped(lead.telefono):
                 logger.info(f"[RETOMA] Omitida — {lead.telefono} está STOPPED")
+                continue
+
+            from agent.etiquetas import tiene_nota_servicio
+            if await tiene_nota_servicio(lead.telefono):
+                logger.info(f"[RETOMA] Omitida — {lead.telefono} tiene etiqueta 'nota de servicio'")
+                await cancelar_retoma(lead.telefono)
                 continue
 
             # Si el cliente ya respondió después de que se programó la retoma, cancelar

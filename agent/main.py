@@ -1199,7 +1199,8 @@ async def _procesar_lote_mensajes(mensajes):
                 partes_ctx.append(f"Teléfono del cliente en sistema: {msg.telefono}")
                 try:
                     from agent.leads import lead_en_taller
-                    if await lead_en_taller(msg.telefono):
+                    from agent.etiquetas import tiene_nota_servicio
+                    if await lead_en_taller(msg.telefono) or await tiene_nota_servicio(msg.telefono):
                         partes_ctx.append(
                             "⚠️ EQUIPO EN TALLER: este cliente ya dejó su equipo con nosotros. NO conoces su avance. "
                             "NUNCA confirmes que está listo, ni días u horas de entrega, ni que ya puede pasar por él; "
