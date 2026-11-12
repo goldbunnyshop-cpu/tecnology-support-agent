@@ -40,7 +40,7 @@ def test_lee_etiqueta_de_whapi(monkeypatch):
             return self._d
 
     class _Cliente:
-        async def get(self, url, headers=None):
+        async def get(self, url, headers=None, params=None):
             if url.endswith("/labels"):
                 return _R({"labels": [{"id": "7", "name": "Cliente con Nota de Servicio"}, {"id": "8", "name": "Otra"}]})
             assert url.endswith("/labels/7")
