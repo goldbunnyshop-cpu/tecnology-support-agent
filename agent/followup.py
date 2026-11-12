@@ -223,9 +223,9 @@ async def ejecutar_seguimientos():
                 continue
 
             # Etiqueta de WhatsApp Business "Cliente con nota de servicio" → ya visitó el taller
-            from agent.etiquetas import tiene_nota_servicio
-            if await tiene_nota_servicio(lead.telefono):
-                logger.info(f"[SEGUIMIENTO] Omitido — {lead.telefono} tiene etiqueta 'nota de servicio'")
+            from agent.etiquetas import excluir_de_seguimientos
+            if await excluir_de_seguimientos(lead.telefono):
+                logger.info(f"[SEGUIMIENTO] Omitido — {lead.telefono} tiene nota de servicio (etiqueta o CRM)")
                 await _marcar_en_taller(lead.telefono)
                 continue
 
@@ -302,9 +302,9 @@ async def ejecutar_retomas():
                 logger.info(f"[RETOMA] Omitida — {lead.telefono} está STOPPED")
                 continue
 
-            from agent.etiquetas import tiene_nota_servicio
-            if await tiene_nota_servicio(lead.telefono):
-                logger.info(f"[RETOMA] Omitida — {lead.telefono} tiene etiqueta 'nota de servicio'")
+            from agent.etiquetas import excluir_de_seguimientos
+            if await excluir_de_seguimientos(lead.telefono):
+                logger.info(f"[RETOMA] Omitida — {lead.telefono} tiene nota de servicio (etiqueta o CRM)")
                 await cancelar_retoma(lead.telefono)
                 continue
 

@@ -109,3 +109,40 @@ async def telefonos_con_nota_servicio(forzar: bool = False) -> set[str]:
 async def tiene_nota_servicio(telefono: str) -> bool:
     t = _tel10(telefono)
     return bool(t) and t in await telefonos_con_nota_servicio()
+
+
+# ── Respaldo por CRM ───────────────────────────────────────────────────────────
+# Whapi solo ve los chats sincronizados desde que se vinculó la línea; los clientes de chats
+# anteriores no aparecen con la etiqueta. Para los SEGUIMIENTOS de venta también se excluye a
+# cualquier teléfono con nota de servicio en el Auto-CRM (fuente de verdad). Esto NO se usa para
+# el aviso "EQUIPO EN TALLER" del chat: un cliente de hace meses puede escribir por otro problema.
+# Se apaga con EXCLUIR_POR_CRM=0. Si el CRM falla, se conserva la última lista buena (o ninguna).
+
+_CRM_CACHE_SEG = 10800    # 3 h (el CRM limita /api/sync/export a 1 petición cada 10 s)
+_CRM_REINTENTO_SEG = 600
+_cache_crm = {"ts": 0.0, "telefonos": set(), "ok": False}
+
+
+async def telefonos_en_crm() -> set[str]:
+    if os.getenv("EXCLUIR_POR_CRM", "1").strip() == "0":
+        return set()
+    espera = _CRM_CACHE_SEG if _cache_crm["ok"] else _CRM_REINTENTO_SEG
+    if time.time() - _cache_crm["ts"] < espera:
+        return _cache_crm["telefonos"]
+    try:
+        from agent.sync_clientes_crm import telefonos_crm  # import tardío: evita ciclo
+        tels = await telefonos_crm()
+        _cache_crm.update(ts=time.time(), telefonos=set(tels), ok=True)
+        logger.info(f"[ETIQUETAS] CRM: {len(tels)} teléfonos con nota de servicio")
+    except Exception as e:
+        _cache_crm.update(ts=time.time(), ok=False)
+        logger.error(f"[ETIQUETAS] No se pudo leer el CRM: {e}")
+    return _cache_crm["telefonos"]
+
+
+async def excluir_de_seguimientos(telefono: str) -> bool:
+    """True si tiene la etiqueta en WhatsApp O una nota de servicio en el CRM."""
+    t = _tel10(telefono)
+    if not t:
+        return False
+    return t in await telefonos_con_nota_servicio() or t in await telefonos_en_crm()

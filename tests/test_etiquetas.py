@@ -55,3 +55,29 @@ def test_cache_marca_cliente(monkeypatch):
     E._cache.update(ts=time.time(), telefonos={"5510032479"}, ok=True)
     assert asyncio.run(E.tiene_nota_servicio("5215510032479@c.us"))
     assert not asyncio.run(E.tiene_nota_servicio("5215599999999"))
+
+
+def test_excluye_por_crm_aunque_no_tenga_etiqueta(monkeypatch):
+    import time
+    E._cache.update(ts=time.time(), telefonos={"5510032479"}, ok=True)
+    E._cache_crm.update(ts=time.time(), telefonos={"5579940312"}, ok=True)
+    monkeypatch.delenv("EXCLUIR_POR_CRM", raising=False)
+    assert asyncio.run(E.excluir_de_seguimientos("5215579940312"))      # solo CRM
+    assert asyncio.run(E.excluir_de_seguimientos("5215510032479"))      # solo etiqueta
+    assert not asyncio.run(E.excluir_de_seguimientos("5215599999999"))  # ninguno
+    monkeypatch.setenv("EXCLUIR_POR_CRM", "0")
+    assert not asyncio.run(E.excluir_de_seguimientos("5215579940312"))
+
+
+def test_si_el_crm_falla_no_bloquea(monkeypatch):
+    import time
+    from agent import sync_clientes_crm as S
+
+    async def _falla(*a, **k):
+        raise RuntimeError("crm caído")
+
+    monkeypatch.setattr(S, "telefonos_crm", _falla)
+    monkeypatch.delenv("EXCLUIR_POR_CRM", raising=False)
+    E._cache.update(ts=time.time(), telefonos=set(), ok=True)
+    E._cache_crm.update(ts=0.0, telefonos=set(), ok=False)
+    assert asyncio.run(E.excluir_de_seguimientos("5215579940312")) is False
