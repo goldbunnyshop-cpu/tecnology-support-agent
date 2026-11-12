@@ -49,7 +49,7 @@ def _ids_de_chats(data) -> list[str]:
             for k in ("id", "chatId", "chat_id", "_serialized", "jid"):
                 if k in x:
                     visitar(x[k])
-            for k in ("chats", "items", "objects", "data"):
+            for k in ("chats", "messages", "items", "objects", "data"):
                 if k in x:
                     visitar(x[k])
         elif isinstance(x, list):
@@ -73,14 +73,16 @@ async def _labels_whapi(c: httpx.AsyncClient) -> list[str]:
         return []
     chats: list[str] = []
     for lid in ids:
-        r = await c.get(f"https://gate.whapi.cloud/labels/{lid}", headers=h)
+        r = await c.get(f"https://gate.whapi.cloud/labels/{lid}", headers=h, params={"count": 500})
         r.raise_for_status()
         crudo = r.json()
         nuevos = _ids_de_chats(crudo)
+        n_chats = len(set(_ids_de_chats(crudo.get("chats", [])))) if isinstance(crudo, dict) else 0
+        n_msgs = len(crudo.get("messages", [])) if isinstance(crudo, dict) else 0
         # Diagnóstico (sin datos personales): forma de la respuesta y cuántos chats trae
         logger.info(
             f"[ETIQUETAS] Whapi etiqueta {lid}: claves={sorted(crudo) if isinstance(crudo, dict) else type(crudo).__name__} "
-            f"chats={len(nuevos)}"
+            f"chats_clave={n_chats} mensajes_clave={n_msgs} unicos_total={len(set(nuevos))}"
         )
         chats += nuevos
     return chats
