@@ -34,7 +34,8 @@ async def telefonos_crm(csv_ruta: str | None = None) -> set[str]:
     if csv_ruta:
         with open(csv_ruta, encoding="utf-8-sig") as f:
             return {t for t in (tel10(r.get("Teléfono", "")) for r in csv.DictReader(f)) if t}
-    url, clave = os.getenv("CRM_API_URL", "").rstrip("/"), os.getenv("SYNC_API_KEY", "")
+    url = os.getenv("CRM_API_URL", "").strip().rstrip("/")
+    clave = os.getenv("SYNC_API_KEY", "").strip()  # Railway puede guardar saltos de línea al pegar
     if not url or not clave:
         raise RuntimeError("Falta CRM_API_URL y/o SYNC_API_KEY")
     async with httpx.AsyncClient(timeout=60) as c:
@@ -83,7 +84,7 @@ async def sincronizar(aplicar: bool = False, todos_crm: bool = False,
                "ya_etiquetados": len(convertidos & ya), "pendientes": len(pendientes), "etiquetados": 0}
     destino = [tel10(solo)] if solo else (pendientes if aplicar else [])
     if destino:
-        h = {"Authorization": f"Bearer {os.getenv('WHAPI_TOKEN', '')}"}
+        h = {"Authorization": f"Bearer {os.getenv('WHAPI_TOKEN', '').strip()}"}
         async with httpx.AsyncClient(timeout=30) as c:
             lid = await _id_etiqueta(c, h)
             for t in destino:
