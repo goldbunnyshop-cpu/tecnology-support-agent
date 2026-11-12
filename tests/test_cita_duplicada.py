@@ -14,11 +14,7 @@ def test_misma_cita_un_solo_aviso(monkeypatch):
         enviados.append(msg)
         return True
 
-    async def falso_email(asunto, body):
-        return False
-
     monkeypatch.setattr(an, "_enviar_grupo", falso_grupo)
-    monkeypatch.setattr(an, "_enviar_email", falso_email)
 
     async def correr():
         await inicializar_db()

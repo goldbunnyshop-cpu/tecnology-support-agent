@@ -103,3 +103,12 @@ No hace falta cambiar código: `agent/providers/__init__.py` elige el proveedor 
 ## Contexto
 - Fecha de esta guía: 3 nov 2026. Desde el 2 nov el bot corre en WAHA porque Whapi se suspendió por falta de pago.
 - Detalle de la migración a WAHA y de todos los cambios: `BITACORA_SEP_NOV_2026.md`.
+
+## Respaldo de comportamiento: etiquetas WAHA vs Whapi (12 nov 2026)
+- `agent/etiquetas.py` ya solo usa la API de Whapi (se quitó la rama WAHA).
+- Logs de referencia de WAHA: la etiqueta "cliente con nota de servicio" devolvía **48 clientes**, constante del 11 nov al 12 nov 00:13.
+- Primer resultado con Whapi (12 nov 00:44): **28 clientes**. Diferencia sin explicar al momento de escribir esto.
+- Dato de verdad pendiente: el contador de la etiqueta en la app WhatsApp Business del celular (Etiquetas).
+- Con WAHA, los chats `@lid` que no se resolvían a teléfono podían inflar el conteo; con Whapi no hay `@lid`.
+- Los logs nuevos `[ETIQUETAS] Whapi etiqueta ...: claves=... chats=N` muestran la forma de la respuesta de Whapi.
+- Correo a Ulises: se eliminó el envío por Resend. Las citas se avisan solo por el grupo de WhatsApp.

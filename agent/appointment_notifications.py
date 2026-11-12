@@ -1,6 +1,5 @@
 # agent/appointment_notifications.py — Notificaciones de citas para Ulises (técnico)
-# Email via Resend API (HTTP) + mensaje al grupo "Taller Interno TS"
-# NOTA: Railway bloquea conexiones SMTP salientes — por eso usamos Resend API (HTTP).
+# Mensajes al grupo de WhatsApp "Taller Interno TS" (sin correo: Ulises recibe todo por el grupo)
 
 import re
 import asyncio
@@ -15,51 +14,12 @@ import httpx
 logger = logging.getLogger("agentkit")
 
 _ZONA_MX     = ZoneInfo("America/Mexico_City")
-EMAIL_ULISES  = os.getenv("EMAIL_ULISES", "10telefonos10@gmail.com")
 GRUPO_NOMBRE  = os.getenv("GRUPO_INTERNO_NOMBRE", "Taller Interno TS")
 _UBICACION    = "Plazuela de la Fama 1, Col. La Fama, Tlalpan"
 
 _DIAS_ES  = {0:"lunes",1:"martes",2:"miércoles",3:"jueves",4:"viernes",5:"sábado",6:"domingo"}
 _MESES_ES = {1:"enero",2:"febrero",3:"marzo",4:"abril",5:"mayo",6:"junio",
              7:"julio",8:"agosto",9:"septiembre",10:"octubre",11:"noviembre",12:"diciembre"}
-
-
-# ─── Email via Resend API (HTTP — funciona en Railway) ────────────────────────
-# Configurar en Railway Variables:
-#   RESEND_API_KEY = re_xxxx...  (obtener en resend.com, plan gratuito = 3000 emails/mes)
-#   RESEND_FROM    = onboarding@resend.dev  (o tu dominio verificado)
-
-async def _enviar_email(asunto: str, body: str) -> bool:
-    """Envía email usando Resend API (HTTP). Railway NO permite SMTP saliente."""
-    api_key = os.getenv("RESEND_API_KEY", "")
-    if not api_key:
-        logger.warning("[CITAS EMAIL] RESEND_API_KEY no configurado — omitiendo email")
-        return False
-    from_addr = os.getenv("RESEND_FROM", "onboarding@resend.dev")
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": from_addr,
-                    "to": [EMAIL_ULISES],
-                    "subject": asunto,
-                    "text": body,
-                },
-            )
-        if resp.status_code in (200, 201):
-            logger.info(f"[CITAS EMAIL] ✅ Enviado via Resend a {EMAIL_ULISES}: {asunto}")
-            return True
-        else:
-            logger.error(f"[CITAS EMAIL] Error Resend {resp.status_code}: {resp.text[:200]}")
-            return False
-    except Exception as e:
-        logger.error(f"[CITAS EMAIL] Excepción Resend: {e}")
-        return False
 
 
 # ─── Grupo interno Whapi ──────────────────────────────────────────────────────
@@ -217,7 +177,7 @@ async def notificar_nueva_cita(
     asesor: str,
     evento_id: str = "",
 ) -> None:
-    """Notifica inmediatamente a Ulises por email y grupo cuando se agenda una cita."""
+    """Notifica inmediatamente al grupo de WhatsApp cuando se agenda una cita."""
     when = f"{fecha_texto.capitalize()}, {hora_texto}"
 
     # ── Anti-duplicados: reservar el evento ANTES de enviar ──
@@ -257,37 +217,12 @@ async def notificar_nueva_cita(
         f"[CITAS NOTIF] Cuándo: {when} | Asesor: {asesor}"
     )
 
-    asunto = f"🔔 Nueva cita agendada — {nombre} — {hora_texto}"
-    body = (
-        f"Nueva cita agendada ✅\n\n"
-        f"👤 Cliente: {nombre}\n"
-        f"📞 Teléfono: {telefono}\n"
-        f"📱 Dispositivo: {dispositivo}\n"
-        f"⚠️ Falla/Servicio: {problema}\n"
-        f"⏰ Hora: {when}\n"
-        f"👨‍💼 Asesor que atendió: {asesor}\n"
-        f"📍 Ubicación: {_UBICACION}\n\n"
-        f"---\n"
-        f"Recordatorio: Esta cita está en tu Google Calendar"
-    )
     msg_grupo = (
         f"🔔 *NUEVA CITA AGENDADA*\n"
         f"👤 {nombre} | 📱 {dispositivo}\n"
         f"⏰ {when} | ⚠️ {problema}\n"
         f"👨‍💼 Asesor: {asesor}"
     )
-
-    # Email
-    logger.info(f"[CITAS NOTIF] 📧 Enviando email a {EMAIL_ULISES}...")
-    try:
-        enviado_email = await _enviar_email(asunto, body)
-        if enviado_email:
-            logger.info(f"[CITAS NOTIF] ✅ Email enviado exitosamente")
-        else:
-            logger.warning(f"[CITAS NOTIF] ⚠️ Email no se envió (SMTP deshabilitado o error)")
-    except Exception as e:
-        logger.error(f"[CITAS NOTIF] ❌ Excepción enviando email: {type(e).__name__}: {e}")
-        enviado_email = False
 
     # Grupo
     logger.info(f"[CITAS NOTIF] 📱 Enviando notificación al grupo...")
@@ -308,8 +243,7 @@ async def notificar_nueva_cita(
 
     logger.info(
         f"[CITAS NOTIF] ========== NOTIFICACIÓN TERMINADA =========="
-        f" | Email: {'✅' if enviado_email else '❌'} "
-        f"| Grupo: {'✅' if enviado_grupo else '❌'}"
+        f" | Grupo: {'✅' if enviado_grupo else '❌'}"
     )
 
 
@@ -322,18 +256,6 @@ async def notificar_recordatorio_1h(
     evento_id: str = "",
 ) -> None:
     """Notifica a Ulises 1 hora antes de la cita."""
-    asunto = f"⏰ RECORDATORIO — Cita en 1 hora — {nombre}"
-    body = (
-        f"Recordatorio de cita en 1 hora ⏰\n\n"
-        f"👤 Cliente: {nombre}\n"
-        f"📞 Teléfono: {telefono}\n"
-        f"📱 Dispositivo: {dispositivo}\n"
-        f"⏰ Hora: {hora_texto}\n"
-        f"👨‍💼 Asesor: {asesor or 'N/A'}\n"
-        f"📍 Ubicación: {_UBICACION}\n\n"
-        f"---\n"
-        f"Esta cita está en tu Google Calendar"
-    )
     msg_grupo = (
         f"⏰ *RECORDATORIO: Cita de {nombre} en 1 hora ({hora_texto})*\n"
         f"📱 {dispositivo}"
@@ -349,52 +271,19 @@ async def notificar_recordatorio_1h(
             return
         await registrar_cita_notificada(evento_id, "recordatorio_1h", telefono, False, False)
 
-    enviado_email = await _enviar_email(asunto, body)
     enviado_grupo = await _enviar_grupo(msg_grupo)
 
-    logger.info(f"[CITAS] Recordatorio 1h — {nombre} {hora_texto} | email={enviado_email} grupo={enviado_grupo}")
+    logger.info(f"[CITAS] Recordatorio 1h — {nombre} {hora_texto} | grupo={enviado_grupo}")
 
 
 async def enviar_resumen_diario() -> None:
-    """Genera y envía el resumen de citas del día a Ulises (email + grupo)."""
-    from agent.google_calendar import obtener_eventos_del_dia, obtener_eventos_rango
+    """Genera y envía el resumen de citas del día al grupo de WhatsApp."""
+    from agent.google_calendar import obtener_eventos_del_dia
 
     ahora = datetime.now(_ZONA_MX)
     fecha_txt = f"{_DIAS_ES.get(ahora.weekday(),'')} {ahora.day} de {_MESES_ES.get(ahora.month,'')}"
 
     eventos_hoy  = await obtener_eventos_del_dia()
-    desde_prox   = ahora.date() + timedelta(days=1)
-    hasta_prox   = ahora.date() + timedelta(days=4)
-    proximos     = await obtener_eventos_rango(desde_prox, hasta_prox)
-
-    # ── Email ──
-    asunto = f"📅 Resumen de citas — {fecha_txt}"
-    if not eventos_hoy:
-        citas_txt = "No hay citas agendadas para hoy."
-    else:
-        lineas = [
-            f"{i}. {ev['nombre']} — {ev.get('dispositivo','N/A')} — "
-            f"{ev['hora']} — {ev.get('problema','N/A')}"
-            for i, ev in enumerate(eventos_hoy, 1)
-        ]
-        citas_txt = "\n".join(lineas)
-
-    proximos_txt = ""
-    if proximos:
-        proximos_txt = "\n---\nPróximas citas:\n"
-        for ev in proximos[:3]:
-            proximos_txt += (
-                f"• {ev.get('fecha_txt','')} {ev['hora']} — "
-                f"{ev['nombre']} ({ev.get('dispositivo','')})\n"
-            )
-
-    body = (
-        f"Resumen de citas para hoy — {fecha_txt}\n\n"
-        f"Total de citas: {len(eventos_hoy)}\n\n"
-        f"{citas_txt}"
-        f"{proximos_txt}"
-    )
-    await _enviar_email(asunto, body)
 
     # ── Grupo ──
     if not eventos_hoy:

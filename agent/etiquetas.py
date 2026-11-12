@@ -4,7 +4,7 @@
 # etiqueta "Cliente con nota de servicio". Esos clientes NO reciben seguimientos de venta
 # ni retomas: su equipo ya está con nosotros (o ya se entregó).
 #
-# Funciona con WAHA (GOWS) y con Whapi. Si la API falla, NO se bloquea nada (comportamiento
+# Lee las etiquetas con la API de Whapi. Si la API falla, NO se bloquea nada (comportamiento
 # de siempre) y queda un error en logs.
 #
 # Variable opcional: ETIQUETA_NOTA_SERVICIO (default "cliente con nota de servicio").
@@ -60,36 +60,6 @@ def _ids_de_chats(data) -> list[str]:
     return ids
 
 
-async def _labels_waha(c: httpx.AsyncClient) -> list[str]:
-    base = os.getenv("WAHA_URL", "").rstrip("/")
-    ses = os.getenv("WAHA_SESSION", "default")
-    h = {"X-Api-Key": os.getenv("WAHA_API_KEY", "")}
-    r = await c.get(f"{base}/api/{ses}/labels", headers=h)
-    r.raise_for_status()
-    objetivo = nombre_etiqueta()
-    ids = [str(l.get("id")) for l in r.json() if _norm(l.get("name", "")) == objetivo]
-    if not ids:
-        logger.warning(f"[ETIQUETAS] No existe la etiqueta '{objetivo}' en WhatsApp Business")
-        return []
-    chats: list[str] = []
-    for lid in ids:
-        r = await c.get(f"{base}/api/{ses}/labels/{lid}/chats", headers=h)
-        r.raise_for_status()
-        chats += _ids_de_chats(r.json())
-    # @lid → teléfono real
-    out = []
-    for cid in chats:
-        if cid.endswith("@lid"):
-            try:
-                rr = await c.get(f"{base}/api/{ses}/lids/{cid.replace('@', '%40')}", headers=h)
-                pn = (rr.json() or {}).get("pn") if rr.status_code == 200 else ""
-                cid = pn or cid
-            except Exception:
-                pass
-        out.append(cid)
-    return out
-
-
 async def _labels_whapi(c: httpx.AsyncClient) -> list[str]:
     h = {"Authorization": f"Bearer {os.getenv('WHAPI_TOKEN', '')}"}
     r = await c.get("https://gate.whapi.cloud/labels", headers=h)
@@ -105,7 +75,14 @@ async def _labels_whapi(c: httpx.AsyncClient) -> list[str]:
     for lid in ids:
         r = await c.get(f"https://gate.whapi.cloud/labels/{lid}", headers=h)
         r.raise_for_status()
-        chats += _ids_de_chats(r.json())
+        crudo = r.json()
+        nuevos = _ids_de_chats(crudo)
+        # Diagnóstico (sin datos personales): forma de la respuesta y cuántos chats trae
+        logger.info(
+            f"[ETIQUETAS] Whapi etiqueta {lid}: claves={sorted(crudo) if isinstance(crudo, dict) else type(crudo).__name__} "
+            f"chats={len(nuevos)}"
+        )
+        chats += nuevos
     return chats
 
 
@@ -116,12 +93,7 @@ async def telefonos_con_nota_servicio(forzar: bool = False) -> set[str]:
     proveedor = os.getenv("WHATSAPP_PROVIDER", "whapi").lower()
     try:
         async with httpx.AsyncClient(timeout=15) as c:
-            if proveedor == "waha":
-                chats = await _labels_waha(c)
-            elif proveedor == "whapi":
-                chats = await _labels_whapi(c)
-            else:
-                chats = []
+            chats = await _labels_whapi(c) if proveedor == "whapi" else []
         tels = {t for t in (_tel10(x) for x in chats) if t}
         _cache.update(ts=time.time(), telefonos=tels, ok=True)
         logger.info(f"[ETIQUETAS] '{nombre_etiqueta()}': {len(tels)} clientes")
