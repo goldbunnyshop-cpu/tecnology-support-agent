@@ -72,7 +72,7 @@ class TestPricingSheets:
             "ORIGINAL": [4480.0],   # Oled  ($1120 x4)
         }
         cotizacion = formatear_cotizacion_tiers("iPhone", "13 Pro Max", categorias)
-        assert "Calidad Generica" in cotizacion
+        assert "Calidad Genérica" in cotizacion
         assert "Calidad Original" in cotizacion
         assert "$2,760" in cotizacion
         assert "$4,480" in cotizacion
@@ -89,9 +89,11 @@ class TestPricingSheets:
             "fuente": "google_sheets_baterias_android",
         }
         cotizacion = await formatear_cotizacion_sheets(producto, "Huawei", "Honor X5")
-        assert "Batería Huawei Honor X5" in cotizacion.upper()
-        assert "Unitario" in cotizacion
-        assert "Mayoreo" in cotizacion
+        # Política actual: solo se muestra el precio unitario ×4 (100 × 4 = $400).
+        # Mayoreo NO debe aparecer en la respuesta al cliente.
+        assert "HUAWEI HONOR X5" in cotizacion.upper()
+        assert "Precio Unitario: $400 MXN" in cotizacion
+        assert "Mayoreo" not in cotizacion
         print(f"✅ Formateo Batería Android:\n{cotizacion[:200]}...")
 
     @pytest.mark.asyncio
@@ -105,9 +107,11 @@ class TestPricingSheets:
             "fuente": "google_sheets_baterias_iphone",
         }
         cotizacion = await formatear_cotizacion_sheets(producto, "iPhone", "15 Pro Max")
-        assert "iPhone 15 Pro Max" in cotizacion.upper()
-        assert "20pz" in cotizacion
-        assert "50pz" in cotizacion
+        # Política actual: solo precio unitario ×4 (250 × 4 = $1,000); sin surtido.
+        assert "IPHONE 15 PRO MAX" in cotizacion.upper()
+        assert "Precio Unitario: $1,000 MXN" in cotizacion
+        assert "20pz" not in cotizacion
+        assert "50pz" not in cotizacion
         print(f"✅ Formateo Batería iPhone:\n{cotizacion[:200]}...")
 
 
@@ -119,7 +123,7 @@ def test_imports():
     print("✅ Imports correctos")
 
 
-async def test_todas_las_pruebas():
+async def ejecutar_todas_las_pruebas():
     """Ejecutar todas las pruebas en secuencia"""
     print("\n" + "=" * 70)
     print("TESTS DE INTEGRACIÓN GOOGLE SHEETS")
@@ -165,4 +169,4 @@ async def test_todas_las_pruebas():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_todas_las_pruebas())
+    asyncio.run(ejecutar_todas_las_pruebas())
