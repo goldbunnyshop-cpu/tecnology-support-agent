@@ -39,7 +39,14 @@ async def telefonos_crm(csv_ruta: str | None = None) -> set[str]:
     if not url or not clave:
         raise RuntimeError("Falta CRM_API_URL y/o SYNC_API_KEY")
     async with httpx.AsyncClient(timeout=60) as c:
-        r = await c.post(f"{url}/api/sync/export", headers={"x-sync-api-key": clave})
+        # El CRM limita /api/sync/export a 1 petición cada 10 s (y la laptop sincroniza cada 5 min):
+        # si responde 429, esperar y reintentar.
+        for intento in range(4):
+            r = await c.post(f"{url}/api/sync/export", headers={"x-sync-api-key": clave})
+            if r.status_code != 429:
+                break
+            logger.info(f"[CRM-ETIQUETAS] CRM respondió 429; reintento {intento + 1}/3 en 12 s")
+            await asyncio.sleep(12)
         r.raise_for_status()
     tabla = r.json().get("tables", {}).get("transactions", [])
     filas = (tabla.get("records") or tabla.get("data") or []) if isinstance(tabla, dict) else tabla
