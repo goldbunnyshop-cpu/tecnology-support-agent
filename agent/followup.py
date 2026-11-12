@@ -685,6 +685,36 @@ async def _loop_mantenimiento_db():
         await asyncio.sleep(7 * 24 * 3600)  # siguiente ejecución en 7 días
 
 
+async def _loop_sync_clientes_crm():
+    """
+    Cada miércoles 03:00 CDMX: cruza clientes del CRM con los chats del bot y los etiqueta en
+    WhatsApp ("cliente con nota de servicio"). SILENCIOSO: solo escribe logs [CRM-ETIQUETAS].
+    Modo en CRM_ETIQUETAS_AUTO: apagado | simular (default) | aplicar.
+    """
+    from datetime import timezone
+    _CDMX = timezone(timedelta(hours=-6))
+    while True:
+        ahora = datetime.now(_CDMX)
+        dias = (2 - ahora.weekday()) % 7  # 2 = miércoles
+        objetivo = ahora.replace(hour=3, minute=0, second=0, microsecond=0) + timedelta(days=dias)
+        if objetivo <= ahora:
+            objetivo += timedelta(days=7)
+        logger.info(f"[CRM-ETIQUETAS] Próxima sincronización: {objetivo.strftime('%Y-%m-%d %H:%M')} CDMX")
+        await asyncio.sleep((objetivo - ahora).total_seconds())
+        modo = os.getenv("CRM_ETIQUETAS_AUTO", "simular").lower()
+        if modo == "apagado":
+            continue
+        try:
+            from agent.sync_clientes_crm import sincronizar
+            r = await sincronizar(aplicar=(modo == "aplicar"))
+            logger.info(
+                f"[CRM-ETIQUETAS] modo={modo} crm={r['crm']} bot={r['bot']} convertidos={r['convertidos']} "
+                f"ya={r['ya_etiquetados']} pendientes={r['pendientes']} etiquetados={r['etiquetados']}"
+            )
+        except Exception as e:
+            logger.error(f"[CRM-ETIQUETAS] Falló la sincronización semanal: {e}")
+
+
 async def iniciar_scheduler():
     """
     Scheduler principal que corre en segundo plano:
@@ -707,6 +737,7 @@ async def iniciar_scheduler():
     asyncio.create_task(_loop_resumen_diario_citas())
     asyncio.create_task(_loop_alerta_factura())
     asyncio.create_task(_loop_mantenimiento_db())
+    asyncio.create_task(_loop_sync_clientes_crm())
 
     while True:
         await asyncio.sleep(INTERVALO_SEGUIMIENTO)
