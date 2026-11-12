@@ -60,6 +60,18 @@ async def telefonos_bot() -> set[str]:
     return {t for t in (tel10(x) for x in res.scalars().all()) if t}
 
 
+async def chat_ids_bot() -> dict[str, str]:
+    """tel10 -> chat_id exacto que Whapi le dio al bot (ej. '5215512345678@s.whatsapp.net')."""
+    async with async_session() as s:
+        res = await s.execute(select(Mensaje.telefono).distinct())
+    ids: dict[str, str] = {}
+    for raw in res.scalars().all():
+        t = tel10(raw)
+        if t:
+            ids[t] = raw if "@" in raw else f"{raw}@s.whatsapp.net"
+    return ids
+
+
 async def _id_etiqueta(c: httpx.AsyncClient, h: dict) -> str:
     r = await c.get(f"{WHAPI}/labels", headers=h)
     r.raise_for_status()
@@ -71,9 +83,11 @@ async def _id_etiqueta(c: httpx.AsyncClient, h: dict) -> str:
     raise RuntimeError(f"No existe la etiqueta '{nombre_etiqueta()}' en WhatsApp Business")
 
 
-async def etiquetar_chat(c: httpx.AsyncClient, h: dict, lid: str, tel: str) -> bool:
-    # Endpoint de Whapi para asociar etiqueta a un chat (NO verificado en su doc: probar con 1 número antes)
-    r = await c.post(f"{WHAPI}/labels/{lid}/52{tel}@s.whatsapp.net", headers=h)
+async def etiquetar_chat(c: httpx.AsyncClient, h: dict, lid: str, tel: str, chat_id: str | None = None) -> bool:
+    # Endpoint de Whapi para asociar etiqueta a un chat. Se usa el chat_id real del bot si existe;
+    # si no, se adivina 52+10 dígitos (puede dar 404 si ese chat no existe en esta línea).
+    chat = chat_id or f"52{tel}@s.whatsapp.net"
+    r = await c.post(f"{WHAPI}/labels/{lid}/{chat}", headers=h)
     if r.status_code not in (200, 201):
         logger.warning(f"[CRM-ETIQUETAS] {tel[:3]}…{tel[-3:]}: HTTP {r.status_code} {r.text[:120]}")
     return r.status_code in (200, 201)
@@ -92,10 +106,13 @@ async def sincronizar(aplicar: bool = False, todos_crm: bool = False,
     destino = [tel10(solo)] if solo else (pendientes if aplicar else [])
     if destino:
         h = {"Authorization": f"Bearer {os.getenv('WHAPI_TOKEN', '').strip()}"}
+        ids = await chat_ids_bot()
         async with httpx.AsyncClient(timeout=30) as c:
             lid = await _id_etiqueta(c, h)
             for t in destino:
-                resumen["etiquetados"] += await etiquetar_chat(c, h, lid, t)
+                if t not in ids:
+                    logger.warning(f"[CRM-ETIQUETAS] {t[:3]}…{t[-3:]}: el bot no tiene ese chat; se intenta 52+10 dígitos")
+                resumen["etiquetados"] += await etiquetar_chat(c, h, lid, t, ids.get(t))
                 await asyncio.sleep(1.5)  # sin ráfagas
     resumen["pendientes_lista"] = pendientes
     return resumen
