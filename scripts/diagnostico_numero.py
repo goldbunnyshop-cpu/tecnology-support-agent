@@ -61,7 +61,11 @@ async def main(tel: str):
     candidatos = list(dict.fromkeys(ids + [f"52{tel}@s.whatsapp.net", f"521{tel}@s.whatsapp.net"]))
     async with httpx.AsyncClient(timeout=30) as c:
         for cid in candidatos:
-            r = await c.get(f"{WHAPI}/chats/{cid}", headers=h)
+            try:
+                r = await c.get(f"{WHAPI}/chats/{cid}", headers=h)
+            except Exception as e:
+                print(f"[WHAPI] {cid[cid.find('@'):]} -> error de red: {str(e)[:60]}")
+                continue
             extra = ""
             if r.status_code == 200:
                 d = r.json()
