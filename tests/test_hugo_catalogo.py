@@ -60,9 +60,21 @@ def test_descripcion_breve_por_calidad_todas_las_marcas():
 def test_sin_marca_confirma_antes_de_cotizar():
     import asyncio
     from agent.brain import _intentar_respuesta_pricing_contextual as f
-    r = asyncio.run(f("display a55", []))
-    assert "¿Tu equipo es ZTE A55?" in r and "MXN" not in r
+    r = asyncio.run(f("pantalla g50", []))     # solo existe en Moto
+    assert "¿Tu equipo es Moto G50?" in r and "MXN" not in r
+    assert "IPHONE" not in asyncio.run(f("display note 13 pro", []))
     h = [{"role": "user", "content": "display a55"}, {"role": "assistant", "content": "¿Tu equipo es ZTE A55?"}]
     assert "$600 MXN" in asyncio.run(f("sí", h))
-    r = asyncio.run(f("no, es samsung", h))
-    assert "técnico" in r and "MXN" not in r
+    assert "$1,200 MXN" in asyncio.run(f("no, es samsung", h))
+
+
+def test_lista_manual_otras_marcas_samsung_a55():
+    import asyncio
+    from agent.brain import _intentar_respuesta_pricing_contextual as f
+    for q in ("cuanto cuesta el display de samsung a55", "pantalla galaxy a55 5g", "samsung a55"):
+        r = asyncio.run(f(q, []))
+        assert "Calidad genérica: $1,200 MXN" in r and "Calidad original: $1,800 MXN" in r, (q, r)
+        assert "Pierde la función de huella en la pantalla." in r and "técnico" not in r
+    # Sin marca: ahora existen Samsung A55 (manual) y ZTE A55 (Hugo) → pregunta la marca
+    r = asyncio.run(f("display a55", []))
+    assert "SAMSUNG" in r and "ZTE" in r and "MXN" not in r

@@ -505,6 +505,12 @@ async def _cotizar_display_fusionado(marca: str, modelo: str) -> str:
             logger.info(f"[PRICING] iPhone {modelo} → lista manual")
             return manual
 
+    # Otras marcas: lista manual (knowledge/precios_manuales.csv) gana sobre Hugo
+    from agent.pricing import cotizar_manual_otras
+    manual = cotizar_manual_otras(marca, modelo) if (marca or "").strip() else None
+    if manual:
+        return manual
+
     hugo = _resolver_match_hugo(marca, modelo)
 
     if hugo["tipo"] == "variante":

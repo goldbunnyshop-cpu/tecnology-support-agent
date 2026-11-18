@@ -357,6 +357,13 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
   - "Sí" → cotiza.
   - "No, es Samsung" → cotiza el mismo modelo con esa marca; si no está en la lista, lo pasa al técnico.
 
+**18 nov: lista manual para otras marcas** (`knowledge/precios_manuales.csv`).
+- **Columnas:** `marca,modelo,generica,original,premium,nota_generica,nota_original`. Precio al cliente tal cual: sin x3 ni pisos. Un campo vacío significa que esa calidad no se ofrece.
+- **Prioridad:** gana sobre Hugo (`cotizar_manual_otras`, en `obtener_cotizacion_display` y en `pricing_fallback`). También cuenta en la búsqueda sin marca.
+- **Primer modelo:** Samsung A55 → genérica $1,200 ("Pierde la función de huella en la pantalla.") / original $1,800.
+- **Arreglo de paso:** la búsqueda sin marca ya no sugiere iPhone para "note 13 pro". El iPhone solo cuenta si el texto es únicamente un modelo de iPhone.
+- **Para agregar modelos:** editar el CSV y subirlo con `git add -f knowledge/precios_manuales.csv`.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---

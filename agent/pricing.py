@@ -955,6 +955,74 @@ def precios_iphone_manuales() -> dict[str, dict]:
     return tabla
 
 
+# ── Precios manuales de otras marcas (no iPhone) ──────────────────────────────
+# Modelos que Hugo no tiene (o que Christian quiere fijar a mano). Gana sobre Hugo.
+# Columnas: marca,modelo,generica,original,premium,nota_generica,nota_original (vacío = no se ofrece).
+RUTA_PRECIOS_MANUALES = "knowledge/precios_manuales.csv"
+_cache_manual_otras: dict = {"mtime": None, "tabla": {}}
+
+
+def _clave_modelo_manual(modelo: str) -> str:
+    t = _sin_acentos((modelo or "").lower())
+    t = re.sub(r"\b(samsung|galaxy|motorola|moto|xiaomi|redmi|poco|oppo|realme|honor|huawei|vivo|zte|"
+               r"display|pantalla|[45]g|lte)\b", " ", t)
+    return re.sub(r"[^a-z0-9]", "", t)
+
+
+def precios_manuales_otras() -> dict[tuple[str, str], dict]:
+    """{(MARCA, clave): {"modelo": "A55", "GENERICA": 1200, ..., "nota_GENERICA": "..."}}"""
+    try:
+        mtime = os.path.getmtime(RUTA_PRECIOS_MANUALES)
+    except OSError:
+        return {}
+    if _cache_manual_otras["mtime"] == mtime:
+        return _cache_manual_otras["tabla"]
+    tabla: dict = {}
+    try:
+        with open(RUTA_PRECIOS_MANUALES, encoding="utf-8") as f:
+            for fila in csv.DictReader(f):
+                marca = _marca_canonica((fila.get("marca") or "").strip())
+                modelo = (fila.get("modelo") or "").strip()
+                if not marca or not modelo:
+                    continue
+                d = {"modelo": modelo}
+                for col, cat in (("generica", "GENERICA"), ("original", "ORIGINAL"), ("premium", "PREMIUM")):
+                    v = re.sub(r"[^\d]", "", fila.get(col) or "")
+                    if v and int(v) > 0:
+                        d[cat] = int(v)
+                for col, cat in (("nota_generica", "GENERICA"), ("nota_original", "ORIGINAL")):
+                    if (fila.get(col) or "").strip():
+                        d[f"nota_{cat}"] = fila[col].strip()
+                tabla[(marca, _clave_modelo_manual(modelo))] = d
+    except Exception as e:
+        logger.error(f"[PRICING] No se pudo leer {RUTA_PRECIOS_MANUALES}: {e}")
+        return {}
+    _cache_manual_otras.update(mtime=mtime, tabla=tabla)
+    logger.info(f"[PRICING] Precios manuales (otras marcas): {len(tabla)} modelos")
+    return tabla
+
+
+def cotizar_manual_otras(marca: str, modelo: str) -> str | None:
+    marca_c = _marca_canonica(marca)
+    d = precios_manuales_otras().get((marca_c, _clave_modelo_manual(modelo)))
+    if not d:
+        return None
+    logger.info(f"[PRICING] {marca_c} {modelo} → lista manual (otras marcas)")
+    bloques = [f"Para {marca_c.title() if marca_c not in ('ZTE', 'LG') else marca_c} {d['modelo']} tenemos estas opciones:"]
+    for cat, etiqueta, desc in (
+        ("GENERICA", "Calidad genérica", _DESC_CALIDAD_DISPLAY["GENERICA"]),
+        ("ORIGINAL", "Calidad original", _DESC_CALIDAD_DISPLAY["ORIGINAL"]),
+        ("PREMIUM", "Calidad premium", _DESC_CALIDAD_DISPLAY["OLED"]),
+    ):
+        if cat in d:
+            nota = d.get(f"nota_{cat}", "")
+            icono = {"GENERICA": "🔹", "ORIGINAL": "🔸", "PREMIUM": "⭐"}[cat]
+            bloques.append(f"{icono} {etiqueta}: ${d[cat]:,} MXN\n{desc}{(' ' + nota) if nota else ''}")
+    bloques.append("Cada display incluye: diagnóstico, garantía de 90 días y cambio el mismo día.\n¿Cuál opción te interesa?")
+    return ("INFORMACION PARA EL CLIENTE (transmitir tal cual; usar solo las etiquetas "
+            "de calidad tal como aparecen, sin agregar otras ni marcas de proveedor):\n\n" + "\n\n".join(bloques))
+
+
 def _sin_acentos(t: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", t or "") if unicodedata.category(c) != "Mn")
 
@@ -1409,6 +1477,9 @@ async def obtener_cotizacion_display(marca: str, modelo: str) -> str:
     """Punto de entrada usado por brain.py / tools.py. iPhone: lista manual. Resto: Hugo Shop."""
     if _marca_canonica(marca) == "IPHONE":
         return cotizar_iphone_manual(modelo) or _mensaje_no_disponible("iPhone", modelo)
+    manual = cotizar_manual_otras(marca, modelo)
+    if manual:
+        return manual
     res = _resolver_match_hugo(marca, modelo)
     if res["tipo"] == "variante":
         return res["respuesta"]
@@ -1472,8 +1543,14 @@ async def buscar_modelo_sin_marca(modelo: str) -> str:
                 matches_por_marca[marca].append((p, [variante]))
                 break
 
-    if tokens and _clave_consulta_iphone(" ".join(tokens)) in precios_iphone_manuales():
+    # iPhone solo si el texto es SOLO un modelo de iPhone ("13 pro", "xr", "se 2022"), no "note 13 pro"
+    if tokens and re.fullmatch(r"(\d{1,2}\s*(s|e)?|x[rs]?|xs\s*max|se(\s*20\d\d)?)(\s*(pro\s*max|pro|plus|mini|max|air|\+))?",
+                               " ".join(tokens).lower().strip()) \
+            and _clave_consulta_iphone(" ".join(tokens)) in precios_iphone_manuales():
         matches_por_marca['IPHONE'].append(({}, [None]))
+    for (marca_m, clave_m) in precios_manuales_otras():
+        if tokens and clave_m == _clave_modelo_manual(" ".join(tokens)):
+            matches_por_marca[marca_m].append(({}, [None]))
 
     if not matches_por_marca:
         logger.warning(f"[PRICING] Sin productos para '{modelo}' sin marca")
