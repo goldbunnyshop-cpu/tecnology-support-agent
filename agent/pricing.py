@@ -1480,10 +1480,13 @@ async def buscar_modelo_sin_marca(modelo: str) -> str:
         return _mensaje_no_disponible("No especificado", modelo)
 
     if len(matches_por_marca) == 1:
+        # El cliente no dijo la marca y el modelo solo existe en una marca de la lista.
+        # NO cotizar directo: "display a55" cotizaba el ZTE A55 a un cliente con Samsung A55
+        # (caso real, 18 nov 2026). Se confirma la marca primero.
         marca = list(matches_por_marca.keys())[0]
-        logger.info(f"[PRICING] Busqueda sin marca: '{modelo}' -> {marca}")
-        # Reusar el flujo principal para no mezclar variantes/precios por accidente.
-        return await obtener_cotizacion_display(marca, modelo)
+        marca_txt = "iPhone" if marca == "IPHONE" else (marca if marca in ("ZTE", "LG", "TCL", "HTC") else marca.title())
+        logger.info(f"[PRICING] Busqueda sin marca: '{modelo}' -> solo {marca} → confirmar marca")
+        return f"INFORMACION PARA EL CLIENTE:\n\n¿Tu equipo es {marca_txt} {modelo.upper()}?"
 
     marcas_str = ", ".join(sorted(matches_por_marca.keys()))
     cuerpo = (

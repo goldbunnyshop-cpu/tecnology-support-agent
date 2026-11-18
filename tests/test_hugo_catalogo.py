@@ -55,3 +55,14 @@ def test_descripcion_breve_por_calidad_todas_las_marcas():
     # La descripción va una sola vez por calidad y no se repiten etiquetas idénticas
     _, t = _precios("motorola", "edge 40 neo")
     assert t.count("Pantalla OLED:") == 1 and t.count("Calidad AMOLED con marco") == 1 and "$2,334 MXN" in t
+
+
+def test_sin_marca_confirma_antes_de_cotizar():
+    import asyncio
+    from agent.brain import _intentar_respuesta_pricing_contextual as f
+    r = asyncio.run(f("display a55", []))
+    assert "¿Tu equipo es ZTE A55?" in r and "MXN" not in r
+    h = [{"role": "user", "content": "display a55"}, {"role": "assistant", "content": "¿Tu equipo es ZTE A55?"}]
+    assert "$600 MXN" in asyncio.run(f("sí", h))
+    r = asyncio.run(f("no, es samsung", h))
+    assert "técnico" in r and "MXN" not in r

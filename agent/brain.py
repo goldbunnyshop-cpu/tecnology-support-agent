@@ -593,7 +593,8 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
     # ── Respuesta afirmativa a la pregunta clarificadora "¿Del display del iPhone 12 Pro?" ──
     # Caso real (18 nov 2026): el cliente contestó "Sí" y Claude inventó $2,900 en vez de usar la lista.
     _ult_asis = next((h.get("content", "") for h in reversed(historial) if h.get("role") == "assistant"), "")
-    _mq = re.match(r"\s*¿\s*Del\s+(?:display|pantalla(?:\s*\(touch/cristal\))?)\s+del\s+(.+?)\s*\?", _ult_asis or "", re.I)
+    _mq = (re.match(r"\s*¿\s*Del\s+(?:display|pantalla(?:\s*\(touch/cristal\))?)\s+del\s+(.+?)\s*\?", _ult_asis or "", re.I)
+           or re.match(r"\s*¿\s*Tu\s+equipo\s+es\s+(.+?)\s*\?", _ult_asis or "", re.I))
     if _mq and re.match(
         r"\s*(s[ií]+|sip|simon|claro|correcto|exacto|as[ií]\s+es|eso|ese|esa|aj[aá]|afirmativo|ok|okay|va|"
         r"del\s+display|de\s+la\s+pantalla|la\s+pantalla|el\s+display)\b", m):
@@ -601,6 +602,13 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
         if _marca_q and _modelo_q:
             logger.info(f"[PRICING] Confirmó la pregunta clarificadora → cotizando {_marca_q} {_modelo_q}")
             return _limpiar_respuesta_pricing(await cotizar_con_fallback(_marca_q, _modelo_q))
+    # "¿Tu equipo es ZTE A55?" → "No, es Samsung": cotizar el mismo modelo con la marca que dijo
+    if _mq and re.match(r"\s*(no|nel|nop|negativo)\b", m):
+        _marca_nueva, _ = _extraer_marca_modelo(mensaje)
+        _, _modelo_q = _extraer_marca_modelo(_mq.group(1))
+        if _marca_nueva and _modelo_q:
+            logger.info(f"[PRICING] Corrigió la marca → cotizando {_marca_nueva} {_modelo_q}")
+            return _limpiar_respuesta_pricing(await cotizar_con_fallback(_marca_nueva, _modelo_q))
 
     # ── Cristal/vidrio/lente de cámara: nunca es display → técnico, aunque no diga "precio" ──
     # Caso real (nov 2026): "¿y los cristales de la cámara?" → el bot respondió con precios de display.

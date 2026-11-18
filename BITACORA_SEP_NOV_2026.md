@@ -350,6 +350,13 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 3. **Envío de imágenes con Whapi fallaba** (400 "media must have required property 'media'").
    - **Arreglo:** el payload ahora es `media` (data URI) + `caption`.
 
+**18 nov: Samsung A55 y búsqueda sin marca.**
+- El Samsung A55 **no está** en la lista de Hugo. El renglón "TA3555 A35/A55" es de la sección ZTE (Blade A35/A55, LCD de $193).
+- **Problema:** "display a55" sin marca cotizaba directo el ZTE A55, y un cliente con Samsung A55 podía quedarse con ese precio.
+- **Ahora:** si el modelo solo existe en una marca y el cliente no la dijo, el bot pregunta "¿Tu equipo es ZTE A55?".
+  - "Sí" → cotiza.
+  - "No, es Samsung" → cotiza el mismo modelo con esa marca; si no está en la lista, lo pasa al técnico.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---
