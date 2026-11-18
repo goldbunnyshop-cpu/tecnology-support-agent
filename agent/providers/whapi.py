@@ -125,6 +125,8 @@ class ProveedorWhapi(ProveedorWhatsApp):
 
         for msg in body.get("messages", []):
             chat_id  = msg.get("chat_id", "")
+            if str(chat_id).endswith(("@broadcast", "@newsletter")):
+                continue   # estados y canales de WhatsApp: nunca son clientes
             from_raw = msg.get("from", chat_id)  # sender en grupos
             es_grupo = chat_id.endswith("@g.us")
 
@@ -224,6 +226,9 @@ class ProveedorWhapi(ProveedorWhatsApp):
         if not self.token:
             logger.warning("WHAPI_TOKEN no configurado")
             return False
+        if str(destino).endswith(("@broadcast", "@newsletter")) or "broadcast" in str(destino):
+            logger.error(f"[WHAPI] BLOQUEADO envío a {destino} (estado/canal)")
+            return False
 
         # ⚠️ CRÍTICO: Asegurar que el mensaje es UTF-8 válido
         # Evitar mojibake (corrupción de caracteres especiales como ¡ → Â¡)
@@ -289,12 +294,10 @@ class ProveedorWhapi(ProveedorWhatsApp):
         b64 = base64.standard_b64encode(imagen_bytes).decode("ascii")
         payload = {
             "to": destino,
-            "image": {
-                "mimetype": mime_type,
-                "data": b64,
-                "caption": caption,
-            },
+            "media": f"data:{mime_type};base64,{b64}",
         }
+        if caption:
+            payload["caption"] = caption
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 r = await client.post(

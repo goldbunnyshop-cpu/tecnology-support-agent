@@ -72,3 +72,19 @@ def test_en_taller_sin_seguimientos():
         assert await leads.lead_en_taller(tel)
         assert tel not in [l.telefono for l in await leads.obtener_leads_para_seguimiento()]
     asyncio.run(correr())
+
+
+def test_estados_no_son_clientes():
+    from agent.leads import _no_es_cliente
+    assert _no_es_cliente("status@broadcast") and _no_es_cliente("120363@newsletter") and _no_es_cliente("1203@g.us")
+    assert not _no_es_cliente("5215512345678") and not _no_es_cliente("5215512345678@s.whatsapp.net")
+
+
+def test_confirmacion_de_pregunta_clarificadora_cotiza_lista():
+    h = [{"role": "user", "content": "Hola buenos días iPhone 12 pro"},
+         {"role": "assistant", "content": "¿Del display del Iphone 12 Pro?"}]
+    for q in ("Si", "si por favor", "Sí, del display"):
+        r = _r(q, h)
+        assert "iPhone 12 Pro" in r and "$1,400 MXN" in r, (q, r)
+    assert "$1,400 MXN" in _r("Hola buenos días iPhone 12 pro")
+    assert not _r("no, de la batería", h).startswith("Para iPhone 12 Pro")

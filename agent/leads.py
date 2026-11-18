@@ -136,6 +136,12 @@ def _detectar_espera_utc(mensaje_texto: str) -> datetime | None:
         return None
 
 
+def _no_es_cliente(telefono: str) -> bool:
+    """Estados, canales y grupos de WhatsApp no son clientes (no se les da seguimiento)."""
+    t = str(telefono or "")
+    return ("@" in t and not t.endswith(("@c.us", "@s.whatsapp.net", "@lid"))) or "broadcast" in t or "newsletter" in t
+
+
 async def crear_o_actualizar_lead(
     telefono: str,
     fuente: str = "desconocido",
@@ -149,6 +155,8 @@ async def crear_o_actualizar_lead(
     - Si contiene intención de servicio → resetear (nueva consulta genuina)
     - Si es respuesta de cortesía ("gracias", "ok") → NO resetear (evita loop infinito)
     """
+    if _no_es_cliente(telefono):
+        return
     espera = _detectar_espera_utc(mensaje_texto)
     async with async_session() as session:
         result = await session.execute(select(Lead).where(Lead.telefono == telefono))
@@ -235,7 +243,7 @@ async def obtener_retomas_pendientes() -> list[Lead]:
                 Lead.retoma_en <= ahora,
             )
         )
-        return list(result.scalars().all())
+        return [l for l in result.scalars().all() if not _no_es_cliente(l.telefono)]
 
 
 # Intervalos de seguimiento por número de seguimientos ya enviados
@@ -275,6 +283,8 @@ async def obtener_leads_para_seguimiento() -> list[Lead]:
 
     candidatos = []
     for lead in todos:
+        if _no_es_cliente(lead.telefono):
+            continue   # ej. "status@broadcast": generaba un seguimiento con Claude cada 30 min y fallaba
         n = lead.seguimientos_enviados
         intervalo = _INTERVALOS_SEGUIMIENTO.get(n)
         if intervalo is None:

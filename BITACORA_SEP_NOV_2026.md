@@ -340,6 +340,16 @@ Revisar en la lista: el 13 quedó más barato que el 12 en las tres calidades, y
 - Nombre configurable: `ETIQUETA_NOTA_SERVICIO`. Por defecto "cliente con nota de servicio"; no importan mayúsculas ni acentos.
 - **Pendiente:** confirmar en los logs que lee la etiqueta (línea `[ETIQUETAS] '…': N clientes`). La documentación de WAHA no dice si las etiquetas están en Core (gratis) o solo en Plus.
 
+**18 nov (ya en Whapi): logs de Railway.**
+1. **iPhone 12 Pro → $2,900 inventado.**
+   - "Hola buenos días iPhone 12 pro" no se cotizó, porque el saludo contaba como palabras de más. El bot preguntó "¿Del display del iPhone 12 Pro?", el cliente dijo "Sí" y Claude inventó $2,900. La lista dice $1,400 / $2,100 / $3,400.
+   - **Arreglo:** los saludos no cuentan en el mensaje breve. Un "sí / claro / correcto…" a la pregunta "¿Del display del X?" cotiza con la lista.
+2. **Seguimiento a `status@broadcast` cada 30 min desde el 12 nov** (Whapi 400 "to must match pattern").
+   - Existía un lead de los Estados de WhatsApp. En cada ciclo Claude generaba un mensaje y gastaba créditos, y el envío fallaba.
+   - **Arreglo:** Whapi ignora estados y canales al recibir y al enviar. Los leads de estados, canales y grupos se excluyen de seguimientos y retomas (`leads._no_es_cliente`).
+3. **Envío de imágenes con Whapi fallaba** (400 "media must have required property 'media'").
+   - **Arreglo:** el payload ahora es `media` (data URI) + `caption`.
+
 Regreso a Whapi: ver `MIGRAR_A_WHAPI.md` (se puede hacer solo desde el celular).
 
 ---
