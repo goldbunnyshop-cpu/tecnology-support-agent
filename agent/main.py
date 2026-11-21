@@ -618,6 +618,32 @@ async def admin_reload_catalogo(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/admin/avisar-citas-hoy")
+async def admin_avisar_citas_hoy(request: Request, confirmar: bool = False):
+    """
+    Avisa a todos los clientes con cita HOY que se atiende de 1pm a 8pm (fuerza mayor).
+    Sin ?confirmar=true es DRY-RUN (solo lista destinatarios y el mensaje).
+    Requiere header: X-Admin-Token
+    """
+    admin_token = os.getenv("ADMIN_TOKEN", "").strip()
+    token_header = request.headers.get("X-Admin-Token", "").strip()
+    if not admin_token or token_header != admin_token:
+        raise HTTPException(status_code=401, detail="No autorizado")
+
+    from agent.aviso_citas_hoy import avisar_citas_hoy
+    try:
+        if confirmar:
+            # Envío en segundo plano (pausas de 4-9 s entre mensajes exceden el timeout HTTP)
+            simulado = await avisar_citas_hoy(proveedor, confirmar=False)
+            asyncio.create_task(avisar_citas_hoy(proveedor, confirmar=True))
+            simulado["modo"] = "ENVIO INICIADO EN SEGUNDO PLANO (revisa logs: [AVISO-HOY])"
+            return simulado
+        return await avisar_citas_hoy(proveedor, confirmar=False)
+    except Exception as e:
+        logger.error(f"[ADMIN] Error en avisar-citas-hoy: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/diagnostico/grupos")
 async def diagnostico_grupos():
     """
