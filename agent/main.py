@@ -618,15 +618,16 @@ async def admin_reload_catalogo(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/admin/avisar-citas-hoy")
 @app.post("/admin/avisar-citas-hoy")
 async def admin_avisar_citas_hoy(request: Request, confirmar: bool = False):
     """
     Avisa a todos los clientes con cita HOY que se atiende de 1pm a 8pm (fuerza mayor).
     Sin ?confirmar=true es DRY-RUN (solo lista destinatarios y el mensaje).
-    Requiere header: X-Admin-Token
+    Requiere header X-Admin-Token, o ?token=... (para abrirlo desde el navegador del celular).
     """
     admin_token = os.getenv("ADMIN_TOKEN", "").strip()
-    token_header = request.headers.get("X-Admin-Token", "").strip()
+    token_header = (request.headers.get("X-Admin-Token", "") or request.query_params.get("token", "")).strip()
     if not admin_token or token_header != admin_token:
         raise HTTPException(status_code=401, detail="No autorizado")
 
