@@ -22,8 +22,9 @@ logger = logging.getLogger("agentkit")
 ZONA_CDMX = ZoneInfo("America/Mexico_City")
 
 # Hora a partir de la cual se atiende hoy
-HORA_INICIO = time(13, 0)
-TEXTO_HORARIO = "de 1:00 pm a 8:00 pm"
+HORA_INICIO = time(14, 0)
+HORA_FIN = time(19, 0)
+TEXTO_HORARIO = "de 2:00 pm a 7:00 pm"
 
 # Anti-duplicados en memoria: {(fecha_iso, ultimos10)}
 _ENVIADOS: set[tuple[str, str]] = set()
@@ -71,8 +72,13 @@ def construir_mensaje(nombre: str, hora: time | None) -> str:
     )
     if hora and hora < HORA_INICIO:
         detalle = (
-            f"\n\nTu cita de hoy era a las {_hora_bonita(hora)}; te pedimos pasar a partir de la "
-            f"1:00 pm. Si prefieres reagendar para otro día, solo respóndenos por aquí."
+            f"\n\nTu cita de hoy era a las {_hora_bonita(hora)}; te pedimos pasar a partir de las "
+            f"2:00 pm. Si prefieres reagendar para otro día, solo respóndenos por aquí."
+        )
+    elif hora and hora >= HORA_FIN:
+        detalle = (
+            f"\n\nTu cita de hoy era a las {_hora_bonita(hora)}, fuera de ese horario; "
+            f"¿te queda bien pasar antes de las 7:00 pm o prefieres reagendar para otro día? Respóndenos por aquí."
         )
     else:
         detalle = (

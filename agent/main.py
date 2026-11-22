@@ -622,7 +622,7 @@ async def admin_reload_catalogo(request: Request):
 @app.post("/admin/avisar-citas-hoy")
 async def admin_avisar_citas_hoy(request: Request, confirmar: bool = False):
     """
-    Avisa a todos los clientes con cita HOY que se atiende de 1pm a 8pm (fuerza mayor).
+    Avisa a todos los clientes con cita HOY que se atiende de 2pm a 7pm (fuerza mayor).
     Sin ?confirmar=true es DRY-RUN (solo lista destinatarios y el mensaje).
     Requiere header X-Admin-Token, o ?token=... (para abrirlo desde el navegador del celular).
     """
