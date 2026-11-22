@@ -251,6 +251,11 @@ def _build_service():
 
 def _todos_slots(fecha: date) -> list[datetime]:
     inicio, fin = _horario_dia(fecha.weekday())
+    # Horario especial de un solo día (ver agent/horario.py)
+    from agent.horario import horario_especial
+    esp = horario_especial(fecha)
+    if esp:
+        inicio, fin = esp
     slots: list[datetime] = []
     dt = datetime(fecha.year, fecha.month, fecha.day, inicio.hour, inicio.minute, tzinfo=ZONA)
     fin_dt = datetime(fecha.year, fecha.month, fecha.day, fin.hour, fin.minute, tzinfo=ZONA)
