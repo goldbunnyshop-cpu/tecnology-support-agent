@@ -99,6 +99,18 @@ _MENSAJE_TECNICO_30MIN = (
     "¿Prefieres que te contactemos por llamada o seguimos por WhatsApp?"
 )
 
+# Piezas de celular que NUNCA se cotizan con el motor (ni Sheets de proveedor): van al técnico.
+_PATRON_PIEZA_SOLO_TECNICO = re.compile(
+    r"\b(bater[ií]a|pila|tapa|carcasa|back\s*cover|centro\s+de\s+carga|puerto\s+de\s+carga|"
+    r"conector\s+de\s+carga|bocina|altavoz|micr[oó]fono)\b", re.I)
+_PATRON_INTENCION_PRECIO = re.compile(
+    r"\b(cu[aá]nt[oa]s?|cuesta\w*|costo|precio|cotiz\w*|presupuesto|vale|cambio|cambiar|cambian)\b", re.I)
+_PATRON_SEGUIMIENTO_PIEZA = re.compile(r"^\W*(y|tambi[eé]n|adem[aá]s)\b", re.I)
+_PATRON_NO_APLICA_CELULAR = re.compile(
+    r"\b(consola|playstation|ps[345]|xbox|nintendo|switch|control|mando|joystick|laptop|pc|"
+    r"computadora|notebook|macbook)\b", re.I)
+_PATRON_DISPLAY_EN_MSG = re.compile(r"\b(display|pantalla|touch|t[aá]ctil|cristal\w*|mica)\b", re.I)
+
 # Señales de que la consulta NO es de display ni refacción cotizable.
 # El motor la ignora y Claude atiende (precio fijo de servicio, consola, software, etc.)
 _PATRON_NO_DISPLAY = re.compile(
@@ -653,6 +665,22 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
         logger.info("[PRICING-DEBUG] Intervención manual del dueño detectada → delegando a Claude")
         return None
 
+    # ── Batería/tapa/puerto/bocina de celular: SIEMPRE al técnico, sin cifra ─────
+    # Caso real (nov 2026): precios de BATERÍAS iPHONE (hoja de proveedor x4) llegaron al cliente.
+    # "cuánto cuesta la batería…" no es consulta de precio del motor (solo reconoce "costo") y
+    # se delegaba a Claude; y "y la batería?" tras un display reutilizaba el modelo y cotizaba Sheets.
+    if (_PATRON_PIEZA_SOLO_TECNICO.search(m)
+            and (_PATRON_INTENCION_PRECIO.search(m) or _PATRON_SEGUIMIENTO_PIEZA.search(m))
+            and not _PATRON_DISPLAY_EN_MSG.search(m)
+            and not _PATRON_NO_APLICA_CELULAR.search(m)
+            and not _es_contexto_laptop_pc(historial)):
+        pieza = _nombre_pieza_tecnico(mensaje)
+        logger.info(f"[PRICING] Pieza no-display '{pieza}' (celular) → técnico, sin cifra")
+        return (
+            f"Para la cotización de *{pieza}* necesito confirmarte el precio exacto con el técnico. "
+            f"{_MENSAJE_TECNICO_30MIN}"
+        )
+
     # ── Selector de calidad: cliente elige entre opciones ya mostradas ──────────
     # Caso: agente mostró "Genérica $X / Original $Y" y cliente responde solo "Original"
     # Sin esta detección: _extraer_marca_modelo("Original") → (None,None) → Claude responde
@@ -874,6 +902,14 @@ async def _intentar_respuesta_pricing_contextual(mensaje: str, historial: list[d
                 refaccion = "tapa"
             else:
                 refaccion = "display"
+            # Pieza no-display (batería, tapa): nunca se cotiza con las hojas de proveedor → técnico
+            if refaccion != "display":
+                pieza = _nombre_pieza_tecnico(mensaje)
+                logger.info(f"[PRICING] Contexto + pieza no-display '{pieza}' → transfiriendo al técnico")
+                return (
+                    f"Para la cotización de *{pieza}* necesito confirmarte el precio exacto con el técnico. "
+                    f"{_MENSAJE_TECNICO_30MIN}"
+                )
             try:
                 logger.info(f"[PRICING] Reutilizando contexto: {marca_prev} {modelo_prev}, cambiando a refacción='{refaccion}'")
                 r = await cotizar_con_fallback(marca_prev, modelo_prev, refaccion)
